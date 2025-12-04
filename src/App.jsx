@@ -104,6 +104,33 @@ function parseExcel(buffer) {
   return data;
 }
 
+// Función para convertir número de fecha de Excel a fecha legible
+function excelDateToString(excelDate) {
+  if (!excelDate) return '';
+  
+  // Si ya es una fecha en formato texto, devolverla tal cual
+  if (typeof excelDate === 'string' && excelDate.includes('/')) {
+    return excelDate;
+  }
+  
+  // Si es un número (fecha serial de Excel)
+  const num = parseFloat(excelDate);
+  if (!isNaN(num) && num > 10000 && num < 100000) {
+    // Excel usa 1/1/1900 como día 1 (con un bug del año bisiesto 1900)
+    const excelEpoch = new Date(1899, 11, 30); // 30 de diciembre de 1899
+    const date = new Date(excelEpoch.getTime() + num * 24 * 60 * 60 * 1000);
+    
+    // Formatear como DD/MM/YYYY
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  
+  // Si no es número ni fecha reconocible, devolver el valor original
+  return String(excelDate);
+}
+
 const downloadCSV = (data, filename) => {
   if (!data || !data.length) return alert("No hay datos para exportar");
   const flatData = data.map(row => {
@@ -457,23 +484,30 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       const h = String(header || '').toLowerCase().trim().replace(/_/g, ' ');
       console.log(`Columna ${index}: "${header}" -> "${h}"`);
       
-      // Mapeo específico para tu archivo
-      if (h === 'cliente' || h.includes('nombre cliente')) initialMap[index] = 'Cliente';
+      // Mapeo específico para tu archivo - ORDEN IMPORTANTE (más específico primero)
+      
+      // Fechas - detectar primero las más específicas
+      if (h.includes('fecha perdida') || h === 'fecha perdida fpd') initialMap[index] = 'FechaPerdida';
+      else if (h.includes('fecha vencimiento') || h === 'vencimiento') initialMap[index] = 'FechaVencimiento';
+      else if (h.includes('fecha instalacion') || h.includes('fecha inst') || h.includes('fecha alta')) initialMap[index] = 'FechaInstalacion';
+      
+      // Saldos - detectar antes de otros campos
+      else if (h === 'saldo por vencer' || h === 'saldo por vencer') initialMap[index] = 'SaldoPorVencer';
+      else if (h === 'saldo vencido' || h.includes('saldo vencido')) initialMap[index] = 'SaldoVencido';
+      else if (h === 'saldo' || h === 'saldo total' || h.includes('monto') || h.includes('adeudo')) initialMap[index] = 'Saldo';
+      
+      // Estatus
+      else if (h.includes('estatus') || h.includes('estado') || h.includes('status')) initialMap[index] = 'Estatus';
+      
+      // Campos principales
+      else if (h === 'cliente' || h.includes('nombre cliente')) initialMap[index] = 'Cliente';
       else if (h === 'vendedor' || h.includes('tecnico') || h.includes('responsable')) initialMap[index] = 'Vendedor';
       else if (h === 'cuenta' || h.includes('contrato') || h.includes('num cuenta')) initialMap[index] = 'Cuenta';
       else if (h === 'plaza' || h.includes('ciudad') || h.includes('zona')) initialMap[index] = 'Plaza';
-      else if (h === 'telefono1' || h === 'telefono' || h.includes('tel') || h.includes('cel') || h.includes('movil') || h.includes('whats')) initialMap[index] = 'Telefono';
-      // Saldos específicos
-      else if (h === 'saldo por vencer' || h.includes('por vencer')) initialMap[index] = 'SaldoPorVencer';
-      else if (h === 'saldo vencido' || h.includes('vencido')) initialMap[index] = 'SaldoVencido';
-      else if (h === 'saldo' || h === 'saldo total' || h.includes('monto') || h.includes('adeudo')) initialMap[index] = 'Saldo';
-      // Fechas
-      else if (h.includes('fecha instalacion') || h.includes('fecha inst') || h.includes('fecha alta')) initialMap[index] = 'FechaInstalacion';
-      else if (h.includes('fecha vencimiento') || h.includes('vencimiento')) initialMap[index] = 'FechaVencimiento';
-      else if (h.includes('fecha perdida') || h.includes('fpd')) initialMap[index] = 'FechaPerdida';
-      // Estatus
-      else if (h.includes('estatus') || h.includes('estado') || h.includes('status')) initialMap[index] = 'Estatus';
+      else if (h === 'telefono1' || h === 'telefono' || h.includes('celular') || h.includes('movil') || h.includes('whats')) initialMap[index] = 'Telefono';
       else if (h.includes('direcc')) initialMap[index] = 'Direccion';
+      
+      // Si no coincide con nada, ignorar
       else initialMap[index] = 'Ignorar';
     });
     
@@ -520,7 +554,13 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
             row.forEach((cellVal, colIndex) => {
                 const fieldName = columnMapping[colIndex];
                 if (fieldName && fieldName !== 'Ignorar') {
-                    const value = String(cellVal ?? '').trim();
+                    let value = String(cellVal ?? '').trim();
+                    
+                    // Convertir fechas de Excel (números) a formato legible
+                    if (fieldName.toLowerCase().includes('fecha') && value) {
+                      value = excelDateToString(value);
+                    }
+                    
                     if (value) {
                       docData[fieldName] = value;
                       hasData = true;
