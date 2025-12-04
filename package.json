@@ -12,7 +12,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "firebase": "^10.8.0",
-    "lucide-react": "^0.344.0"
+    "lucide-react": "^0.344.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.56",
@@ -24,5 +25,3 @@
     "vite": "^5.1.4"
   }
 }
-
-

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc } from 'firebase/firestore';
-import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X } from 'lucide-react';
+import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // --- PANTALLA DE ERROR (DIAGNÓSTICO) ---
 function ErrorDisplay({ message, details, currentKey }) {
@@ -94,6 +95,15 @@ function parseCSV(text) {
   return arr;
 }
 
+// Función para leer archivos Excel
+function parseExcel(buffer) {
+  const workbook = XLSX.read(buffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+  return data;
+}
+
 const downloadCSV = (data, filename) => {
   if (!data || !data.length) return alert("No hay datos para exportar");
   const flatData = data.map(row => {
@@ -120,6 +130,15 @@ const downloadCSV = (data, filename) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+// Calcular saldo total
+const calcularSaldoTotal = (cliente) => {
+  const s1 = parseFloat(cliente.Saldo1) || 0;
+  const s2 = parseFloat(cliente.Saldo2) || 0;
+  const s3 = parseFloat(cliente.Saldo3) || 0;
+  const monto = parseFloat(cliente.Monto) || 0;
+  return s1 + s2 + s3 + monto;
 };
 
 // --- APP PRINCIPAL ---
@@ -181,8 +200,8 @@ function LoginScreen({ onLogin }) {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
         <div className="max-w-md w-full bg-slate-800 rounded-2xl p-8 shadow-2xl text-center border border-slate-700">
           <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-white"><Cloud size={32} /></div>
-          <h1 className="text-2xl font-bold text-white mb-2">Distribuidor Izzi</h1>
-          <p className="text-slate-400 mb-8">Sistema Central de Ventas</p>
+          <h1 className="text-2xl font-bold text-white mb-2">Distribuidor Izzi Sureste</h1>
+          <p className="text-slate-400 mb-8">Sistema de Cobranza y Ventas</p>
           <div className="space-y-4">
             <button onClick={() => setMode('admin')} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95"><Shield size={20} /> Soy el Distribuidor (Admin)</button>
             <button onClick={() => setMode('vendor')} className="w-full bg-slate-700 hover:bg-slate-600 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95"><Users size={20} /> Soy Vendedor / Técnico</button>
@@ -263,34 +282,68 @@ function AdminDashboard({ user, currentModule, setModule }) {
 
   useEffect(() => { if (activeTab === 'view') fetchPreview(); }, [activeTab, currentModule]);
 
+  // Función mejorada para manejar CSV y Excel
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target.result;
-      let rows = [];
-      if (text.includes('\t')) rows = text.trim().split('\n').map(l => l.split('\t'));
-      else rows = parseCSV(text);
-      if (rows.length > 0) {
-        setRawFileRows(rows);
-        const initialMap = {};
-        rows[0].forEach((header, index) => {
-            const h = header.toLowerCase().trim();
-            if (h.includes('cliente') || h.includes('nombre')) initialMap[index] = 'Cliente';
-            else if (h.includes('vendedor') || h.includes('tecnico')) initialMap[index] = 'Responsable';
-            else if (h.includes('monto')) initialMap[index] = 'Monto';
-            else if (h.includes('cuenta') || h.includes('contrato')) initialMap[index] = 'Cuenta';
-            else if (h.includes('estatus') || h.includes('estado')) initialMap[index] = 'Estatus';
-            else if (h.includes('tel') || h.includes('cel')) initialMap[index] = 'Telefono';
-            else initialMap[index] = 'Ignorar';
-        });
-        setColumnMapping(initialMap);
-        setUploadStep(2);
-      }
-    };
-    reader.readAsText(file);
+    
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    
+    if (isExcel) {
+      // Leer archivo Excel
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const rows = parseExcel(data);
+          if (rows.length > 0) {
+            processFileRows(rows);
+          }
+        } catch (error) {
+          alert("Error al leer el archivo Excel: " + error.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // Leer CSV o TXT
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target.result;
+        let rows = [];
+        if (text.includes('\t')) rows = text.trim().split('\n').map(l => l.split('\t'));
+        else rows = parseCSV(text);
+        if (rows.length > 0) {
+          processFileRows(rows);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  // Procesar filas del archivo
+  const processFileRows = (rows) => {
+    setRawFileRows(rows);
+    const initialMap = {};
+    rows[0].forEach((header, index) => {
+      const h = String(header).toLowerCase().trim();
+      if (h.includes('cliente') || h.includes('nombre')) initialMap[index] = 'Cliente';
+      else if (h.includes('vendedor') || h.includes('tecnico') || h.includes('responsable')) initialMap[index] = 'Vendedor';
+      else if (h.includes('cuenta') || h.includes('contrato') || h.includes('folio')) initialMap[index] = 'Cuenta';
+      else if (h.includes('plaza') || h.includes('ciudad') || h.includes('zona')) initialMap[index] = 'Plaza';
+      else if (h.includes('saldo') && h.includes('1')) initialMap[index] = 'Saldo1';
+      else if (h.includes('saldo') && h.includes('2')) initialMap[index] = 'Saldo2';
+      else if (h.includes('saldo') && h.includes('3')) initialMap[index] = 'Saldo3';
+      else if (h.includes('monto') || h.includes('total') || h.includes('adeudo')) initialMap[index] = 'Monto';
+      else if (h.includes('fecha') && (h.includes('inst') || h.includes('alta'))) initialMap[index] = 'FechaInstalacion';
+      else if (h.includes('fecha')) initialMap[index] = 'FechaInstalacion';
+      else if (h.includes('estatus') || h.includes('estado') || h.includes('status')) initialMap[index] = 'Estatus';
+      else if (h.includes('tel') || h.includes('cel') || h.includes('movil') || h.includes('whats')) initialMap[index] = 'Telefono';
+      else if (h.includes('direcc')) initialMap[index] = 'Direccion';
+      else initialMap[index] = 'Ignorar';
+    });
+    setColumnMapping(initialMap);
+    setUploadStep(2);
   };
 
   const executeUpload = async () => {
@@ -299,6 +352,7 @@ function AdminDashboard({ user, currentModule, setModule }) {
     try {
         const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
         const chunks = []; snapshot.docs.forEach(d => chunks.push(d));
+        setProgress('Limpiando base anterior...');
         while(chunks.length) { const batch = writeBatch(db); chunks.splice(0, 400).forEach(doc => batch.delete(doc.ref)); await batch.commit(); }
 
         const validRows = rawFileRows.slice(1);
@@ -308,10 +362,17 @@ function AdminDashboard({ user, currentModule, setModule }) {
             row.forEach((cellVal, index) => {
                 const fieldName = columnMapping[index];
                 if (fieldName && fieldName !== 'Ignorar') {
-                    docData[fieldName] = cellVal?.trim() || ''; hasData = true;
-                    if (fieldName === 'Responsable') docData['normalized_resp'] = cellVal?.trim().toLowerCase();
+                    const value = String(cellVal || '').trim();
+                    docData[fieldName] = value;
+                    hasData = true;
+                    if (fieldName === 'Vendedor') docData['normalized_resp'] = value.toLowerCase();
                 }
             });
+            // Calcular saldo total si hay saldos separados
+            if (docData.Saldo1 || docData.Saldo2 || docData.Saldo3) {
+                const total = (parseFloat(docData.Saldo1) || 0) + (parseFloat(docData.Saldo2) || 0) + (parseFloat(docData.Saldo3) || 0);
+                docData.SaldoTotal = total.toFixed(2);
+            }
             if (hasData) processedRows.push(docData);
         });
 
@@ -321,15 +382,16 @@ function AdminDashboard({ user, currentModule, setModule }) {
         for (const chunk of insertChunks) {
             const batch = writeBatch(db);
             chunk.forEach(data => { const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', collectionName)); batch.set(ref, data); });
-            await batch.commit(); inserted += chunk.length; setProgress(`Subiendo: ${inserted}...`);
+            await batch.commit(); inserted += chunk.length; setProgress(`Subiendo: ${inserted} de ${processedRows.length}...`);
             await new Promise(r => setTimeout(r, 100));
         }
-        alert("¡Listo!"); setUploadStep(1); fetchPreview(); setActiveTab('view');
+        alert(`¡Listo! Se cargaron ${processedRows.length} registros.`); setUploadStep(1); fetchPreview(); setActiveTab('view');
     } catch (e) { alert("Error: " + e.message); setUploadStep(2); }
     setSyncing(false);
   };
 
-  const FIELDS = ['Ignorar', 'Cliente', 'Responsable', 'Monto', 'Cuenta', 'Estatus', 'Telefono', 'Direccion', 'Fecha'];
+  // Campos disponibles para mapeo
+  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Saldo1', 'Saldo2', 'Saldo3', 'Monto', 'FechaInstalacion', 'Estatus', 'Telefono', 'Direccion'];
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
@@ -405,13 +467,55 @@ function AdminDashboard({ user, currentModule, setModule }) {
                 {uploadStep === 1 && (
                     <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
                         <div className="mb-4 bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto"><FileSpreadsheet size={40} className="text-slate-400" /></div>
-                        <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold inline-flex items-center gap-2"><UploadCloud size={20}/> Seleccionar CSV<input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" /></label>
+                        <p className="text-slate-500 mb-4 text-sm">Soporta archivos <b>Excel (.xlsx)</b> y <b>CSV</b></p>
+                        <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold inline-flex items-center gap-2">
+                          <UploadCloud size={20}/> Seleccionar Archivo
+                          <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
+                        </label>
                     </div>
                 )}
                 {uploadStep === 2 && (
                     <div>
-                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">Mapeo de Columnas</h3><button onClick={executeUpload} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><Check size={18}/> Subir</button></div>
-                        <div className="overflow-x-auto border border-slate-200 rounded-xl"><table className="w-full text-left text-sm"><thead><tr className="bg-slate-100">{rawFileRows[0].map((header, index) => (<th key={index} className="p-2 min-w-[150px]"><select value={columnMapping[index] || 'Ignorar'} onChange={(e) => setColumnMapping({...columnMapping, [index]: e.target.value})} className="w-full p-2 rounded border border-slate-300 font-bold text-slate-700">{FIELDS.map(f => <option key={f} value={f}>{f}</option>)}</select><div className="mt-1 text-xs text-slate-500 truncate">{header}</div></th>))}</tr></thead><tbody className="divide-y divide-slate-100">{rawFileRows.slice(1, 6).map((row, rIdx) => (<tr key={rIdx}>{row.map((cell, cIdx) => <td key={cIdx} className="p-3 text-slate-600 truncate max-w-[150px]">{cell}</td>)}</tr>))}</tbody></table></div>
+                        <div className="flex justify-between items-center mb-4">
+                          <div>
+                            <h3 className="font-bold text-lg">Mapeo de Columnas</h3>
+                            <p className="text-xs text-slate-500">Archivo: {fileName}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => setUploadStep(1)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm">Cancelar</button>
+                            <button onClick={executeUpload} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><Check size={18}/> Subir {rawFileRows.length - 1} registros</button>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                          <table className="w-full text-left text-sm">
+                            <thead>
+                              <tr className="bg-slate-100">
+                                {rawFileRows[0].map((header, index) => (
+                                  <th key={index} className="p-2 min-w-[150px]">
+                                    <select 
+                                      value={columnMapping[index] || 'Ignorar'} 
+                                      onChange={(e) => setColumnMapping({...columnMapping, [index]: e.target.value})} 
+                                      className="w-full p-2 rounded border border-slate-300 font-bold text-slate-700 text-xs"
+                                    >
+                                      {FIELDS.map(f => <option key={f} value={f}>{f}</option>)}
+                                    </select>
+                                    <div className="mt-1 text-xs text-slate-500 truncate">{String(header)}</div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {rawFileRows.slice(1, 6).map((row, rIdx) => (
+                                <tr key={rIdx}>
+                                  {row.map((cell, cIdx) => (
+                                    <td key={cIdx} className="p-3 text-slate-600 truncate max-w-[150px] text-xs">{String(cell)}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2">Mostrando primeras 5 filas de {rawFileRows.length - 1} registros</p>
                     </div>
                 )}
                 {uploadStep === 3 && <div className="text-center py-20"><RefreshCw className="animate-spin mx-auto text-slate-400 mb-4" size={48}/><p className="text-slate-500">{progress}</p></div>}
@@ -420,9 +524,24 @@ function AdminDashboard({ user, currentModule, setModule }) {
 
         {activeTab === 'view' && (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-               <h3 className="font-bold text-slate-800 mb-4">Vista Previa ({collectionName})</h3>
-               {previewData.length === 0 ? <div className="text-center py-10 text-slate-400">Vacío. (Sube datos desde PC)</div> : 
-                   <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 font-bold text-xs uppercase"><tr>{Object.keys(previewData[0]).filter(k=>k!=='normalized_resp').map(k=><th key={k} className="p-3">{k}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{previewData.map((r,i) => <tr key={i}>{Object.keys(r).filter(k=>k!=='normalized_resp').map(k=><td key={k} className="p-3">{r[k]}</td>)}</tr>)}</tbody></table></div>
+               <h3 className="font-bold text-slate-800 mb-4">Vista Previa ({collectionName}) - {previewData.length} registros</h3>
+               {previewData.length === 0 ? <div className="text-center py-10 text-slate-400">Vacío. (Sube datos desde la pestaña Cargar)</div> : 
+                   <div className="overflow-x-auto">
+                     <table className="w-full text-sm text-left">
+                       <thead className="bg-slate-50 font-bold text-xs uppercase">
+                         <tr>{Object.keys(previewData[0]).filter(k=>k!=='normalized_resp').map(k=><th key={k} className="p-3 whitespace-nowrap">{k}</th>)}</tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                         {previewData.map((r,i) => (
+                           <tr key={i}>
+                             {Object.keys(r).filter(k=>k!=='normalized_resp').map(k=>(
+                               <td key={k} className="p-3 text-xs max-w-[200px] truncate">{r[k]}</td>
+                             ))}
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
                }
             </div>
         )}
@@ -436,7 +555,7 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showConfig, setShowConfig] = useState(false);
-  const [videoLink, setVideoLink] = useState('https://youtu.be/tu-video-aqui');
+  const [videoLink, setVideoLink] = useState(localStorage.getItem('videoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportForm, setReportForm] = useState({ client: '', package: '', folio: '', coords: '', portability: '', docs: false });
   const [packages, setPackages] = useState([]);
@@ -446,7 +565,22 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [chatLoading, setChatLoading] = useState(false);
   const appId = 'sales-master-production';
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
-  const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('salesTemplate') || "Hola {Cliente}, saldo pendiente: ${Monto}. Paga aquí: {Video}");
+  
+  // Plantilla mejorada con más campos
+  const defaultTemplate = `¡Hola {Cliente}! 👋
+
+Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
+
+📋 *Cuenta:* {Cuenta}
+📍 *Plaza:* {Plaza}
+💰 *Saldo Total:* ${'{SaldoTotal}'}
+
+📺 *¿Cómo pagar?* Mira este video:
+{Video}
+
+¿Tienes dudas? ¡Responde este mensaje! 📱`;
+
+  const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('salesTemplate') || defaultTemplate);
 
   useEffect(() => {
     if (!user || !myName) return;
@@ -461,24 +595,60 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
     });
   }, [user, myName, currentModule]);
 
-  const saveTemplate = (val) => { if (currentModule === 'sales') { setSalesTemplate(val); localStorage.setItem('salesTemplate', val); } };
+  const saveConfig = () => {
+    localStorage.setItem('salesTemplate', salesTemplate);
+    localStorage.setItem('videoLink', videoLink);
+    alert('¡Configuración guardada!');
+    setShowConfig(false);
+  };
+
   const submitSaleReport = async () => {
       if (!reportForm.client || !reportForm.package || !reportForm.folio) return alert("Faltan datos obligatorios");
       if (!reportForm.docs) return alert("Debes confirmar la documentación.");
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), { ...reportForm, vendor: myName, createdAt: serverTimestamp() });
       alert("¡Venta Registrada!"); setReportModalOpen(false); setReportForm({ client: '', package: '', folio: '', coords: '', portability: '', docs: false });
   };
-  const sendTemplate = (client) => {
-      let msg = salesTemplate.replace('{Cliente}', client.Cliente).replace('{Monto}', client.Monto).replace('{Video}', videoLink);
-      let ph = client.Telefono?.replace(/\D/g,'') || '';
-      window.open(`https://wa.me/52${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+
+  // Función mejorada para enviar WhatsApp con todos los datos
+  const sendTemplate = (cliente) => {
+    // Calcular saldo total
+    const saldoTotal = calcularSaldoTotal(cliente);
+    
+    let msg = salesTemplate
+      .replace('{Cliente}', cliente.Cliente || 'Cliente')
+      .replace('{Cuenta}', cliente.Cuenta || 'N/A')
+      .replace('{Plaza}', cliente.Plaza || 'N/A')
+      .replace('{Saldo1}', cliente.Saldo1 || '0')
+      .replace('{Saldo2}', cliente.Saldo2 || '0')
+      .replace('{Saldo3}', cliente.Saldo3 || '0')
+      .replace('{SaldoTotal}', cliente.SaldoTotal || saldoTotal.toFixed(2))
+      .replace('{Monto}', cliente.Monto || cliente.SaldoTotal || saldoTotal.toFixed(2))
+      .replace('{Estatus}', cliente.Estatus || 'N/A')
+      .replace('{FechaInstalacion}', cliente.FechaInstalacion || 'N/A')
+      .replace('{Vendedor}', cliente.Vendedor || myName)
+      .replace('{Video}', videoLink);
+    
+    let ph = cliente.Telefono?.replace(/\D/g,'') || '';
+    // Si el teléfono no empieza con 52, agregarlo
+    if (ph && !ph.startsWith('52') && ph.length === 10) {
+      ph = '52' + ph;
+    }
+    window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
   };
+
   const handleChatSubmit = async (e) => {
     e.preventDefault(); if (!chatInput.trim()) return;
     const userMsg = chatInput; setChatHistory(prev => [...prev, {role: 'user', text: userMsg}]); setChatInput(''); setChatLoading(true);
     const packagesContext = packages.map(p => `- ${p.name}: $${p.price}`).join('\n');
     const response = await callGemini(`Experto Izzi. Paquetes:\n${packagesContext}\nUsuario: ${userMsg}`);
     setChatHistory(prev => [...prev, {role: 'ai', text: response}]); setChatLoading(false);
+  };
+
+  // Obtener saldo para mostrar
+  const getSaldo = (c) => {
+    if (c.SaldoTotal) return c.SaldoTotal;
+    if (c.Monto) return c.Monto;
+    return calcularSaldoTotal(c).toFixed(2);
   };
 
   return (
@@ -498,8 +668,41 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
           </div>
        </nav>
 
-       {showConfig && <div className="bg-white p-4 rounded-xl shadow-lg mb-4 border-t-4 border-blue-500"><h3 className="font-bold text-sm mb-2">Plantilla</h3><input value={videoLink} onChange={e=>setVideoLink(e.target.value)} className="w-full p-2 border rounded mb-2 text-xs"/><textarea value={salesTemplate} onChange={e=>setSalesTemplate(e.target.value)} className="w-full p-2 border rounded text-xs h-20"/></div>}
+       {/* Panel de Configuración Mejorado */}
+       {showConfig && (
+         <div className="bg-white p-4 rounded-xl shadow-lg mb-4 border-t-4 border-blue-500">
+           <h3 className="font-bold text-sm mb-3 flex items-center gap-2"><Settings size={16}/> Configuración de Plantilla</h3>
+           
+           <div className="mb-3">
+             <label className="text-xs font-bold text-slate-600 mb-1 block flex items-center gap-1"><Youtube size={14} className="text-red-500"/> Link del Video de Pago</label>
+             <input 
+               value={videoLink} 
+               onChange={e=>setVideoLink(e.target.value)} 
+               className="w-full p-2 border rounded text-xs"
+               placeholder="https://youtu.be/tu-video"
+             />
+           </div>
+           
+           <div className="mb-3">
+             <label className="text-xs font-bold text-slate-600 mb-1 block">Plantilla de WhatsApp</label>
+             <textarea 
+               value={salesTemplate} 
+               onChange={e=>setSalesTemplate(e.target.value)} 
+               className="w-full p-2 border rounded text-xs h-40 font-mono"
+             />
+             <p className="text-[10px] text-slate-400 mt-1">
+               Variables: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{Saldo1}'}, {'{Saldo2}'}, {'{Saldo3}'}, {'{Estatus}'}, {'{FechaInstalacion}'}, {'{Video}'}
+             </p>
+           </div>
+           
+           <div className="flex gap-2">
+             <button onClick={saveConfig} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold">Guardar</button>
+             <button onClick={()=>setShowConfig(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold">Cancelar</button>
+           </div>
+         </div>
+       )}
 
+       {/* Modal Chat */}
        {chatOpen && (
            <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50">
                <div className="bg-white w-full max-w-md h-[80vh] sm:h-[600px] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -510,6 +713,7 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
            </div>
        )}
 
+       {/* Modal Reportar Venta */}
        {reportModalOpen && (
            <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
                <div className="bg-white p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -526,10 +730,80 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
            </div>
        )}
 
-       <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full p-3 rounded-xl border border-slate-200 mb-4 shadow-sm"/>
-       {loading ? <div className="text-center opacity-50 mt-10">Cargando...</div> : <div className="grid gap-3 md:grid-cols-2">{data.filter(i => JSON.stringify(i).toLowerCase().includes(searchTerm.toLowerCase())).map((c, i) => (<div key={i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div className="flex justify-between mb-1"><h3 className="font-bold text-slate-800">{c['Cliente']}</h3><span className="font-mono font-bold text-blue-600">${c['Monto']}</span></div><div className="flex gap-2 mb-3"><span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${c['Estatus'] === 'M1' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{c['Estatus']}</span></div><div className="grid grid-cols-2 gap-2"><button onClick={()=>sendTemplate(c)} className="bg-green-50 text-green-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-green-100"><MessageSquare size={16}/> WA</button><a href={`tel:${c['Telefono']}`} className="bg-slate-50 text-slate-600 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-slate-200"><Phone size={16}/> Llamar</a></div></div>))}</div>}
+       {/* Buscador */}
+       <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="🔍 Buscar cliente, cuenta, teléfono..." className="w-full p-3 rounded-xl border border-slate-200 mb-4 shadow-sm"/>
+       
+       {/* Contador */}
+       <p className="text-xs text-slate-500 mb-3">Mostrando {data.filter(i => JSON.stringify(i).toLowerCase().includes(searchTerm.toLowerCase())).length} de {data.length} clientes asignados</p>
+
+       {/* Lista de Clientes */}
+       {loading ? (
+         <div className="text-center opacity-50 mt-10">Cargando...</div>
+       ) : (
+         <div className="grid gap-3 md:grid-cols-2">
+           {data.filter(i => JSON.stringify(i).toLowerCase().includes(searchTerm.toLowerCase())).map((c, i) => (
+             <div key={i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+               {/* Encabezado */}
+               <div className="flex justify-between mb-2">
+                 <h3 className="font-bold text-slate-800 text-sm">{c.Cliente || 'Sin nombre'}</h3>
+                 <span className="font-mono font-bold text-green-600 text-lg">${getSaldo(c)}</span>
+               </div>
+               
+               {/* Información */}
+               <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
+                 {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {c.Cuenta}</div>}
+                 {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
+                 {c.FechaInstalacion && <div className="flex items-center gap-1"><Calendar size={12}/> {c.FechaInstalacion}</div>}
+                 {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
+               </div>
+
+               {/* Saldos desglosados */}
+               {(c.Saldo1 || c.Saldo2 || c.Saldo3) && (
+                 <div className="flex gap-2 mb-3 text-[10px]">
+                   {c.Saldo1 && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded">S1: ${c.Saldo1}</span>}
+                   {c.Saldo2 && <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">S2: ${c.Saldo2}</span>}
+                   {c.Saldo3 && <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">S3: ${c.Saldo3}</span>}
+                 </div>
+               )}
+
+               {/* Estatus */}
+               <div className="flex gap-2 mb-3">
+                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                   c.Estatus === 'M1' ? 'bg-amber-100 text-amber-700' : 
+                   c.Estatus === 'M2' ? 'bg-orange-100 text-orange-700' :
+                   c.Estatus === 'M3' ? 'bg-red-100 text-red-700' :
+                   'bg-slate-100 text-slate-500'
+                 }`}>{c.Estatus || 'Sin estatus'}</span>
+               </div>
+               
+               {/* Botones */}
+               <div className="grid grid-cols-2 gap-2">
+                 <button 
+                   onClick={()=>sendTemplate(c)} 
+                   className="bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                 >
+                   <MessageSquare size={16}/> WhatsApp
+                 </button>
+                 <a 
+                   href={`tel:${c.Telefono}`} 
+                   className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-slate-200 transition-colors"
+                 >
+                   <Phone size={16}/> Llamar
+                 </a>
+               </div>
+             </div>
+           ))}
+         </div>
+       )}
+
+       {/* Mensaje si no hay datos */}
+       {!loading && data.length === 0 && (
+         <div className="text-center py-10 text-slate-400">
+           <Users size={48} className="mx-auto mb-4 opacity-50"/>
+           <p>No tienes clientes asignados.</p>
+           <p className="text-xs mt-2">El administrador debe cargar la base de datos y asignarte clientes.</p>
+         </div>
+       )}
     </div>
   );
 }
-
-
