@@ -239,7 +239,7 @@ function LoginScreen({ onLogin }) {
 }
 
 function AdminDashboard({ user, currentModule, setModule }) {
-  const [activeTab, setActiveTab] = useState('reports');
+  const [activeTab, setActiveTab] = useState('clients');
   const [dbCount, setDbCount] = useState(0);
   const [previewData, setPreviewData] = useState([]);
   const [reportsData, setReportsData] = useState([]); 
@@ -252,6 +252,26 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [syncing, setSyncing] = useState(false);
   const [fileName, setFileName] = useState('');
   const appId = 'sales-master-production';
+  
+  // Estados para vista de clientes
+  const [allClients, setAllClients] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterVendor, setFilterVendor] = useState('');
+  const [vendors, setVendors] = useState([]);
+  const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
+  const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
+
+Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
+
+📋 *Cuenta:* {Cuenta}
+📍 *Plaza:* {Plaza}
+💰 *Saldo Total:* \${SaldoTotal}
+
+📺 *¿Cómo pagar?* Mira este video:
+{Video}
+
+¿Tienes dudas? ¡Responde este mensaje! 📱`);
+  const [showConfig, setShowConfig] = useState(false);
   
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
 
@@ -269,7 +289,15 @@ function AdminDashboard({ user, currentModule, setModule }) {
     });
 
     const qMain = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
-    const unsubMain = onSnapshot(qMain, (snap) => setDbCount(snap.size));
+    const unsubMain = onSnapshot(qMain, (snap) => {
+      setDbCount(snap.size);
+      // Cargar todos los clientes para la vista de clientes
+      const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAllClients(clients);
+      // Extraer vendedores únicos
+      const uniqueVendors = [...new Set(clients.map(c => c.Vendedor).filter(v => v))];
+      setVendors(uniqueVendors.sort());
+    });
 
     return () => { unsubPack(); unsubRep(); unsubMain(); };
   }, [user, currentModule]);
@@ -281,6 +309,52 @@ function AdminDashboard({ user, currentModule, setModule }) {
   };
 
   const deletePackage = async (id) => await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'izzi_packages', id));
+
+  // Función para enviar WhatsApp desde Admin
+  const sendTemplate = (cliente) => {
+    const saldoTotal = calcularSaldoTotal(cliente);
+    
+    let msg = salesTemplate
+      .replace('{Cliente}', cliente.Cliente || 'Cliente')
+      .replace('{Cuenta}', cliente.Cuenta || 'N/A')
+      .replace('{Plaza}', cliente.Plaza || 'N/A')
+      .replace('{Saldo}', cliente.Saldo || '0')
+      .replace('{SaldoPorVencer}', cliente.SaldoPorVencer || '0')
+      .replace('{SaldoVencido}', cliente.SaldoVencido || '0')
+      .replace('{SaldoTotal}', cliente.SaldoTotal || cliente.Saldo || saldoTotal.toFixed(2))
+      .replace('{Estatus}', cliente.Estatus || 'N/A')
+      .replace('{FechaInstalacion}', cliente.FechaInstalacion || 'N/A')
+      .replace('{FechaVencimiento}', cliente.FechaVencimiento || 'N/A')
+      .replace('{Vendedor}', cliente.Vendedor || 'N/A')
+      .replace('{Video}', videoLink);
+    
+    let ph = String(cliente.Telefono || '').replace(/\D/g,'');
+    if (ph && !ph.startsWith('52') && ph.length === 10) {
+      ph = '52' + ph;
+    }
+    window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  const saveConfig = () => {
+    localStorage.setItem('adminSalesTemplate', salesTemplate);
+    localStorage.setItem('adminVideoLink', videoLink);
+    alert('¡Configuración guardada!');
+    setShowConfig(false);
+  };
+
+  // Filtrar clientes
+  const filteredClients = allClients.filter(c => {
+    const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor;
+    return matchesSearch && matchesVendor;
+  });
+
+  // Obtener saldo para mostrar
+  const getSaldo = (c) => {
+    if (c.SaldoTotal) return c.SaldoTotal;
+    if (c.Saldo) return c.Saldo;
+    return calcularSaldoTotal(c).toFixed(2);
+  };
 
   const fetchPreview = async () => {
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), limit(50));
@@ -535,7 +609,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
                 <button onClick={() => setModule('install')} className={`px-4 py-1 rounded-md text-sm font-bold transition-all ${currentModule === 'install' ? 'bg-white shadow text-purple-600' : 'text-slate-500'}`}>Instalaciones</button>
              </div>
           </div>
-          <div className="flex bg-slate-100 p-1 rounded-lg">
+          <div className="flex bg-slate-100 p-1 rounded-lg flex-wrap">
+            <button onClick={() => setActiveTab('clients')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'clients' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Users size={16}/> Clientes</button>
             <button onClick={() => setActiveTab('reports')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'reports' ? 'bg-green-100 text-green-700' : 'text-slate-500'}`}><FileSpreadsheet size={16}/> Reportes</button>
             <button onClick={() => setActiveTab('packages')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'packages' ? 'bg-orange-100 text-orange-700' : 'text-slate-500'}`}><Wifi size={16}/> Paquetes</button>
             <button onClick={() => setActiveTab('view')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'view' ? 'bg-white shadow' : 'text-slate-500'}`}><List size={16}/> Ver BD</button>
@@ -546,6 +621,131 @@ function AdminDashboard({ user, currentModule, setModule }) {
              <button onClick={() => window.location.reload()} className="text-red-500 hover:bg-red-50 p-2 rounded-full"><LogOut size={18}/></button>
           </div>
         </div>
+
+        {/* VISTA DE CLIENTES PARA ADMIN */}
+        {activeTab === 'clients' && (
+          <div className="space-y-4">
+            {/* Configuración */}
+            {showConfig && (
+              <div className="bg-white p-4 rounded-xl shadow-lg border-t-4 border-blue-500">
+                <h3 className="font-bold text-sm mb-3 flex items-center gap-2"><Settings size={16}/> Configuración de Plantilla</h3>
+                <div className="mb-3">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block flex items-center gap-1"><Youtube size={14} className="text-red-500"/> Link del Video de Pago</label>
+                  <input value={videoLink} onChange={e=>setVideoLink(e.target.value)} className="w-full p-2 border rounded text-xs" placeholder="https://youtu.be/tu-video"/>
+                </div>
+                <div className="mb-3">
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Plantilla de WhatsApp</label>
+                  <textarea value={salesTemplate} onChange={e=>setSalesTemplate(e.target.value)} className="w-full p-2 border rounded text-xs h-40 font-mono"/>
+                  <p className="text-[10px] text-slate-400 mt-1">Variables: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{Vendedor}'}, {'{Video}'}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveConfig} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold">Guardar</button>
+                  <button onClick={()=>setShowConfig(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold">Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de búsqueda y filtros */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+              <div className="flex flex-col md:flex-row gap-3">
+                <input 
+                  value={searchTerm} 
+                  onChange={e=>setSearchTerm(e.target.value)} 
+                  placeholder="🔍 Buscar cliente, cuenta, teléfono..." 
+                  className="flex-1 p-3 rounded-lg border border-slate-200 text-sm"
+                />
+                <select 
+                  value={filterVendor} 
+                  onChange={e=>setFilterVendor(e.target.value)}
+                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
+                >
+                  <option value="">Todos los vendedores</option>
+                  {vendors.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <button onClick={()=>setShowConfig(!showConfig)} className="p-3 bg-slate-100 rounded-lg hover:bg-slate-200">
+                  <Settings size={18}/>
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Mostrando {filteredClients.length} de {allClients.length} clientes
+                {filterVendor && ` • Vendedor: ${filterVendor}`}
+              </p>
+            </div>
+
+            {/* Lista de clientes */}
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {filteredClients.slice(0, 100).map((c, i) => (
+                <div key={c.id || i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                  {/* Encabezado */}
+                  <div className="flex justify-between mb-2">
+                    <h3 className="font-bold text-slate-800 text-sm truncate flex-1">{c.Cliente || 'Sin nombre'}</h3>
+                    <span className="font-mono font-bold text-green-600 text-lg">${getSaldo(c)}</span>
+                  </div>
+                  
+                  {/* Información */}
+                  <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
+                    {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {c.Cuenta}</div>}
+                    {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
+                    {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
+                    {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
+                  </div>
+
+                  {/* Vendedor */}
+                  {c.Vendedor && (
+                    <div className="mb-2 text-xs">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">👤 {c.Vendedor}</span>
+                    </div>
+                  )}
+
+                  {/* Saldos desglosados */}
+                  {(c.SaldoPorVencer || c.SaldoVencido) && (
+                    <div className="flex gap-2 mb-3 text-[10px] flex-wrap">
+                      {c.SaldoPorVencer && <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">Por vencer: ${c.SaldoPorVencer}</span>}
+                      {c.SaldoVencido && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded">Vencido: ${c.SaldoVencido}</span>}
+                    </div>
+                  )}
+
+                  {/* Estatus */}
+                  <div className="flex gap-2 mb-3">
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                      c.Estatus?.includes('Perdida') ? 'bg-red-100 text-red-700' : 
+                      c.Estatus === 'M1' ? 'bg-amber-100 text-amber-700' : 
+                      c.Estatus === 'M2' ? 'bg-orange-100 text-orange-700' :
+                      'bg-slate-100 text-slate-500'
+                    }`}>{c.Estatus || 'Sin estatus'}</span>
+                  </div>
+                  
+                  {/* Botones */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={()=>sendTemplate(c)} 
+                      className="bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <MessageSquare size={16}/> WhatsApp
+                    </button>
+                    <a 
+                      href={`tel:${c.Telefono}`} 
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-slate-200 transition-colors"
+                    >
+                      <Phone size={16}/> Llamar
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {filteredClients.length > 100 && (
+              <p className="text-center text-slate-400 text-sm">Mostrando primeros 100 de {filteredClients.length} resultados. Usa los filtros para ver más específicos.</p>
+            )}
+
+            {filteredClients.length === 0 && (
+              <div className="text-center py-10 text-slate-400 bg-white rounded-xl">
+                <Users size={48} className="mx-auto mb-4 opacity-50"/>
+                <p>No hay clientes que coincidan con la búsqueda.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === 'packages' && (
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 animate-in fade-in">
