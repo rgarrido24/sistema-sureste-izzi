@@ -134,11 +134,19 @@ const downloadCSV = (data, filename) => {
 
 // Calcular saldo total
 const calcularSaldoTotal = (cliente) => {
-  const s1 = parseFloat(cliente.Saldo1) || 0;
-  const s2 = parseFloat(cliente.Saldo2) || 0;
-  const s3 = parseFloat(cliente.Saldo3) || 0;
-  const monto = parseFloat(cliente.Monto) || 0;
-  return s1 + s2 + s3 + monto;
+  // Si ya tiene SaldoTotal, usarlo
+  if (cliente.SaldoTotal) {
+    return parseFloat(String(cliente.SaldoTotal).replace(/[^0-9.-]/g, '')) || 0;
+  }
+  // Si tiene Saldo principal
+  if (cliente.Saldo) {
+    return parseFloat(String(cliente.Saldo).replace(/[^0-9.-]/g, '')) || 0;
+  }
+  // Sumar saldos por vencer y vencido
+  const porVencer = parseFloat(String(cliente.SaldoPorVencer || '0').replace(/[^0-9.-]/g, '')) || 0;
+  const vencido = parseFloat(String(cliente.SaldoVencido || '0').replace(/[^0-9.-]/g, '')) || 0;
+  const monto = parseFloat(String(cliente.Monto || '0').replace(/[^0-9.-]/g, '')) || 0;
+  return porVencer + vencido + monto;
 };
 
 // --- APP PRINCIPAL ---
@@ -287,20 +295,32 @@ function AdminDashboard({ user, currentModule, setModule }) {
     const file = e.target.files[0];
     if (!file) return;
     setFileName(file.name);
+    console.log("Archivo seleccionado:", file.name, "Tamaño:", file.size);
     
     const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     
     if (isExcel) {
       // Leer archivo Excel
       const reader = new FileReader();
+      reader.onerror = () => {
+        alert("Error al leer el archivo");
+        console.error("FileReader error:", reader.error);
+      };
       reader.onload = (evt) => {
         try {
+          console.log("Archivo cargado, procesando Excel...");
           const data = new Uint8Array(evt.target.result);
           const rows = parseExcel(data);
+          console.log("Filas encontradas:", rows.length);
+          console.log("Primera fila (encabezados):", rows[0]);
+          console.log("Segunda fila (ejemplo):", rows[1]);
           if (rows.length > 0) {
             processFileRows(rows);
+          } else {
+            alert("El archivo está vacío o no se pudo leer");
           }
         } catch (error) {
+          console.error("Error parseando Excel:", error);
           alert("Error al leer el archivo Excel: " + error.message);
         }
       };
@@ -308,13 +328,28 @@ function AdminDashboard({ user, currentModule, setModule }) {
     } else {
       // Leer CSV o TXT
       const reader = new FileReader();
+      reader.onerror = () => {
+        alert("Error al leer el archivo");
+      };
       reader.onload = (evt) => {
-        const text = evt.target.result;
-        let rows = [];
-        if (text.includes('\t')) rows = text.trim().split('\n').map(l => l.split('\t'));
-        else rows = parseCSV(text);
-        if (rows.length > 0) {
-          processFileRows(rows);
+        try {
+          const text = evt.target.result;
+          console.log("Archivo cargado, procesando CSV/TXT...");
+          let rows = [];
+          if (text.includes('\t')) {
+            rows = text.trim().split('\n').map(l => l.split('\t'));
+          } else {
+            rows = parseCSV(text);
+          }
+          console.log("Filas encontradas:", rows.length);
+          if (rows.length > 0) {
+            processFileRows(rows);
+          } else {
+            alert("El archivo está vacío");
+          }
+        } catch (error) {
+          console.error("Error parseando CSV:", error);
+          alert("Error al leer el archivo: " + error.message);
         }
       };
       reader.readAsText(file);
@@ -323,75 +358,171 @@ function AdminDashboard({ user, currentModule, setModule }) {
 
   // Procesar filas del archivo
   const processFileRows = (rows) => {
-    setRawFileRows(rows);
+    console.log("processFileRows llamado con", rows.length, "filas");
+    
+    // Filtrar filas vacías
+    const filteredRows = rows.filter(row => {
+      if (!row || !Array.isArray(row)) return false;
+      return row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+    });
+    
+    console.log("Filas después de filtrar vacías:", filteredRows.length);
+    
+    if (filteredRows.length < 2) {
+      alert("El archivo no tiene suficientes datos (necesita al menos encabezados + 1 fila)");
+      return;
+    }
+    
+    setRawFileRows(filteredRows);
     const initialMap = {};
-    rows[0].forEach((header, index) => {
-      const h = String(header).toLowerCase().trim();
-      if (h.includes('cliente') || h.includes('nombre')) initialMap[index] = 'Cliente';
-      else if (h.includes('vendedor') || h.includes('tecnico') || h.includes('responsable')) initialMap[index] = 'Vendedor';
-      else if (h.includes('cuenta') || h.includes('contrato') || h.includes('folio')) initialMap[index] = 'Cuenta';
-      else if (h.includes('plaza') || h.includes('ciudad') || h.includes('zona')) initialMap[index] = 'Plaza';
-      else if (h.includes('saldo') && h.includes('1')) initialMap[index] = 'Saldo1';
-      else if (h.includes('saldo') && h.includes('2')) initialMap[index] = 'Saldo2';
-      else if (h.includes('saldo') && h.includes('3')) initialMap[index] = 'Saldo3';
-      else if (h.includes('monto') || h.includes('total') || h.includes('adeudo')) initialMap[index] = 'Monto';
-      else if (h.includes('fecha') && (h.includes('inst') || h.includes('alta'))) initialMap[index] = 'FechaInstalacion';
-      else if (h.includes('fecha')) initialMap[index] = 'FechaInstalacion';
+    const headers = filteredRows[0];
+    
+    console.log("Encabezados detectados:", headers);
+    
+    headers.forEach((header, index) => {
+      const h = String(header || '').toLowerCase().trim().replace(/_/g, ' ');
+      console.log(`Columna ${index}: "${header}" -> "${h}"`);
+      
+      // Mapeo específico para tu archivo
+      if (h === 'cliente' || h.includes('nombre cliente')) initialMap[index] = 'Cliente';
+      else if (h === 'vendedor' || h.includes('tecnico') || h.includes('responsable')) initialMap[index] = 'Vendedor';
+      else if (h === 'cuenta' || h.includes('contrato') || h.includes('num cuenta')) initialMap[index] = 'Cuenta';
+      else if (h === 'plaza' || h.includes('ciudad') || h.includes('zona')) initialMap[index] = 'Plaza';
+      else if (h === 'telefono1' || h === 'telefono' || h.includes('tel') || h.includes('cel') || h.includes('movil') || h.includes('whats')) initialMap[index] = 'Telefono';
+      // Saldos específicos
+      else if (h === 'saldo por vencer' || h.includes('por vencer')) initialMap[index] = 'SaldoPorVencer';
+      else if (h === 'saldo vencido' || h.includes('vencido')) initialMap[index] = 'SaldoVencido';
+      else if (h === 'saldo' || h === 'saldo total' || h.includes('monto') || h.includes('adeudo')) initialMap[index] = 'Saldo';
+      // Fechas
+      else if (h.includes('fecha instalacion') || h.includes('fecha inst') || h.includes('fecha alta')) initialMap[index] = 'FechaInstalacion';
+      else if (h.includes('fecha vencimiento') || h.includes('vencimiento')) initialMap[index] = 'FechaVencimiento';
+      else if (h.includes('fecha perdida') || h.includes('fpd')) initialMap[index] = 'FechaPerdida';
+      // Estatus
       else if (h.includes('estatus') || h.includes('estado') || h.includes('status')) initialMap[index] = 'Estatus';
-      else if (h.includes('tel') || h.includes('cel') || h.includes('movil') || h.includes('whats')) initialMap[index] = 'Telefono';
       else if (h.includes('direcc')) initialMap[index] = 'Direccion';
       else initialMap[index] = 'Ignorar';
     });
+    
+    console.log("Mapeo inicial:", initialMap);
     setColumnMapping(initialMap);
     setUploadStep(2);
+    console.log("Vista previa lista, mostrando paso 2");
   };
 
   const executeUpload = async () => {
-    if (!confirm(`¿Reemplazar base de ${currentModule}?`)) return;
+    console.log("Iniciando carga...");
+    console.log("rawFileRows:", rawFileRows.length, "filas");
+    console.log("columnMapping:", columnMapping);
+    
+    if (!confirm(`¿Reemplazar base de ${currentModule}? (${rawFileRows.length - 1} registros)`)) return;
+    
     setUploadStep(3); setSyncing(true); setProgress('Iniciando...');
+    
     try {
+        // Limpiar base anterior
         const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
-        const chunks = []; snapshot.docs.forEach(d => chunks.push(d));
-        setProgress('Limpiando base anterior...');
-        while(chunks.length) { const batch = writeBatch(db); chunks.splice(0, 400).forEach(doc => batch.delete(doc.ref)); await batch.commit(); }
+        console.log("Documentos existentes a borrar:", snapshot.size);
+        
+        const chunks = []; 
+        snapshot.docs.forEach(d => chunks.push(d));
+        setProgress(`Limpiando ${snapshot.size} registros anteriores...`);
+        
+        while(chunks.length) { 
+          const batch = writeBatch(db); 
+          chunks.splice(0, 400).forEach(d => batch.delete(d.ref)); 
+          await batch.commit(); 
+        }
+        console.log("Base limpiada");
 
-        const validRows = rawFileRows.slice(1);
+        // Procesar nuevos registros
+        const validRows = rawFileRows.slice(1); // Quitar encabezados
+        console.log("Filas a procesar (sin encabezados):", validRows.length);
+        
         const processedRows = [];
-        validRows.forEach(row => {
-            const docData = {}; let hasData = false;
-            row.forEach((cellVal, index) => {
-                const fieldName = columnMapping[index];
+        validRows.forEach((row, rowIndex) => {
+            const docData = {}; 
+            let hasData = false;
+            
+            row.forEach((cellVal, colIndex) => {
+                const fieldName = columnMapping[colIndex];
                 if (fieldName && fieldName !== 'Ignorar') {
-                    const value = String(cellVal || '').trim();
-                    docData[fieldName] = value;
-                    hasData = true;
-                    if (fieldName === 'Vendedor') docData['normalized_resp'] = value.toLowerCase();
+                    const value = String(cellVal ?? '').trim();
+                    if (value) {
+                      docData[fieldName] = value;
+                      hasData = true;
+                    }
+                    if (fieldName === 'Vendedor' && value) {
+                      docData['normalized_resp'] = value.toLowerCase();
+                    }
                 }
             });
-            // Calcular saldo total si hay saldos separados
-            if (docData.Saldo1 || docData.Saldo2 || docData.Saldo3) {
-                const total = (parseFloat(docData.Saldo1) || 0) + (parseFloat(docData.Saldo2) || 0) + (parseFloat(docData.Saldo3) || 0);
-                docData.SaldoTotal = total.toFixed(2);
+            
+            // Calcular saldo total
+            // Si ya viene el campo Saldo, usarlo como SaldoTotal
+            if (docData.Saldo) {
+                docData.SaldoTotal = docData.Saldo;
             }
-            if (hasData) processedRows.push(docData);
+            // Si hay saldos separados (por vencer y vencido), sumarlos
+            if (docData.SaldoPorVencer || docData.SaldoVencido) {
+                const porVencer = parseFloat(String(docData.SaldoPorVencer || '0').replace(/[^0-9.-]/g, '')) || 0;
+                const vencido = parseFloat(String(docData.SaldoVencido || '0').replace(/[^0-9.-]/g, '')) || 0;
+                const saldoBase = parseFloat(String(docData.Saldo || '0').replace(/[^0-9.-]/g, '')) || 0;
+                // El saldo total es la suma de todos
+                if (!docData.Saldo) {
+                  docData.SaldoTotal = (porVencer + vencido).toFixed(2);
+                }
+            }
+            
+            if (hasData) {
+              processedRows.push(docData);
+              if (rowIndex < 3) console.log(`Fila ${rowIndex} procesada:`, docData);
+            }
         });
 
+        console.log("Total registros procesados:", processedRows.length);
+        
+        if (processedRows.length === 0) {
+          alert("No se encontraron datos válidos para subir. Verifica el mapeo de columnas.");
+          setUploadStep(2);
+          setSyncing(false);
+          return;
+        }
+
+        // Subir en lotes
         const insertChunks = [];
-        for (let i = 0; i < processedRows.length; i += 300) insertChunks.push(processedRows.slice(i, i + 300));
+        for (let i = 0; i < processedRows.length; i += 300) {
+          insertChunks.push(processedRows.slice(i, i + 300));
+        }
+        
         let inserted = 0;
         for (const chunk of insertChunks) {
             const batch = writeBatch(db);
-            chunk.forEach(data => { const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', collectionName)); batch.set(ref, data); });
-            await batch.commit(); inserted += chunk.length; setProgress(`Subiendo: ${inserted} de ${processedRows.length}...`);
+            chunk.forEach(data => { 
+              const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', collectionName)); 
+              batch.set(ref, data); 
+            });
+            await batch.commit(); 
+            inserted += chunk.length; 
+            setProgress(`Subiendo: ${inserted} de ${processedRows.length}...`);
+            console.log(`Subidos ${inserted} de ${processedRows.length}`);
             await new Promise(r => setTimeout(r, 100));
         }
-        alert(`¡Listo! Se cargaron ${processedRows.length} registros.`); setUploadStep(1); fetchPreview(); setActiveTab('view');
-    } catch (e) { alert("Error: " + e.message); setUploadStep(2); }
+        
+        console.log("Carga completada!");
+        alert(`¡Listo! Se cargaron ${processedRows.length} registros.`); 
+        setUploadStep(1); 
+        fetchPreview(); 
+        setActiveTab('view');
+    } catch (e) { 
+      console.error("Error en carga:", e);
+      alert("Error: " + e.message); 
+      setUploadStep(2); 
+    }
     setSyncing(false);
   };
 
   // Campos disponibles para mapeo
-  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Saldo1', 'Saldo2', 'Saldo3', 'Monto', 'FechaInstalacion', 'Estatus', 'Telefono', 'Direccion'];
+  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FechaPerdida', 'Estatus', 'Direccion'];
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
@@ -574,6 +705,8 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
 📋 *Cuenta:* {Cuenta}
 📍 *Plaza:* {Plaza}
 💰 *Saldo Total:* ${'{SaldoTotal}'}
+⏰ *Por vencer:* ${'{SaldoPorVencer}'}
+⚠️ *Vencido:* ${'{SaldoVencido}'}
 
 📺 *¿Cómo pagar?* Mira este video:
 {Video}
@@ -618,17 +751,18 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       .replace('{Cliente}', cliente.Cliente || 'Cliente')
       .replace('{Cuenta}', cliente.Cuenta || 'N/A')
       .replace('{Plaza}', cliente.Plaza || 'N/A')
-      .replace('{Saldo1}', cliente.Saldo1 || '0')
-      .replace('{Saldo2}', cliente.Saldo2 || '0')
-      .replace('{Saldo3}', cliente.Saldo3 || '0')
-      .replace('{SaldoTotal}', cliente.SaldoTotal || saldoTotal.toFixed(2))
-      .replace('{Monto}', cliente.Monto || cliente.SaldoTotal || saldoTotal.toFixed(2))
+      .replace('{Saldo}', cliente.Saldo || '0')
+      .replace('{SaldoPorVencer}', cliente.SaldoPorVencer || '0')
+      .replace('{SaldoVencido}', cliente.SaldoVencido || '0')
+      .replace('{SaldoTotal}', cliente.SaldoTotal || cliente.Saldo || saldoTotal.toFixed(2))
+      .replace('{Monto}', cliente.Monto || cliente.SaldoTotal || cliente.Saldo || saldoTotal.toFixed(2))
       .replace('{Estatus}', cliente.Estatus || 'N/A')
       .replace('{FechaInstalacion}', cliente.FechaInstalacion || 'N/A')
+      .replace('{FechaVencimiento}', cliente.FechaVencimiento || 'N/A')
       .replace('{Vendedor}', cliente.Vendedor || myName)
       .replace('{Video}', videoLink);
     
-    let ph = cliente.Telefono?.replace(/\D/g,'') || '';
+    let ph = String(cliente.Telefono || '').replace(/\D/g,'');
     // Si el teléfono no empieza con 52, agregarlo
     if (ph && !ph.startsWith('52') && ph.length === 10) {
       ph = '52' + ph;
@@ -647,6 +781,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   // Obtener saldo para mostrar
   const getSaldo = (c) => {
     if (c.SaldoTotal) return c.SaldoTotal;
+    if (c.Saldo) return c.Saldo;
     if (c.Monto) return c.Monto;
     return calcularSaldoTotal(c).toFixed(2);
   };
@@ -691,7 +826,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                className="w-full p-2 border rounded text-xs h-40 font-mono"
              />
              <p className="text-[10px] text-slate-400 mt-1">
-               Variables: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{Saldo1}'}, {'{Saldo2}'}, {'{Saldo3}'}, {'{Estatus}'}, {'{FechaInstalacion}'}, {'{Video}'}
+               Variables: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{FechaInstalacion}'}, {'{FechaVencimiento}'}, {'{Video}'}
              </p>
            </div>
            
@@ -753,16 +888,15 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
                  {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {c.Cuenta}</div>}
                  {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
-                 {c.FechaInstalacion && <div className="flex items-center gap-1"><Calendar size={12}/> {c.FechaInstalacion}</div>}
+                 {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
                  {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
                </div>
 
                {/* Saldos desglosados */}
-               {(c.Saldo1 || c.Saldo2 || c.Saldo3) && (
-                 <div className="flex gap-2 mb-3 text-[10px]">
-                   {c.Saldo1 && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded">S1: ${c.Saldo1}</span>}
-                   {c.Saldo2 && <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">S2: ${c.Saldo2}</span>}
-                   {c.Saldo3 && <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">S3: ${c.Saldo3}</span>}
+               {(c.SaldoPorVencer || c.SaldoVencido) && (
+                 <div className="flex gap-2 mb-3 text-[10px] flex-wrap">
+                   {c.SaldoPorVencer && <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded">Por vencer: ${c.SaldoPorVencer}</span>}
+                   {c.SaldoVencido && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded">Vencido: ${c.SaldoVencido}</span>}
                  </div>
                )}
 
