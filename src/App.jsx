@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc, getDoc, setDoc, where } from 'firebase/firestore';
 import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -79,6 +79,112 @@ async function callGemini(prompt) {
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA";
   } catch (error) { return "Error conexión IA"; }
+}
+
+// Hash simple de contraseña (básico pero funcional)
+function hashPassword(password) {
+  return btoa(password).split('').reverse().join('');
+}
+
+// Verificar contraseña
+function verifyPassword(password, hash) {
+  return hashPassword(password) === hash;
+}
+
+// Login con usuario y contraseña
+async function loginUser(username, password) {
+  try {
+    const appId = 'sales-master-production';
+    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+    const q = query(usersRef, where('username', '==', username.toLowerCase()));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      return { success: false, error: 'Usuario no encontrado' };
+    }
+    
+    const userDoc = snapshot.docs[0];
+    const userData = userDoc.data();
+    
+    if (!verifyPassword(password, userData.passwordHash)) {
+      return { success: false, error: 'Contraseña incorrecta' };
+    }
+    
+    return { 
+      success: true, 
+      user: {
+        id: userDoc.id,
+        username: userData.username,
+        name: userData.name,
+        role: userData.role,
+        email: userData.email || ''
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Crear usuario nuevo
+async function createUser(username, password, name, role, email = '') {
+  try {
+    const appId = 'sales-master-production';
+    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+    
+    // Verificar si el usuario ya existe
+    const q = query(usersRef, where('username', '==', username.toLowerCase()));
+    const snapshot = await getDocs(q);
+    
+    if (!snapshot.empty) {
+      return { success: false, error: 'El usuario ya existe' };
+    }
+    
+    const passwordHash = hashPassword(password);
+    await addDoc(usersRef, {
+      username: username.toLowerCase(),
+      passwordHash,
+      name,
+      role,
+      email,
+      createdAt: serverTimestamp()
+    });
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Obtener plantilla global
+async function getGlobalTemplate() {
+  try {
+    const appId = 'sales-master-production';
+    const templateRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'cobranza_template');
+    const docSnap = await getDoc(templateRef);
+    
+    if (docSnap.exists()) {
+      return docSnap.data().template || '';
+    }
+    return '';
+  } catch (error) {
+    return '';
+  }
+}
+
+// Guardar plantilla global
+async function saveGlobalTemplate(template, videoLink) {
+  try {
+    const appId = 'sales-master-production';
+    const templateRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'cobranza_template');
+    await setDoc(templateRef, {
+      template,
+      videoLink,
+      updatedAt: serverTimestamp()
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 function parseCSV(text) {
@@ -191,23 +297,11 @@ export default function SalesMasterCloud() {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [vendorName, setVendorName] = useState('');
-  const [isAuthenticating, setIsAuthenticating] = useState(true);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [currentModule, setCurrentModule] = useState('sales'); 
   const [authError, setAuthError] = useState(null);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      if (!auth) return;
-      try { await signInAnonymously(auth); } 
-      catch (error) { 
-        console.error("Error Auth:", error);
-        setAuthError(error);
-      } 
-      finally { setIsAuthenticating(false); }
-    };
-    initAuth();
-    if (auth) return onAuthStateChanged(auth, (u) => setUser(u));
-  }, []);
+  // Ya no usamos autenticación anónima, ahora es con login manual
 
   if (authError) {
     return <ErrorDisplay 
@@ -218,7 +312,7 @@ export default function SalesMasterCloud() {
   }
 
   if (isAuthenticating) return <div className="h-screen flex items-center justify-center bg-slate-50 text-blue-600 gap-3"><RefreshCw className="animate-spin"/> Iniciando SalesMaster...</div>;
-  if (!role) return <LoginScreen onLogin={(r, name) => { setRole(r); setVendorName(name); }} />;
+  if (!role) return <LoginScreen onLogin={(r, name, userData) => { setRole(r); setVendorName(name); setUser(userData); }} />;
 
   return role === 'admin' 
     ? <AdminDashboard user={user} currentModule={currentModule} setModule={setCurrentModule} /> 
@@ -227,39 +321,110 @@ export default function SalesMasterCloud() {
 
 // --- PANTALLAS ---
 function LoginScreen({ onLogin }) {
-  const [mode, setMode] = useState('menu'); 
-  const [inputVal, setInputVal] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  if (mode === 'menu') {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-        <div className="max-w-md w-full bg-slate-800 rounded-2xl p-8 shadow-2xl text-center border border-slate-700">
-          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-white"><Cloud size={32} /></div>
-          <h1 className="text-2xl font-bold text-white mb-2">Distribuidor Izzi Sureste</h1>
-          <p className="text-slate-400 mb-8">Sistema de Cobranza y Ventas</p>
-          <div className="space-y-4">
-            <button onClick={() => setMode('admin')} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95"><Shield size={20} /> Soy el Distribuidor (Admin)</button>
-            <button onClick={() => setMode('vendor')} className="w-full bg-slate-700 hover:bg-slate-600 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95"><Users size={20} /> Soy Vendedor / Técnico</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Inicializar usuario admin si no existe
+  useEffect(() => {
+    const initAdmin = async () => {
+      try {
+        const appId = 'sales-master-production';
+        const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+        const q = query(usersRef, where('username', '==', 'admin'));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+          // Crear usuario admin por defecto
+          await createUser('admin', 'admin123', 'Administrador', 'admin', '');
+          console.log('Usuario admin creado: admin / admin123');
+        }
+      } catch (error) {
+        console.error('Error inicializando admin:', error);
+      }
+    };
+    initAdmin();
+  }, []);
+
+  const handleLogin = async (e) => {
+    e?.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      setError('Completa todos los campos');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const result = await loginUser(username.trim(), password);
+    
+    if (result.success) {
+      onLogin(result.user.role, result.user.name, result.user);
+    } else {
+      setError(result.error || 'Error al iniciar sesión');
+    }
+    
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-      <div className="max-w-sm w-full bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
-        <button onClick={() => setMode('menu')} className="text-slate-500 hover:text-white mb-4 text-sm">← Volver</button>
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">{mode === 'admin' ? 'Acceso Distribuidor' : 'Acceso Personal'}</h2>
-        <input type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder={mode === 'admin' ? "Contraseña..." : "Tu Nombre (Ej: Juan Perez)"} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white mb-4 outline-none" />
-        <button onClick={() => {
-            if (mode === 'admin') { 
-                if (inputVal === 'admin' || inputVal === 'admin123') onLogin('admin', 'Master'); 
-                else alert("Contraseña incorrecta (Usa: admin)"); 
-            } else { 
-                if (inputVal.trim().length > 1) onLogin('vendor', inputVal.trim()); 
-                else alert("Escribe un nombre válido"); 
-            }
-          }} className="w-full p-3 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-500">Entrar</button>
+      <div className="max-w-md w-full bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+        <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-white">
+          <Cloud size={32} />
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2 text-center">Distribuidor Izzi Sureste</h1>
+        <p className="text-slate-400 mb-8 text-center">Sistema de Cobranza y Ventas</p>
+        
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-slate-300 text-sm mb-2">Usuario</label>
+            <input 
+              type="text" 
+              value={username} 
+              onChange={(e) => setUsername(e.target.value)} 
+              placeholder="Tu usuario" 
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white mb-2 outline-none focus:border-blue-500"
+              autoComplete="username"
+              disabled={loading}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-slate-300 text-sm mb-2">Contraseña</label>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              placeholder="Tu contraseña" 
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white mb-2 outline-none focus:border-blue-500"
+              autoComplete="current-password"
+              disabled={loading}
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 text-red-300 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full p-3 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <RefreshCw className="animate-spin" size={18} />
+                Iniciando sesión...
+              </>
+            ) : (
+              'Iniciar Sesión'
+            )}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -273,6 +438,16 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [packages, setPackages] = useState([]);
   const [newPackage, setNewPackage] = useState({ name: '', price: '' });
   const [uploadStep, setUploadStep] = useState(1);
+  
+  // Estados para gestión de usuarios
+  const [users, setUsers] = useState([]);
+  const [newUser, setNewUser] = useState({ username: '', password: '', name: '', role: 'vendor', email: '' });
+  const [creatingUser, setCreatingUser] = useState(false);
+  
+  // Estados para plantilla global
+  const [globalTemplate, setGlobalTemplate] = useState('');
+  const [globalVideoLink, setGlobalVideoLink] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [rawFileRows, setRawFileRows] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
   const [progress, setProgress] = useState('');
@@ -326,7 +501,43 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       setVendors(uniqueVendors.sort());
     });
 
-    return () => { unsubPack(); unsubRep(); unsubMain(); };
+    // Cargar usuarios
+    const qUsers = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'));
+    const unsubUsers = onSnapshot(qUsers, (snap) => {
+      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    // Cargar plantilla global
+    const loadGlobalTemplate = async () => {
+      const template = await getGlobalTemplate();
+      if (template) {
+        setGlobalTemplate(template);
+      } else {
+        // Plantilla por defecto
+        setGlobalTemplate(`¡Hola {Cliente}! 👋
+
+Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
+
+📋 *Cuenta:* {Cuenta}
+📍 *Plaza:* {Plaza}
+💰 *Saldo Total:* \${SaldoTotal}
+⏰ *Por vencer:* \${SaldoPorVencer}
+⚠️ *Vencido:* \${SaldoVencido}
+
+📺 *¿Cómo pagar?* Mira este video:
+{Video}
+
+¿Tienes dudas? ¡Responde este mensaje! 📱`);
+      }
+      
+      const templateDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'cobranza_template'));
+      if (templateDoc.exists()) {
+        setGlobalVideoLink(templateDoc.data().videoLink || '');
+      }
+    };
+    loadGlobalTemplate();
+
+    return () => { unsubPack(); unsubRep(); unsubMain(); unsubUsers(); };
   }, [user, currentModule]);
 
   const addPackage = async () => {
@@ -677,6 +888,8 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
           <div className="flex bg-slate-100 p-1 rounded-lg flex-wrap">
             <button onClick={() => setActiveTab('clients')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'clients' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Users size={16}/> Clientes</button>
             <button onClick={() => setActiveTab('reports')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'reports' ? 'bg-green-100 text-green-700' : 'text-slate-500'}`}><FileSpreadsheet size={16}/> Reportes</button>
+            <button onClick={() => setActiveTab('users')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'users' ? 'bg-purple-100 text-purple-700' : 'text-slate-500'}`}><Shield size={16}/> Usuarios</button>
+            <button onClick={() => setActiveTab('template')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'template' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-500'}`}><FileText size={16}/> Plantilla</button>
             <button onClick={() => setActiveTab('packages')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'packages' ? 'bg-orange-100 text-orange-700' : 'text-slate-500'}`}><Wifi size={16}/> Paquetes</button>
             <button onClick={() => setActiveTab('view')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'view' ? 'bg-white shadow' : 'text-slate-500'}`}><List size={16}/> Ver BD</button>
             <button onClick={() => setActiveTab('upload')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'upload' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Cloud size={16}/> Cargar</button>
@@ -809,6 +1022,150 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                 <p>No hay clientes que coincidan con la búsqueda.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* GESTIÓN DE USUARIOS */}
+        {activeTab === 'users' && (
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Gestión de Usuarios</h3>
+            
+            {/* Formulario para crear usuario */}
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
+              <h4 className="font-bold text-sm mb-3 text-purple-800">Crear Nuevo Usuario</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input 
+                  className="border p-2 rounded-lg text-sm" 
+                  placeholder="Usuario (ej: juan.perez)" 
+                  value={newUser.username}
+                  onChange={e => setNewUser({...newUser, username: e.target.value})}
+                />
+                <input 
+                  type="password"
+                  className="border p-2 rounded-lg text-sm" 
+                  placeholder="Contraseña" 
+                  value={newUser.password}
+                  onChange={e => setNewUser({...newUser, password: e.target.value})}
+                />
+                <input 
+                  className="border p-2 rounded-lg text-sm" 
+                  placeholder="Nombre completo" 
+                  value={newUser.name}
+                  onChange={e => setNewUser({...newUser, name: e.target.value})}
+                />
+                <select 
+                  className="border p-2 rounded-lg text-sm"
+                  value={newUser.role}
+                  onChange={e => setNewUser({...newUser, role: e.target.value})}
+                >
+                  <option value="vendor">Vendedor</option>
+                  <option value="admin">Administrador</option>
+                </select>
+                <input 
+                  type="email"
+                  className="border p-2 rounded-lg text-sm md:col-span-2" 
+                  placeholder="Email (opcional)" 
+                  value={newUser.email}
+                  onChange={e => setNewUser({...newUser, email: e.target.value})}
+                />
+              </div>
+              <button 
+                onClick={async () => {
+                  if (!newUser.username || !newUser.password || !newUser.name) {
+                    alert('Completa todos los campos obligatorios');
+                    return;
+                  }
+                  setCreatingUser(true);
+                  const result = await createUser(newUser.username, newUser.password, newUser.name, newUser.role, newUser.email);
+                  if (result.success) {
+                    alert('¡Usuario creado exitosamente!');
+                    setNewUser({ username: '', password: '', name: '', role: 'vendor', email: '' });
+                  } else {
+                    alert('Error: ' + result.error);
+                  }
+                  setCreatingUser(false);
+                }}
+                disabled={creatingUser}
+                className="mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm disabled:opacity-50"
+              >
+                {creatingUser ? 'Creando...' : 'Crear Usuario'}
+              </button>
+            </div>
+
+            {/* Lista de usuarios */}
+            <div>
+              <h4 className="font-bold text-sm mb-3">Usuarios Registrados ({users.length})</h4>
+              <div className="space-y-2">
+                {users.map(u => (
+                  <div key={u.id} className="flex justify-between items-center p-3 border rounded-lg bg-slate-50">
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">{u.name}</p>
+                      <p className="text-xs text-slate-500">Usuario: {u.username} | Rol: {u.role === 'admin' ? 'Administrador' : 'Vendedor'}</p>
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                      u.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {u.role === 'admin' ? 'Admin' : 'Vendedor'}
+                    </span>
+                  </div>
+                ))}
+                {users.length === 0 && (
+                  <p className="text-center text-slate-400 py-4">No hay usuarios registrados aún</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PLANTILLA GLOBAL DE COBRANZA */}
+        {activeTab === 'template' && (
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-yellow-500"/> Plantilla Global de Cobranza</h3>
+            <p className="text-sm text-slate-500 mb-4">Esta plantilla será la predeterminada para todos los vendedores. Cada vendedor puede personalizar la suya.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                  <Youtube size={16} className="text-red-500"/> Link del Video de Pago
+                </label>
+                <input 
+                  value={globalVideoLink} 
+                  onChange={e => setGlobalVideoLink(e.target.value)} 
+                  className="w-full p-3 border rounded-lg text-sm"
+                  placeholder="https://youtu.be/tu-video"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Plantilla de Mensaje WhatsApp</label>
+                <textarea 
+                  value={globalTemplate} 
+                  onChange={e => setGlobalTemplate(e.target.value)} 
+                  className="w-full p-3 border rounded-lg text-sm h-64 font-mono"
+                  placeholder="Escribe tu plantilla aquí..."
+                />
+                <p className="text-xs text-slate-400 mt-2">
+                  Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{Vendedor}'}, {'{Video}'}
+                </p>
+              </div>
+              
+              <button 
+                onClick={async () => {
+                  setSavingTemplate(true);
+                  const result = await saveGlobalTemplate(globalTemplate, globalVideoLink);
+                  if (result.success) {
+                    alert('¡Plantilla guardada exitosamente!');
+                  } else {
+                    alert('Error: ' + result.error);
+                  }
+                  setSavingTemplate(false);
+                }}
+                disabled={savingTemplate}
+                className="w-full bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-50"
+              >
+                {savingTemplate ? 'Guardando...' : '💾 Guardar Plantilla Global'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -1002,9 +1359,34 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
 ¿Tienes dudas? ¡Responde este mensaje! 📱`;
 
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('salesTemplate') || defaultTemplate);
+  const [usingGlobalTemplate, setUsingGlobalTemplate] = useState(false);
 
   useEffect(() => {
     if (!user || !myName) return;
+    
+    // Cargar plantilla global al inicio
+    const loadGlobalTemplate = async () => {
+      const global = await getGlobalTemplate();
+      if (global) {
+        const savedPersonal = localStorage.getItem('salesTemplate');
+        if (!savedPersonal) {
+          // Si no tiene plantilla personal, usar la global
+          setSalesTemplate(global);
+          setUsingGlobalTemplate(true);
+        } else {
+          setSalesTemplate(savedPersonal);
+          setUsingGlobalTemplate(false);
+        }
+        
+        // Cargar video link global
+        const templateDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'cobranza_template'));
+        if (templateDoc.exists() && !localStorage.getItem('videoLink')) {
+          setVideoLink(templateDoc.data().videoLink || '');
+        }
+      }
+    };
+    loadGlobalTemplate();
+    
     setLoading(true);
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
     const qPack = query(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'));
@@ -1096,6 +1478,12 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
          <div className="bg-white p-4 rounded-xl shadow-lg mb-4 border-t-4 border-blue-500">
            <h3 className="font-bold text-sm mb-3 flex items-center gap-2"><Settings size={16}/> Configuración de Plantilla</h3>
            
+           {usingGlobalTemplate && (
+             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-3 text-xs text-yellow-800">
+               ℹ️ Estás usando la plantilla global. Puedes personalizarla aquí.
+             </div>
+           )}
+           
            <div className="mb-3">
              <label className="text-xs font-bold text-slate-600 mb-1 block flex items-center gap-1"><Youtube size={14} className="text-red-500"/> Link del Video de Pago</label>
              <input 
@@ -1107,10 +1495,13 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
            </div>
            
            <div className="mb-3">
-             <label className="text-xs font-bold text-slate-600 mb-1 block">Plantilla de WhatsApp</label>
+             <label className="text-xs font-bold text-slate-600 mb-1 block">Plantilla de WhatsApp (Personalizada)</label>
              <textarea 
                value={salesTemplate} 
-               onChange={e=>setSalesTemplate(e.target.value)} 
+               onChange={e=>{
+                 setSalesTemplate(e.target.value);
+                 setUsingGlobalTemplate(false);
+               }} 
                className="w-full p-2 border rounded text-xs h-40 font-mono"
              />
              <p className="text-[10px] text-slate-400 mt-1">
@@ -1119,8 +1510,23 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
            </div>
            
            <div className="flex gap-2">
-             <button onClick={saveConfig} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold">Guardar</button>
-             <button onClick={()=>setShowConfig(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold">Cancelar</button>
+             <button onClick={() => {
+               saveConfig();
+               setUsingGlobalTemplate(false);
+             }} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold">Guardar Personalizada</button>
+             <button onClick={async () => {
+               const global = await getGlobalTemplate();
+               if (global) {
+                 setSalesTemplate(global);
+                 setUsingGlobalTemplate(true);
+                 const templateDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'cobranza_template'));
+                 if (templateDoc.exists()) {
+                   setVideoLink(templateDoc.data().videoLink || '');
+                 }
+                 alert('Plantilla global restaurada');
+               }
+             }} className="flex-1 bg-yellow-500 text-white py-2 rounded-lg text-xs font-bold">Usar Global</button>
+             <button onClick={()=>setShowConfig(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold">Cerrar</button>
            </div>
          </div>
        )}
