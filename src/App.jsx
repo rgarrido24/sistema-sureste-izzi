@@ -391,6 +391,31 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
 
   useEffect(() => { if (activeTab === 'view') fetchPreview(); }, [activeTab, currentModule]);
 
+  // COLUMNAS QUE NOS INTERESAN (el resto se ignora automáticamente)
+  const COLUMNAS_IMPORTANTES = {
+    'cuenta': 'Cuenta',
+    'plaza': 'Plaza', 
+    'saldo': 'Saldo',
+    'saldo por vencer': 'SaldoPorVencer',
+    'saldo_por_vencer': 'SaldoPorVencer',
+    'saldo vencido': 'SaldoVencido',
+    'saldo_vencido': 'SaldoVencido',
+    'fecha instalacion': 'FechaInstalacion',
+    'fecha_instalacion': 'FechaInstalacion',
+    'fecha perdida fpd': 'FechaPerdida',
+    'fecha_perdida_fpd': 'FechaPerdida',
+    'estatus fpd': 'Estatus',
+    'estatus_fpd': 'Estatus',
+    'estatus': 'Estatus',
+    'fecha vencimiento': 'FechaVencimiento',
+    'fecha_vencimiento': 'FechaVencimiento',
+    'vendedor': 'Vendedor',
+    'cliente': 'Cliente',
+    'telefono1': 'Telefono',
+    'telefono': 'Telefono',
+    'tel': 'Telefono'
+  };
+
   // Función mejorada para manejar CSV y Excel
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -414,7 +439,6 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
           const rows = parseExcel(data);
           console.log("Filas encontradas:", rows.length);
           console.log("Primera fila (encabezados):", rows[0]);
-          console.log("Segunda fila (ejemplo):", rows[1]);
           if (rows.length > 0) {
             processFileRows(rows);
           } else {
@@ -457,7 +481,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     }
   };
 
-  // Procesar filas del archivo
+  // Procesar filas del archivo - DETECCIÓN AUTOMÁTICA
   const processFileRows = (rows) => {
     console.log("processFileRows llamado con", rows.length, "filas");
     
@@ -477,44 +501,45 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     setRawFileRows(filteredRows);
     const initialMap = {};
     const headers = filteredRows[0];
+    let columnasDetectadas = [];
     
     console.log("Encabezados detectados:", headers);
     
     headers.forEach((header, index) => {
       const h = String(header || '').toLowerCase().trim().replace(/_/g, ' ');
-      console.log(`Columna ${index}: "${header}" -> "${h}"`);
       
-      // Mapeo específico para tu archivo - ORDEN IMPORTANTE (más específico primero)
+      // Buscar en nuestro diccionario de columnas importantes
+      let encontrado = false;
+      for (const [patron, campo] of Object.entries(COLUMNAS_IMPORTANTES)) {
+        if (h === patron || h.includes(patron)) {
+          // Verificar que no sea una asignación duplicada incorrecta
+          // Por ejemplo, "fecha perdida" debe ser FechaPerdida, no FechaInstalacion
+          if (patron === 'fecha' && h.includes('perdida')) continue;
+          if (patron === 'fecha' && h.includes('vencimiento')) continue;
+          
+          initialMap[index] = campo;
+          columnasDetectadas.push(`${header} → ${campo}`);
+          encontrado = true;
+          break;
+        }
+      }
       
-      // Fechas - detectar primero las más específicas
-      if (h.includes('fecha perdida') || h === 'fecha perdida fpd') initialMap[index] = 'FechaPerdida';
-      else if (h.includes('fecha vencimiento') || h === 'vencimiento') initialMap[index] = 'FechaVencimiento';
-      else if (h.includes('fecha instalacion') || h.includes('fecha inst') || h.includes('fecha alta')) initialMap[index] = 'FechaInstalacion';
-      
-      // Saldos - detectar antes de otros campos
-      else if (h === 'saldo por vencer' || h === 'saldo por vencer') initialMap[index] = 'SaldoPorVencer';
-      else if (h === 'saldo vencido' || h.includes('saldo vencido')) initialMap[index] = 'SaldoVencido';
-      else if (h === 'saldo' || h === 'saldo total' || h.includes('monto') || h.includes('adeudo')) initialMap[index] = 'Saldo';
-      
-      // Estatus
-      else if (h.includes('estatus') || h.includes('estado') || h.includes('status')) initialMap[index] = 'Estatus';
-      
-      // Campos principales
-      else if (h === 'cliente' || h.includes('nombre cliente')) initialMap[index] = 'Cliente';
-      else if (h === 'vendedor' || h.includes('tecnico') || h.includes('responsable')) initialMap[index] = 'Vendedor';
-      else if (h === 'cuenta' || h.includes('contrato') || h.includes('num cuenta')) initialMap[index] = 'Cuenta';
-      else if (h === 'plaza' || h.includes('ciudad') || h.includes('zona')) initialMap[index] = 'Plaza';
-      else if (h === 'telefono1' || h === 'telefono' || h.includes('celular') || h.includes('movil') || h.includes('whats')) initialMap[index] = 'Telefono';
-      else if (h.includes('direcc')) initialMap[index] = 'Direccion';
-      
-      // Si no coincide con nada, ignorar
-      else initialMap[index] = 'Ignorar';
+      if (!encontrado) {
+        initialMap[index] = 'Ignorar';
+      }
     });
     
-    console.log("Mapeo inicial:", initialMap);
+    console.log("Columnas detectadas:", columnasDetectadas);
+    console.log("Mapeo automático:", initialMap);
     setColumnMapping(initialMap);
+    
+    // Mostrar resumen de lo que se detectó
+    const columnasUtiles = Object.values(initialMap).filter(v => v !== 'Ignorar').length;
+    const columnasIgnoradas = Object.values(initialMap).filter(v => v === 'Ignorar').length;
+    
+    console.log(`Columnas útiles: ${columnasUtiles}, Ignoradas: ${columnasIgnoradas}`);
+    
     setUploadStep(2);
-    console.log("Vista previa lista, mostrando paso 2");
   };
 
   const executeUpload = async () => {
@@ -847,46 +872,69 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                 )}
                 {uploadStep === 2 && (
                     <div>
+                        {/* Resumen de detección automática */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                          <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                            <Check size={20}/> Columnas detectadas automáticamente
+                          </h3>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {Object.entries(columnMapping).filter(([_, v]) => v !== 'Ignorar').map(([idx, campo]) => (
+                              <span key={idx} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                                {rawFileRows[0][idx]} → {campo}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-xs text-blue-600">
+                            ✅ {Object.values(columnMapping).filter(v => v !== 'Ignorar').length} columnas se usarán | 
+                            ⏭️ {Object.values(columnMapping).filter(v => v === 'Ignorar').length} columnas se ignorarán
+                          </p>
+                        </div>
+
                         <div className="flex justify-between items-center mb-4">
                           <div>
-                            <h3 className="font-bold text-lg">Mapeo de Columnas</h3>
-                            <p className="text-xs text-slate-500">Archivo: {fileName}</p>
+                            <h3 className="font-bold text-lg">Archivo: {fileName}</h3>
+                            <p className="text-xs text-slate-500">{rawFileRows.length - 1} registros listos para subir</p>
                           </div>
                           <div className="flex gap-2">
                             <button onClick={() => setUploadStep(1)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm">Cancelar</button>
-                            <button onClick={executeUpload} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><Check size={18}/> Subir {rawFileRows.length - 1} registros</button>
+                            <button onClick={executeUpload} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 text-lg"><UploadCloud size={20}/> ¡Subir Ahora!</button>
                           </div>
                         </div>
-                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                          <table className="w-full text-left text-sm">
-                            <thead>
-                              <tr className="bg-slate-100">
-                                {rawFileRows[0].map((header, index) => (
-                                  <th key={index} className="p-2 min-w-[150px]">
-                                    <select 
-                                      value={columnMapping[index] || 'Ignorar'} 
-                                      onChange={(e) => setColumnMapping({...columnMapping, [index]: e.target.value})} 
-                                      className="w-full p-2 rounded border border-slate-300 font-bold text-slate-700 text-xs"
-                                    >
-                                      {FIELDS.map(f => <option key={f} value={f}>{f}</option>)}
-                                    </select>
-                                    <div className="mt-1 text-xs text-slate-500 truncate">{String(header)}</div>
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {rawFileRows.slice(1, 6).map((row, rIdx) => (
-                                <tr key={rIdx}>
-                                  {row.map((cell, cIdx) => (
-                                    <td key={cIdx} className="p-3 text-slate-600 truncate max-w-[150px] text-xs">{String(cell)}</td>
+                        
+                        <details className="mb-4">
+                          <summary className="cursor-pointer text-sm text-slate-500 hover:text-slate-700">
+                            ⚙️ Ajustar mapeo manualmente (opcional)
+                          </summary>
+                          <div className="mt-3 overflow-x-auto border border-slate-200 rounded-xl">
+                            <table className="w-full text-left text-sm">
+                              <thead>
+                                <tr className="bg-slate-100">
+                                  {rawFileRows[0].map((header, index) => (
+                                    <th key={index} className="p-2 min-w-[150px]">
+                                      <select 
+                                        value={columnMapping[index] || 'Ignorar'} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, [index]: e.target.value})} 
+                                        className="w-full p-2 rounded border border-slate-300 font-bold text-slate-700 text-xs"
+                                      >
+                                        {FIELDS.map(f => <option key={f} value={f}>{f}</option>)}
+                                      </select>
+                                      <div className="mt-1 text-xs text-slate-500 truncate">{String(header)}</div>
+                                    </th>
                                   ))}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-2">Mostrando primeras 5 filas de {rawFileRows.length - 1} registros</p>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {rawFileRows.slice(1, 4).map((row, rIdx) => (
+                                  <tr key={rIdx}>
+                                    {row.map((cell, cIdx) => (
+                                      <td key={cIdx} className="p-3 text-slate-600 truncate max-w-[150px] text-xs">{String(cell)}</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
                     </div>
                 )}
                 {uploadStep === 3 && <div className="text-center py-20"><RefreshCw className="animate-spin mx-auto text-slate-400 mb-4" size={48}/><p className="text-slate-500">{progress}</p></div>}
