@@ -494,9 +494,13 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [allClients, setAllClients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterVendor, setFilterVendor] = useState('');
-  const [filterRegion, setFilterRegion] = useState('');
   const [vendors, setVendors] = useState([]);
-  const [regions, setRegions] = useState([]);
+  
+  // Estados para Operación del Día
+  const [operacionData, setOperacionData] = useState([]);
+  const [filterRegionOperacion, setFilterRegionOperacion] = useState('');
+  const [regionsOperacion, setRegionsOperacion] = useState([]);
+  const [operacionSearchTerm, setOperacionSearchTerm] = useState('');
   const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
 
@@ -540,9 +544,16 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       // Extraer vendedores únicos
       const uniqueVendors = [...new Set(clients.map(c => c.Vendedor).filter(v => v))];
       setVendors(uniqueVendors.sort());
-      // Extraer regiones únicas
-      const uniqueRegions = [...new Set(clients.map(c => c.Region).filter(r => r))];
-      setRegions(uniqueRegions.sort());
+    });
+    
+    // Cargar datos de Operación del Día
+    const qOperacion = query(collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'));
+    const unsubOperacion = onSnapshot(qOperacion, (snap) => {
+      const operacion = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setOperacionData(operacion);
+      // Extraer regiones únicas de operación
+      const uniqueRegions = [...new Set(operacion.map(o => o.Region || o.Hub).filter(r => r))];
+      setRegionsOperacion(uniqueRegions.sort());
     });
 
     // Cargar usuarios
@@ -595,7 +606,9 @@ Tu servicio de *Izzi* está listo para instalarse.
 
 📋 *Cuenta:* {Cuenta}
 📍 *Plaza:* {Plaza}
+📅 *Fecha:* {Fecha}
 👤 *Vendedor:* {Vendedor}
+🔢 *Orden:* {Orden}
 
 📸 *Instrucciones para recibir tu instalación:*
 {Imagen}
@@ -608,7 +621,7 @@ Tu servicio de *Izzi* está listo para instalarse.
     loadGlobalTemplate();
     loadInstallTemplate();
 
-    return () => { unsubPack(); unsubRep(); unsubMain(); unsubUsers(); };
+    return () => { unsubPack(); unsubRep(); unsubMain(); unsubUsers(); unsubOperacion(); };
   }, [user, currentModule]);
 
   const addPackage = async () => {
@@ -668,12 +681,49 @@ Tu servicio de *Izzi* está listo para instalarse.
     setShowConfig(false);
   };
 
-  // Filtrar clientes
+  // Función para enviar WhatsApp de operación del día
+  const sendOperacionTemplate = async (orden) => {
+    // Cargar plantilla de instalaciones
+    const installData = await getInstallTemplate();
+    let template = installData.template || installTemplate;
+    const imageLink = installData.imageLink || installImageLink;
+    
+    let msg = template
+      .replace('{Cliente}', orden.Compañía || orden.Compania || 'Cliente')
+      .replace('{Cuenta}', orden['Nº de cuenta'] || 'N/A')
+      .replace('{Plaza}', orden.Hub || orden.Region || 'N/A')
+      .replace('{Region}', orden.Region || orden.Hub || 'N/A')
+      .replace('{Vendedor}', orden.VendedorAsignado || orden['Clave Vendedor'] || 'N/A')
+      .replace('{Orden}', orden['Nº de orden'] || 'N/A')
+      .replace('{Estado}', orden.Estado || 'N/A')
+      .replace('{Fecha}', orden['Fecha solicitada'] || orden.Creado || 'N/A')
+      .replace('{Imagen}', imageLink || '');
+    
+    // Si hay imagen, agregarla al final
+    if (imageLink) {
+      msg = msg + '\n\n' + imageLink;
+    }
+    
+    let ph = String(orden.Teléfonos || orden.Telefonos || '').replace(/\D/g,'');
+    if (ph && !ph.startsWith('52') && ph.length === 10) {
+      ph = '52' + ph;
+    }
+    
+    window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  // Filtrar clientes (sin región para cobranza)
   const filteredClients = allClients.filter(c => {
     const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
     const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor;
-    const matchesRegion = filterRegion === '' || c.Region === filterRegion;
-    return matchesSearch && matchesVendor && matchesRegion;
+    return matchesSearch && matchesVendor;
+  });
+  
+  // Filtrar operación del día (con región)
+  const filteredOperacion = operacionData.filter(o => {
+    const matchesSearch = operacionSearchTerm === '' || JSON.stringify(o).toLowerCase().includes(operacionSearchTerm.toLowerCase());
+    const matchesRegion = filterRegionOperacion === '' || o.Region === filterRegionOperacion || o.Hub === filterRegionOperacion;
+    return matchesSearch && matchesRegion;
   });
 
   // Obtener saldo para mostrar
@@ -693,16 +743,9 @@ Tu servicio de *Izzi* está listo para instalarse.
 
   // COLUMNAS QUE NOS INTERESAN (el resto se ignora automáticamente)
   const COLUMNAS_IMPORTANTES = {
+    // Columnas de cobranza/instalaciones
     'cuenta': 'Cuenta',
     'plaza': 'Plaza',
-    'region': 'Region',
-    'región': 'Region',
-    'noreste': 'Region',
-    'pacifico': 'Region',
-    'pacífico': 'Region',
-    'metropolitana': 'Region',
-    'occidente': 'Region',
-    'sureste': 'Region',
     'saldo': 'Saldo',
     'saldo por vencer': 'SaldoPorVencer',
     'saldo_por_vencer': 'SaldoPorVencer',
@@ -721,7 +764,35 @@ Tu servicio de *Izzi* está listo para instalarse.
     'cliente': 'Cliente',
     'telefono1': 'Telefono',
     'telefono': 'Telefono',
-    'tel': 'Telefono'
+    'tel': 'Telefono',
+    // Columnas de operación del día
+    'fecha solicitada': 'Fecha solicitada',
+    'fecha_solicitada': 'Fecha solicitada',
+    'creado': 'Creado',
+    'nº de cuenta': 'Nº de cuenta',
+    'num de cuenta': 'Nº de cuenta',
+    'numero de cuenta': 'Nº de cuenta',
+    'compañía': 'Compañía',
+    'compania': 'Compañía',
+    'empresa': 'Compañía',
+    'estado': 'Estado',
+    'nº de orden': 'Nº de orden',
+    'num de orden': 'Nº de orden',
+    'numero de orden': 'Nº de orden',
+    'orden': 'Nº de orden',
+    'clave vendedor': 'Clave Vendedor',
+    'clave_vendedor': 'Clave Vendedor',
+    'hub': 'Hub',
+    'teléfonos': 'Teléfonos',
+    'telefonos': 'Teléfonos',
+    'region': 'Region',
+    'región': 'Region',
+    'noreste': 'Region',
+    'pacifico': 'Region',
+    'pacífico': 'Region',
+    'metropolitana': 'Region',
+    'occidente': 'Region',
+    'sureste': 'Region'
   };
 
   // Función mejorada para manejar CSV y Excel
@@ -855,13 +926,21 @@ Tu servicio de *Izzi* está listo para instalarse.
     console.log("rawFileRows:", rawFileRows.length, "filas");
     console.log("columnMapping:", columnMapping);
     
-    if (!confirm(`¿Reemplazar base de ${currentModule}? (${rawFileRows.length - 1} registros)`)) return;
+    // Detectar si es operación del día (tiene columnas específicas)
+    const isOperacionDia = Object.values(columnMapping).some(v => 
+      ['Nº de orden', 'Compañía', 'Estado', 'Hub', 'Fecha solicitada'].includes(v)
+    );
+    
+    const targetCollection = isOperacionDia ? 'operacion_dia' : collectionName;
+    const collectionLabel = isOperacionDia ? 'Operación del Día' : currentModule;
+    
+    if (!confirm(`¿Reemplazar base de ${collectionLabel}? (${rawFileRows.length - 1} registros)`)) return;
     
     setUploadStep(3); setSyncing(true); setProgress('Iniciando...');
     
     try {
         // Limpiar base anterior
-        const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+        const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
         console.log("Documentos existentes a borrar:", snapshot.size);
         
         const chunks = []; 
@@ -923,20 +1002,39 @@ Tu servicio de *Izzi* está listo para instalarse.
                 }
             });
             
-            // Calcular saldo total
-            // Si ya viene el campo Saldo, usarlo como SaldoTotal
-            if (docData.Saldo) {
-                docData.SaldoTotal = docData.Saldo;
+            // Solo calcular saldos si NO es operación del día
+            if (!isOperacionDia) {
+              // Calcular saldo total
+              // Si ya viene el campo Saldo, usarlo como SaldoTotal
+              if (docData.Saldo) {
+                  docData.SaldoTotal = docData.Saldo;
+              }
+              // Si hay saldos separados (por vencer y vencido), sumarlos
+              if (docData.SaldoPorVencer || docData.SaldoVencido) {
+                  const porVencer = parseFloat(String(docData.SaldoPorVencer || '0').replace(/[^0-9.-]/g, '')) || 0;
+                  const vencido = parseFloat(String(docData.SaldoVencido || '0').replace(/[^0-9.-]/g, '')) || 0;
+                  const saldoBase = parseFloat(String(docData.Saldo || '0').replace(/[^0-9.-]/g, '')) || 0;
+                  // El saldo total es la suma de todos
+                  if (!docData.Saldo) {
+                    docData.SaldoTotal = (porVencer + vencido).toFixed(2);
+                  }
+              }
             }
-            // Si hay saldos separados (por vencer y vencido), sumarlos
-            if (docData.SaldoPorVencer || docData.SaldoVencido) {
-                const porVencer = parseFloat(String(docData.SaldoPorVencer || '0').replace(/[^0-9.-]/g, '')) || 0;
-                const vencido = parseFloat(String(docData.SaldoVencido || '0').replace(/[^0-9.-]/g, '')) || 0;
-                const saldoBase = parseFloat(String(docData.Saldo || '0').replace(/[^0-9.-]/g, '')) || 0;
-                // El saldo total es la suma de todos
-                if (!docData.Saldo) {
-                  docData.SaldoTotal = (porVencer + vencido).toFixed(2);
-                }
+            
+            // Para operación del día, normalizar Hub como Region si no hay Region
+            if (isOperacionDia && docData.Hub && !docData.Region) {
+              const hubLower = docData.Hub.toLowerCase().trim();
+              if (hubLower.includes('noreste') || hubLower === 'ne') {
+                docData.Region = 'Noreste';
+              } else if (hubLower.includes('pacifico') || hubLower.includes('pacífico') || hubLower === 'pac') {
+                docData.Region = 'Pacífico';
+              } else if (hubLower.includes('metropolitana') || hubLower.includes('metro') || hubLower === 'met') {
+                docData.Region = 'Metropolitana';
+              } else if (hubLower.includes('occidente') || hubLower === 'occ') {
+                docData.Region = 'Occidente';
+              } else if (hubLower.includes('sureste') || hubLower === 'se') {
+                docData.Region = 'Sureste';
+              }
             }
             
             if (hasData) {
@@ -964,7 +1062,7 @@ Tu servicio de *Izzi* está listo para instalarse.
         for (const chunk of insertChunks) {
             const batch = writeBatch(db);
             chunk.forEach(data => { 
-              const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', collectionName)); 
+              const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection)); 
               batch.set(ref, data); 
             });
             await batch.commit(); 
@@ -975,10 +1073,14 @@ Tu servicio de *Izzi* está listo para instalarse.
         }
         
         console.log("Carga completada!");
-        alert(`¡Listo! Se cargaron ${processedRows.length} registros.`); 
+        alert(`¡Listo! Se cargaron ${processedRows.length} registros en ${collectionLabel}.`); 
         setUploadStep(1); 
-        fetchPreview(); 
-        setActiveTab('view');
+        if (isOperacionDia) {
+          setActiveTab('operacion');
+        } else {
+          fetchPreview(); 
+          setActiveTab('view');
+        }
     } catch (e) { 
       console.error("Error en carga:", e);
       alert("Error: " + e.message); 
@@ -988,7 +1090,7 @@ Tu servicio de *Izzi* está listo para instalarse.
   };
 
   // Campos disponibles para mapeo
-  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Region', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FechaPerdida', 'Estatus', 'Direccion'];
+  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Region', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FechaPerdida', 'Estatus', 'Direccion', 'Fecha solicitada', 'Creado', 'Nº de cuenta', 'Compañía', 'Estado', 'Nº de orden', 'Clave Vendedor', 'Hub', 'Teléfonos'];
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
@@ -1003,6 +1105,7 @@ Tu servicio de *Izzi* está listo para instalarse.
           </div>
           <div className="flex bg-slate-100 p-1 rounded-lg flex-wrap">
             <button onClick={() => setActiveTab('clients')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'clients' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Users size={16}/> Clientes</button>
+            <button onClick={() => setActiveTab('operacion')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'operacion' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}><PlayCircle size={16}/> Operación</button>
             <button onClick={() => setActiveTab('reports')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'reports' ? 'bg-green-100 text-green-700' : 'text-slate-500'}`}><FileSpreadsheet size={16}/> Reportes</button>
             <button onClick={() => setActiveTab('users')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'users' ? 'bg-purple-100 text-purple-700' : 'text-slate-500'}`}><Shield size={16}/> Usuarios</button>
             <button onClick={() => setActiveTab('template')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'template' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-500'}`}><FileText size={16}/> Plantilla</button>
@@ -1049,21 +1152,6 @@ Tu servicio de *Izzi* está listo para instalarse.
                   className="flex-1 p-3 rounded-lg border border-slate-200 text-sm"
                 />
                 <select 
-                  value={filterRegion} 
-                  onChange={e=>setFilterRegion(e.target.value)}
-                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
-                >
-                  <option value="">Todas las regiones</option>
-                  <option value="Noreste">Noreste</option>
-                  <option value="Pacífico">Pacífico</option>
-                  <option value="Metropolitana">Metropolitana</option>
-                  <option value="Occidente">Occidente</option>
-                  <option value="Sureste">Sureste</option>
-                  {regions.filter(r => !['Noreste', 'Pacífico', 'Metropolitana', 'Occidente', 'Sureste'].includes(r)).map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                <select 
                   value={filterVendor} 
                   onChange={e=>setFilterVendor(e.target.value)}
                   className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
@@ -1077,7 +1165,6 @@ Tu servicio de *Izzi* está listo para instalarse.
               </div>
               <p className="text-xs text-slate-500 mt-2">
                 Mostrando {filteredClients.length} de {allClients.length} clientes
-                {filterRegion && ` • Región: ${filterRegion}`}
                 {filterVendor && ` • Vendedor: ${filterVendor}`}
               </p>
             </div>
@@ -1333,7 +1420,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                     placeholder="Escribe tu plantilla aquí..."
                   />
                   <p className="text-xs text-slate-400 mt-2">
-                    Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{Region}'}, {'{Vendedor}'}, {'{Imagen}'}
+                    Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{Region}'}, {'{Vendedor}'}, {'{Orden}'}, {'{Estado}'}, {'{Fecha}'}, {'{Imagen}'}
                   </p>
                 </div>
                 
@@ -1375,6 +1462,114 @@ Tu servicio de *Izzi* está listo para instalarse.
                     ))}
                 </div>
             </div>
+        )}
+
+        {/* OPERACIÓN DEL DÍA */}
+        {activeTab === 'operacion' && (
+          <div className="space-y-4">
+            {/* Barra de búsqueda y filtros */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+              <div className="flex flex-col md:flex-row gap-3">
+                <input 
+                  value={operacionSearchTerm} 
+                  onChange={e=>setOperacionSearchTerm(e.target.value)} 
+                  placeholder="🔍 Buscar cuenta, compañía, orden..." 
+                  className="flex-1 p-3 rounded-lg border border-slate-200 text-sm"
+                />
+                <select 
+                  value={filterRegionOperacion} 
+                  onChange={e=>setFilterRegionOperacion(e.target.value)}
+                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
+                >
+                  <option value="">Todas las regiones</option>
+                  <option value="Noreste">Noreste</option>
+                  <option value="Pacífico">Pacífico</option>
+                  <option value="Metropolitana">Metropolitana</option>
+                  <option value="Occidente">Occidente</option>
+                  <option value="Sureste">Sureste</option>
+                  {regionsOperacion.filter(r => !['Noreste', 'Pacífico', 'Metropolitana', 'Occidente', 'Sureste'].includes(r)).map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Mostrando {filteredOperacion.length} de {operacionData.length} órdenes
+                {filterRegionOperacion && ` • Región: ${filterRegionOperacion}`}
+              </p>
+            </div>
+
+            {/* Lista de órdenes */}
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {filteredOperacion.map((o, i) => (
+                <div key={o.id || i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                  {/* Encabezado */}
+                  <div className="flex justify-between mb-2">
+                    <h3 className="font-bold text-slate-800 text-sm truncate flex-1">{o.Compañía || o.Compania || 'Sin nombre'}</h3>
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                      o.Estado === 'Instalado' ? 'bg-green-100 text-green-700' :
+                      o.Estado === 'Not Done' ? 'bg-red-100 text-red-700' :
+                      o.Estado === 'Abierta' ? 'bg-blue-100 text-blue-700' :
+                      'bg-slate-100 text-slate-500'
+                    }`}>{o.Estado || 'Sin estado'}</span>
+                  </div>
+                  
+                  {/* Información */}
+                  <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
+                    {o['Nº de cuenta'] && <div className="flex items-center gap-1"><Hash size={12}/> {o['Nº de cuenta']}</div>}
+                    {o['Nº de orden'] && <div className="flex items-center gap-1"><FileText size={12}/> Orden: {o['Nº de orden']}</div>}
+                    {o.Hub && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Hub}</div>}
+                    {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
+                    {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {o['Fecha solicitada']}</div>}
+                    {o['Clave Vendedor'] && <div className="flex items-center gap-1"><Users size={12}/> {o['Clave Vendedor']}</div>}
+                    {o.Teléfonos && <div className="flex items-center gap-1 col-span-2"><Phone size={12}/> {o.Teléfonos}</div>}
+                  </div>
+
+                  {/* Vendedor asignado */}
+                  {o.VendedorAsignado && (
+                    <div className="mb-2 text-xs">
+                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">👤 Asignado: {o.VendedorAsignado}</span>
+                    </div>
+                  )}
+
+                  {/* Botones */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button 
+                      onClick={()=>sendOperacionTemplate(o)} 
+                      className="bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <MessageSquare size={14}/> WA
+                    </button>
+                    <a 
+                      href={`tel:${o.Teléfonos || o.Telefonos}`} 
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border border-slate-200 transition-colors"
+                    >
+                      <Phone size={14}/> Llamar
+                    </a>
+                    <button
+                      onClick={() => {
+                        const vendedor = prompt('Asignar vendedor:', o.VendedorAsignado || '');
+                        if (vendedor) {
+                          const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
+                          setDoc(ref, { ...o, VendedorAsignado: vendedor, normalized_vendedor: vendedor.toLowerCase() }, { merge: true });
+                        }
+                      }}
+                      className="bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <Users size={14}/> Asignar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {filteredOperacion.length === 0 && (
+              <div className="text-center py-10 text-slate-400 bg-white rounded-xl">
+                <PlayCircle size={48} className="mx-auto mb-4 opacity-50"/>
+                <p>No hay órdenes que coincidan con la búsqueda.</p>
+                <p className="text-xs mt-2">Carga la base de operación del día desde la pestaña "Cargar"</p>
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'reports' && (
