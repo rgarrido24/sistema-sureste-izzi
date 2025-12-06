@@ -187,6 +187,41 @@ async function saveGlobalTemplate(template, videoLink) {
   }
 }
 
+// Obtener plantilla de instalaciones
+async function getInstallTemplate() {
+  try {
+    const appId = 'sales-master-production';
+    const templateRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'instalaciones_template');
+    const docSnap = await getDoc(templateRef);
+    
+    if (docSnap.exists()) {
+      return {
+        template: docSnap.data().template || '',
+        imageLink: docSnap.data().imageLink || ''
+      };
+    }
+    return { template: '', imageLink: '' };
+  } catch (error) {
+    return { template: '', imageLink: '' };
+  }
+}
+
+// Guardar plantilla de instalaciones
+async function saveInstallTemplate(template, imageLink) {
+  try {
+    const appId = 'sales-master-production';
+    const templateRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'instalaciones_template');
+    await setDoc(templateRef, {
+      template,
+      imageLink,
+      updatedAt: serverTimestamp()
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 function parseCSV(text) {
   const arr = []; let quote = false; let col = 0, c = 0; let row = [''];
   for (c = 0; c < text.length; c++) {
@@ -459,7 +494,9 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [allClients, setAllClients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterVendor, setFilterVendor] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
   const [vendors, setVendors] = useState([]);
+  const [regions, setRegions] = useState([]);
   const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
 
@@ -473,6 +510,10 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
 {Video}
 
 ¿Tienes dudas? ¡Responde este mensaje! 📱`);
+  
+  // Estados para plantilla de instalaciones
+  const [installTemplate, setInstallTemplate] = useState('');
+  const [installImageLink, setInstallImageLink] = useState('');
   const [showConfig, setShowConfig] = useState(false);
   
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
@@ -499,6 +540,9 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       // Extraer vendedores únicos
       const uniqueVendors = [...new Set(clients.map(c => c.Vendedor).filter(v => v))];
       setVendors(uniqueVendors.sort());
+      // Extraer regiones únicas
+      const uniqueRegions = [...new Set(clients.map(c => c.Region).filter(r => r))];
+      setRegions(uniqueRegions.sort());
     });
 
     // Cargar usuarios
@@ -507,7 +551,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    // Cargar plantilla global
+    // Cargar plantilla global de cobranza
     const loadGlobalTemplate = async () => {
       const template = await getGlobalTemplate();
       if (template) {
@@ -535,7 +579,34 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
         setGlobalVideoLink(templateDoc.data().videoLink || '');
       }
     };
+    
+    // Cargar plantilla de instalaciones
+    const loadInstallTemplate = async () => {
+      const installData = await getInstallTemplate();
+      if (installData.template) {
+        setInstallTemplate(installData.template);
+      } else {
+        // Plantilla por defecto para instalaciones
+        setInstallTemplate(`¡Hola {Cliente}! 👋
+
+Tenemos *excelentes noticias* para ti 🎉
+
+Tu servicio de *Izzi* está listo para instalarse.
+
+📋 *Cuenta:* {Cuenta}
+📍 *Plaza:* {Plaza}
+👤 *Vendedor:* {Vendedor}
+
+📸 *Instrucciones para recibir tu instalación:*
+{Imagen}
+
+¿Tienes dudas? ¡Responde este mensaje! 📱`);
+      }
+      setInstallImageLink(installData.imageLink || '');
+    };
+    
     loadGlobalTemplate();
+    loadInstallTemplate();
 
     return () => { unsubPack(); unsubRep(); unsubMain(); unsubUsers(); };
   }, [user, currentModule]);
@@ -552,10 +623,20 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   const sendTemplate = (cliente) => {
     const saldoTotal = calcularSaldoTotal(cliente);
     
-    let msg = salesTemplate
+    // Determinar qué plantilla usar según el módulo
+    let templateToUse = salesTemplate;
+    let imageToUse = '';
+    
+    if (currentModule === 'install') {
+      templateToUse = installTemplate;
+      imageToUse = installImageLink;
+    }
+    
+    let msg = templateToUse
       .replace('{Cliente}', cliente.Cliente || 'Cliente')
       .replace('{Cuenta}', cliente.Cuenta || 'N/A')
       .replace('{Plaza}', cliente.Plaza || 'N/A')
+      .replace('{Region}', cliente.Region || 'N/A')
       .replace('{Saldo}', cliente.Saldo || '0')
       .replace('{SaldoPorVencer}', cliente.SaldoPorVencer || '0')
       .replace('{SaldoVencido}', cliente.SaldoVencido || '0')
@@ -564,12 +645,19 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       .replace('{FechaInstalacion}', cliente.FechaInstalacion || 'N/A')
       .replace('{FechaVencimiento}', cliente.FechaVencimiento || 'N/A')
       .replace('{Vendedor}', cliente.Vendedor || 'N/A')
-      .replace('{Video}', videoLink);
+      .replace('{Video}', videoLink)
+      .replace('{Imagen}', imageToUse || '');
     
     let ph = String(cliente.Telefono || '').replace(/\D/g,'');
     if (ph && !ph.startsWith('52') && ph.length === 10) {
       ph = '52' + ph;
     }
+    
+    // Si hay imagen, agregarla al mensaje
+    if (imageToUse && currentModule === 'install') {
+      msg = msg + '\n\n' + imageToUse;
+    }
+    
     window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -584,7 +672,8 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   const filteredClients = allClients.filter(c => {
     const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
     const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor;
-    return matchesSearch && matchesVendor;
+    const matchesRegion = filterRegion === '' || c.Region === filterRegion;
+    return matchesSearch && matchesVendor && matchesRegion;
   });
 
   // Obtener saldo para mostrar
@@ -605,7 +694,15 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   // COLUMNAS QUE NOS INTERESAN (el resto se ignora automáticamente)
   const COLUMNAS_IMPORTANTES = {
     'cuenta': 'Cuenta',
-    'plaza': 'Plaza', 
+    'plaza': 'Plaza',
+    'region': 'Region',
+    'región': 'Region',
+    'noreste': 'Region',
+    'pacifico': 'Region',
+    'pacífico': 'Region',
+    'metropolitana': 'Region',
+    'occidente': 'Region',
+    'sureste': 'Region',
     'saldo': 'Saldo',
     'saldo por vencer': 'SaldoPorVencer',
     'saldo_por_vencer': 'SaldoPorVencer',
@@ -804,6 +901,25 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                     if (fieldName === 'Vendedor' && value) {
                       docData['normalized_resp'] = value.toLowerCase();
                     }
+                    // Normalizar región
+                    if (fieldName === 'Region' && value) {
+                      const regionLower = value.toLowerCase().trim();
+                      // Normalizar nombres de regiones
+                      if (regionLower.includes('noreste') || regionLower === 'ne') {
+                        docData['Region'] = 'Noreste';
+                      } else if (regionLower.includes('pacifico') || regionLower.includes('pacífico') || regionLower === 'pac') {
+                        docData['Region'] = 'Pacífico';
+                      } else if (regionLower.includes('metropolitana') || regionLower.includes('metro') || regionLower === 'met') {
+                        docData['Region'] = 'Metropolitana';
+                      } else if (regionLower.includes('occidente') || regionLower === 'occ') {
+                        docData['Region'] = 'Occidente';
+                      } else if (regionLower.includes('sureste') || regionLower === 'se') {
+                        docData['Region'] = 'Sureste';
+                      } else {
+                        // Capitalizar primera letra
+                        docData['Region'] = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+                      }
+                    }
                 }
             });
             
@@ -872,7 +988,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   };
 
   // Campos disponibles para mapeo
-  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FechaPerdida', 'Estatus', 'Direccion'];
+  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Region', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FechaPerdida', 'Estatus', 'Direccion'];
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
@@ -933,6 +1049,21 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                   className="flex-1 p-3 rounded-lg border border-slate-200 text-sm"
                 />
                 <select 
+                  value={filterRegion} 
+                  onChange={e=>setFilterRegion(e.target.value)}
+                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
+                >
+                  <option value="">Todas las regiones</option>
+                  <option value="Noreste">Noreste</option>
+                  <option value="Pacífico">Pacífico</option>
+                  <option value="Metropolitana">Metropolitana</option>
+                  <option value="Occidente">Occidente</option>
+                  <option value="Sureste">Sureste</option>
+                  {regions.filter(r => !['Noreste', 'Pacífico', 'Metropolitana', 'Occidente', 'Sureste'].includes(r)).map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+                <select 
                   value={filterVendor} 
                   onChange={e=>setFilterVendor(e.target.value)}
                   className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
@@ -946,6 +1077,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
               </div>
               <p className="text-xs text-slate-500 mt-2">
                 Mostrando {filteredClients.length} de {allClients.length} clientes
+                {filterRegion && ` • Región: ${filterRegion}`}
                 {filterVendor && ` • Vendedor: ${filterVendor}`}
               </p>
             </div>
@@ -964,6 +1096,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                   <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
                     {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {c.Cuenta}</div>}
                     {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
+                    {c.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {c.Region}</div>}
                     {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
                     {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
                   </div>
@@ -1117,54 +1250,110 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
           </div>
         )}
 
-        {/* PLANTILLA GLOBAL DE COBRANZA */}
+        {/* PLANTILLAS GLOBALES */}
         {activeTab === 'template' && (
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-yellow-500"/> Plantilla Global de Cobranza</h3>
-            <p className="text-sm text-slate-500 mb-4">Esta plantilla será la predeterminada para todos los vendedores. Cada vendedor puede personalizar la suya.</p>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                  <Youtube size={16} className="text-red-500"/> Link del Video de Pago
-                </label>
-                <input 
-                  value={globalVideoLink} 
-                  onChange={e => setGlobalVideoLink(e.target.value)} 
-                  className="w-full p-3 border rounded-lg text-sm"
-                  placeholder="https://youtu.be/tu-video"
-                />
-              </div>
+          <div className="space-y-6">
+            {/* PLANTILLA DE COBRANZA */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-yellow-500"/> Plantilla Global de Cobranza</h3>
+              <p className="text-sm text-slate-500 mb-4">Esta plantilla será la predeterminada para todos los vendedores. Cada vendedor puede personalizar la suya.</p>
               
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Plantilla de Mensaje WhatsApp</label>
-                <textarea 
-                  value={globalTemplate} 
-                  onChange={e => setGlobalTemplate(e.target.value)} 
-                  className="w-full p-3 border rounded-lg text-sm h-64 font-mono"
-                  placeholder="Escribe tu plantilla aquí..."
-                />
-                <p className="text-xs text-slate-400 mt-2">
-                  Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{Vendedor}'}, {'{Video}'}
-                </p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                    <Youtube size={16} className="text-red-500"/> Link del Video de Pago
+                  </label>
+                  <input 
+                    value={globalVideoLink} 
+                    onChange={e => setGlobalVideoLink(e.target.value)} 
+                    className="w-full p-3 border rounded-lg text-sm"
+                    placeholder="https://youtu.be/tu-video"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Plantilla de Mensaje WhatsApp</label>
+                  <textarea 
+                    value={globalTemplate} 
+                    onChange={e => setGlobalTemplate(e.target.value)} 
+                    className="w-full p-3 border rounded-lg text-sm h-64 font-mono"
+                    placeholder="Escribe tu plantilla aquí..."
+                  />
+                  <p className="text-xs text-slate-400 mt-2">
+                    Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{Region}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{Vendedor}'}, {'{Video}'}
+                  </p>
+                </div>
+                
+                <button 
+                  onClick={async () => {
+                    setSavingTemplate(true);
+                    const result = await saveGlobalTemplate(globalTemplate, globalVideoLink);
+                    if (result.success) {
+                      alert('¡Plantilla de cobranza guardada exitosamente!');
+                    } else {
+                      alert('Error: ' + result.error);
+                    }
+                    setSavingTemplate(false);
+                  }}
+                  disabled={savingTemplate}
+                  className="w-full bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-50"
+                >
+                  {savingTemplate ? 'Guardando...' : '💾 Guardar Plantilla de Cobranza'}
+                </button>
               </div>
+            </div>
+
+            {/* PLANTILLA DE INSTALACIONES */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-500"/> Plantilla Global de Instalaciones</h3>
+              <p className="text-sm text-slate-500 mb-4">Plantilla para notificar a clientes sobre instalaciones disponibles. Incluye imagen con instrucciones.</p>
               
-              <button 
-                onClick={async () => {
-                  setSavingTemplate(true);
-                  const result = await saveGlobalTemplate(globalTemplate, globalVideoLink);
-                  if (result.success) {
-                    alert('¡Plantilla guardada exitosamente!');
-                  } else {
-                    alert('Error: ' + result.error);
-                  }
-                  setSavingTemplate(false);
-                }}
-                disabled={savingTemplate}
-                className="w-full bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-50"
-              >
-                {savingTemplate ? 'Guardando...' : '💾 Guardar Plantilla Global'}
-              </button>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                    <FileText size={16} className="text-purple-500"/> Link de la Imagen con Instrucciones
+                  </label>
+                  <input 
+                    value={installImageLink} 
+                    onChange={e => setInstallImageLink(e.target.value)} 
+                    className="w-full p-3 border rounded-lg text-sm"
+                    placeholder="https://ejemplo.com/imagen-instrucciones.jpg o link de Google Drive/Imgur"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    💡 Tip: Sube la imagen a Google Drive, Imgur o similar y pega el link directo aquí
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Plantilla de Mensaje WhatsApp</label>
+                  <textarea 
+                    value={installTemplate} 
+                    onChange={e => setInstallTemplate(e.target.value)} 
+                    className="w-full p-3 border rounded-lg text-sm h-64 font-mono"
+                    placeholder="Escribe tu plantilla aquí..."
+                  />
+                  <p className="text-xs text-slate-400 mt-2">
+                    Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{Region}'}, {'{Vendedor}'}, {'{Imagen}'}
+                  </p>
+                </div>
+                
+                <button 
+                  onClick={async () => {
+                    setSavingTemplate(true);
+                    const result = await saveInstallTemplate(installTemplate, installImageLink);
+                    if (result.success) {
+                      alert('¡Plantilla de instalaciones guardada exitosamente!');
+                    } else {
+                      alert('Error: ' + result.error);
+                    }
+                    setSavingTemplate(false);
+                  }}
+                  disabled={savingTemplate}
+                  className="w-full bg-purple-600 text-white px-6 py-3 rounded-lg font-bold disabled:opacity-50"
+                >
+                  {savingTemplate ? 'Guardando...' : '💾 Guardar Plantilla de Instalaciones'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1582,6 +1771,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
                  {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {c.Cuenta}</div>}
                  {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
+                 {c.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {c.Region}</div>}
                  {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
                  {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
                </div>
