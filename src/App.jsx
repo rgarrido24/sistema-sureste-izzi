@@ -636,7 +636,7 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [previewData, setPreviewData] = useState([]);
   const [reportsData, setReportsData] = useState([]); 
   const [packages, setPackages] = useState([]);
-  const [newPackage, setNewPackage] = useState({ name: '', price: '' });
+  const [newPackage, setNewPackage] = useState({ clave: '', name: '', price: '' });
   const [promociones, setPromociones] = useState([]);
   const [newPromocion, setNewPromocion] = useState({ titulo: '', descripcion: '', categoria: 'promocion', activa: true });
   const [knowledgePDFs, setKnowledgePDFs] = useState([]);
@@ -816,8 +816,91 @@ Tu servicio de *Izzi* está listo para instalarse.
 
   const addPackage = async () => {
       if (!newPackage.name || !newPackage.price) return;
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'), newPackage);
-      setNewPackage({ name: '', price: '' });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'), {
+        clave: newPackage.clave || '',
+        name: newPackage.name,
+        price: newPackage.price
+      });
+      setNewPackage({ clave: '', name: '', price: '' });
+  };
+
+  // Función para cargar catálogo completo de paquetes
+  const loadFullCatalog = async () => {
+    if (!confirm('¿Cargar el catálogo completo de paquetes? Esto agregará todos los paquetes del catálogo oficial.')) return;
+    
+    const catalog = [
+      // PLANES TRIPLES
+      { clave: 'T160M', name: 'IZZI 60 MEGAS + IZZI TV HD', price: '539.00' },
+      { clave: 'T180M', name: 'IZZI 80 MEGAS + IZZI TV HD', price: '660.00' },
+      { clave: 'TI100M2', name: 'IZZI 100 MEGAS + IZZI TV HD', price: '690.00' },
+      { clave: 'TI150M', name: 'IZZI 150 MEGAS + IZZI TV HD', price: '790.00' },
+      { clave: 'TI200M2', name: 'IZZI 200 MEGAS + IZZI TV HD', price: '790.00' },
+      { clave: 'TI500M2', name: 'IZZI 500 MEGAS + IZZI TV HD', price: '790.00' },
+      { clave: 'TI1000M2', name: 'IZZI 1000 MEGAS + IZZI TV HD', price: '790.00' },
+      { clave: 'TIG30', name: 'IZZI NEGOCIOS 30 MEGAS + IZZI TV HD', price: '680.00' },
+      { clave: 'TIG40', name: 'IZZI NEGOCIOS 40 MEGAS + IZZI TV HD', price: '680.00' },
+      { clave: 'TIG50', name: 'IZZI NEGOCIOS 50 MEGAS + IZZI TV HD', price: '710.00' },
+      { clave: 'TIG60', name: 'IZZI NEGOCIOS 60 MEGAS + IZZI TV HD', price: '680.00' },
+      { clave: 'TIG80', name: 'IZZI NEGOCIOS 80 MEGAS + IZZI TV HD', price: '680.00' },
+      { clave: 'TIG100', name: 'IZZI NEGOCIOS 100 MEGAS + IZZI TV HD', price: '710.00' },
+      { clave: 'TIG125', name: 'IZZI NEGOCIOS 125 MEGAS + IZZI TV HD', price: '780.00' },
+      { clave: 'TIG150', name: 'IZZI NEGOCIOS 150 MEGAS + IZZI TV HD', price: '780.00' },
+      { clave: 'TIG200', name: 'IZZI NEGOCIOS 200 MEGAS + IZZI TV HD', price: '870.00' },
+      { clave: 'TIG500', name: 'IZZI NEGOCIOS 500 MEGAS + IZZI TV HD', price: '990.00' },
+      // PLANES DOBLES
+      { clave: 'DI60M', name: 'IZZI 60 MEGAS', price: '389.00' },
+      { clave: 'DI80M', name: 'IZZI 80 MEGAS', price: '510.00' },
+      { clave: 'DI100M', name: 'IZZI 100 MEGAS', price: '540.00' },
+      { clave: 'DI150M', name: 'IZZI 150 MEGAS', price: '610.00' },
+      { clave: 'DI200M', name: 'IZZI 200 MEGAS', price: '610.00' },
+      { clave: 'DI500M', name: 'IZZI 500 MEGAS', price: '610.00' },
+      { clave: 'DI1000M', name: 'IZZI 1000 MEGAS', price: '610.00' },
+      { clave: 'DIN40M', name: 'IZZI NEGOCIOS 40 MEGAS', price: '500.00' },
+      { clave: 'DIN60M', name: 'IZZI NEGOCIOS 60 MEGAS', price: '530.00' },
+      { clave: 'DIN80M', name: 'IZZI NEGOCIOS 80 MEGAS', price: '530.00' },
+      { clave: 'DIN100M', name: 'IZZI NEGOCIOS 100 MEGAS', price: '560.00' },
+      { clave: 'DIN150M', name: 'IZZI NEGOCIOS 150 MEGAS', price: '630.00' },
+      { clave: 'DIN200M', name: 'IZZI NEGOCIOS 200 MEGAS', price: '720.00' },
+      { clave: 'DIN500M', name: 'IZZI NEGOCIOS 500 MEGAS', price: '840.00' },
+      { clave: 'DIN1000M', name: 'IZZI NEGOCIOS 1000 MEGAS', price: '1040.00' },
+      // PLANES SINGLES
+      { clave: 'SITVL', name: 'IZZI TV LIGHT', price: '199.00' },
+      { clave: 'SPTVM', name: 'PACK TV MINI', price: '200.00' },
+      { clave: 'SITVP', name: 'IZZI TV +', price: '249.00' },
+      { clave: 'SITVPB', name: 'IZZI TV + BÁSICO', price: '299.00' },
+      { clave: 'SITVPP', name: 'IZZI TV + PREMIUM', price: '499.00' },
+      { clave: 'SPTVP', name: 'PACK TV PLUS', price: '240.00' },
+      { clave: 'SIHD', name: 'IZZI TV HD', price: '340.00' }
+    ];
+    
+    try {
+      let added = 0;
+      let skipped = 0;
+      
+      // Verificar qué paquetes ya existen
+      const existingPackages = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'));
+      const existingClaves = new Set(existingPackages.docs.map(d => d.data().clave || d.data().name));
+      
+      for (const pkg of catalog) {
+        // Verificar si ya existe por clave o nombre
+        const exists = existingClaves.has(pkg.clave) || existingPackages.docs.some(d => {
+          const data = d.data();
+          return data.name === pkg.name || data.clave === pkg.clave;
+        });
+        
+        if (!exists) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'), pkg);
+          added++;
+        } else {
+          skipped++;
+        }
+      }
+      
+      alert(`✅ Catálogo cargado:\n${added} paquetes agregados\n${skipped} paquetes ya existían`);
+    } catch (error) {
+      console.error('Error al cargar catálogo:', error);
+      alert('Error al cargar el catálogo: ' + error.message);
+    }
   };
 
   const deletePackage = async (id) => await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'izzi_packages', id));
@@ -1769,16 +1852,32 @@ Tu servicio de *Izzi* está listo para instalarse.
 
         {activeTab === 'packages' && (
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 animate-in fade-in">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Wifi size={20} className="text-orange-500"/> Catálogo Izzi</h3>
-                <div className="flex gap-2 mb-6">
-                    <input className="border p-2 rounded-lg w-full text-sm" placeholder="Nombre (ej: Izzi 50)" value={newPackage.name} onChange={e=>setNewPackage({...newPackage, name: e.target.value})} />
-                    <input className="border p-2 rounded-lg w-24 text-sm" placeholder="$ Precio" type="number" value={newPackage.price} onChange={e=>setNewPackage({...newPackage, price: e.target.value})} />
-                    <button onClick={addPackage} className="bg-orange-500 text-white px-4 py-2 rounded-lg font-bold text-sm">+</button>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><Wifi size={20} className="text-orange-500"/> Catálogo Izzi</h3>
+                    <button onClick={loadFullCatalog} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-green-700">
+                        <Download size={16}/> Cargar Catálogo Completo
+                    </button>
                 </div>
+                
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-orange-800 font-bold mb-2">Agregar Paquete Manualmente</p>
+                    <div className="flex gap-2">
+                        <input className="border p-2 rounded-lg w-24 text-sm" placeholder="Clave" value={newPackage.clave} onChange={e=>setNewPackage({...newPackage, clave: e.target.value})} />
+                        <input className="border p-2 rounded-lg flex-1 text-sm" placeholder="Nombre completo (ej: IZZI 60 MEGAS + IZZI TV HD)" value={newPackage.name} onChange={e=>setNewPackage({...newPackage, name: e.target.value})} />
+                        <input className="border p-2 rounded-lg w-24 text-sm" placeholder="$ Precio" type="number" step="0.01" value={newPackage.price} onChange={e=>setNewPackage({...newPackage, price: e.target.value})} />
+                        <button onClick={addPackage} className="bg-orange-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-orange-600">+</button>
+                    </div>
+                </div>
+                
                 <div className="space-y-2">
+                    <p className="text-xs text-slate-500 mb-2">Total: {packages.length} paquetes</p>
                     {packages.map(p => (
                         <div key={p.id} className="flex justify-between items-center p-3 border rounded-lg bg-orange-50/50 border-orange-100">
-                            <div><p className="font-bold text-slate-800 text-sm">{p.name}</p><p className="text-xs text-slate-500">${p.price}</p></div>
+                            <div className="flex-1">
+                                {p.clave && <p className="text-xs font-mono text-orange-600 font-bold mb-1">{p.clave}</p>}
+                                <p className="font-bold text-slate-800 text-sm">{p.name}</p>
+                                <p className="text-xs text-slate-500">${p.price}</p>
+                            </div>
                             <button onClick={()=>deletePackage(p.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
                         </div>
                     ))}
@@ -2759,7 +2858,9 @@ RESPUESTA:`;
                       <select className="p-3 border rounded-lg text-sm col-span-2" value={reportForm.serviciosContratados} onChange={e=>setReportForm({...reportForm, serviciosContratados: e.target.value})}>
                         <option value="">SERVICIOS CONTRATADOS (Selecciona del catálogo)</option>
                         {packages.map(p => (
-                          <option key={p.id} value={p.name}>{p.name} - ${p.price}</option>
+                          <option key={p.id} value={p.name}>
+                            {p.clave ? `${p.clave} - ` : ''}{p.name} - ${p.price ? `$${p.price}` : 'Sin precio'}
+                          </option>
                         ))}
                       </select>
                       <input className="p-3 border rounded-lg text-sm" placeholder="MOVIL" value={reportForm.movil} onChange={e=>setReportForm({...reportForm, movil: e.target.value})}/>
@@ -2843,16 +2944,44 @@ RESPUESTA:`;
                            msg = msg + '\n\n📸 *Instrucciones:*\n' + imageLink;
                          }
                          
-                         let ph = String(orden.Teléfonos || orden.Telefonos || '').replace(/\D/g,'');
-                         if (ph && ph.length === 10 && !ph.startsWith('52')) {
-                           ph = '52' + ph;
+                         // Extraer teléfono - puede venir en diferentes formatos
+                         let phoneRaw = orden.Teléfonos || orden.Telefonos || orden.Telefono || '';
+                         
+                         // Si es un array, tomar el primero
+                         if (Array.isArray(phoneRaw)) {
+                           phoneRaw = phoneRaw[0];
                          }
                          
-                         if (!ph || ph.length < 10) {
-                           alert('El teléfono no es válido');
+                         // Si tiene múltiples números separados, tomar el primero
+                         if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
+                           phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+                         }
+                         
+                         // Limpiar el teléfono - quitar todo excepto números
+                         let ph = String(phoneRaw).replace(/\D/g,'');
+                         
+                         // Si no hay teléfono, mostrar mensaje más descriptivo
+                         if (!ph || ph.length === 0) {
+                           alert(`No se encontró un teléfono válido en esta orden.\n\nTeléfono encontrado: "${phoneRaw}"\n\nPor favor verifica que la orden tenga un teléfono registrado.`);
                            return;
                          }
                          
+                         // Validar que tenga al menos 10 dígitos
+                         if (ph.length < 10) {
+                           alert(`El teléfono no tiene suficientes dígitos.\n\nTeléfono encontrado: "${phoneRaw}"\nTeléfono limpio: "${ph}" (${ph.length} dígitos)\n\nSe requieren al menos 10 dígitos.`);
+                           return;
+                         }
+                         
+                         // Si tiene 10 dígitos y no empieza con 52, agregarlo
+                         if (ph.length === 10 && !ph.startsWith('52')) {
+                           ph = '52' + ph;
+                         }
+                         // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
+                         else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
+                           ph = '52' + ph;
+                         }
+                         
+                         console.log('Enviando WhatsApp:', { phoneRaw, ph, orden });
                          window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
                        } catch (error) {
                          console.error('Error al enviar WhatsApp:', error);
