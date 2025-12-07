@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc, getDoc, setDoc, where } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
-import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building } from 'lucide-react';
+import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building, BarChart3 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // --- PANTALLA DE ERROR (DIAGNÓSTICO) ---
@@ -744,6 +744,9 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [filterRegionOperacion, setFilterRegionOperacion] = useState('');
   const [regionsOperacion, setRegionsOperacion] = useState([]);
   const [operacionSearchTerm, setOperacionSearchTerm] = useState('');
+  const [showAssignVendorModal, setShowAssignVendorModal] = useState(false);
+  const [orderToAssign, setOrderToAssign] = useState(null);
+  const [selectedVendor, setSelectedVendor] = useState('');
   const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
 
@@ -1127,8 +1130,34 @@ Tu servicio de *Izzi* está listo para instalarse.
       .replace('{Video}', videoLink)
       .replace('{Imagen}', imageToUse || '');
     
-    let ph = String(cliente.Telefono || '').replace(/\D/g,'');
-    if (ph && !ph.startsWith('52') && ph.length === 10) {
+    // Extraer teléfono - puede venir en diferentes formatos
+    let phoneRaw = cliente.Telefono || '';
+    
+    // Si es un array, tomar el primero
+    if (Array.isArray(phoneRaw)) {
+      phoneRaw = phoneRaw[0];
+    }
+    
+    // Si tiene múltiples números separados, tomar el primero
+    if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
+      phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+    }
+    
+    // Limpiar el teléfono - quitar todo excepto números
+    let ph = String(phoneRaw || '').replace(/\D/g,'');
+    
+    // Validar que tenga al menos 10 dígitos
+    if (!ph || ph.length < 10) {
+      alert(`El teléfono no es válido o está vacío.\nTeléfono encontrado: "${phoneRaw}"`);
+      return;
+    }
+    
+    // Si tiene 10 dígitos y no empieza con 52, agregarlo
+    if (ph.length === 10 && !ph.startsWith('52')) {
+      ph = '52' + ph;
+    }
+    // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
+    else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
       ph = '52' + ph;
     }
     
@@ -1137,7 +1166,11 @@ Tu servicio de *Izzi* está listo para instalarse.
       msg = msg + '\n\n' + imageToUse;
     }
     
-    window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+    // Construir URL de WhatsApp con el mensaje
+    const whatsappUrl = `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+    
+    // Abrir WhatsApp
+    window.open(whatsappUrl, '_blank');
   };
 
   const saveConfig = () => {
@@ -1219,6 +1252,67 @@ Tu servicio de *Izzi* está listo para instalarse.
     window.open(whatsappUrl, '_blank');
   };
 
+  // Función para asignar vendedor a una orden
+  const handleAssignVendor = async () => {
+    if (!orderToAssign || !selectedVendor) {
+      alert('Por favor selecciona un vendedor');
+      return;
+    }
+
+    try {
+      const o = orderToAssign;
+      // Actualizar la orden con el vendedor asignado
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
+      await setDoc(ref, { ...o, VendedorAsignado: selectedVendor, normalized_vendedor: selectedVendor.toLowerCase() }, { merge: true });
+      
+      // Crear reporte automáticamente en sales_reports con todos los campos
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), {
+        // Campos nuevos (formato completo)
+        fecha: new Date().toLocaleDateString('es-MX'),
+        referencia: '',
+        cuenta: o['Nº de cuenta'] || o.Cuenta || '',
+        nOrden: o['Nº de orden'] || o.Orden || '',
+        nombreCompleto: o.Compañía || o.Compania || o.Cliente || 'Cliente',
+        telefono: o.Teléfonos || o.Telefonos || o.Telefono || '',
+        mensual: '',
+        rgu: '',
+        serviciosContratados: 'Instalación',
+        movil: '',
+        tipoVenta: 'Instalación',
+        estatus: o.Estado || 'Abierta',
+        fechaInstalacion: o['Fecha solicitada'] || o.Creado || '',
+        plaza: o.Hub || o.Plaza || o.Region || '',
+        vendedor: selectedVendor,
+        puesto: '',
+        cvven: '',
+        comentarios: `Asignado desde Operación del Día - Orden: ${o['Nº de orden'] || o.Orden || ''}`,
+        hub: o.Hub || o.Region || '',
+        rpt: '',
+        tipo: 'instalacion',
+        tipoCuenta: '',
+        ordenMovil: '',
+        docs: true,
+        // Campos de compatibilidad (mantener para no romper código existente)
+        client: o.Compañía || o.Compania || o.Cliente || 'Cliente',
+        package: 'Instalación',
+        folio: o['Nº de orden'] || o.Orden || 'N/A',
+        vendor: selectedVendor,
+        estado: o.Estado || 'Abierta',
+        fechaSolicitada: o['Fecha solicitada'] || o.Creado || '',
+        ordenId: o.id,
+        createdAt: serverTimestamp()
+      });
+      
+      alert(`✅ Vendedor asignado y reporte creado para ${selectedVendor}`);
+      setShowAssignVendorModal(false);
+      setOrderToAssign(null);
+      setSelectedVendor('');
+    } catch (error) {
+      console.error('Error al asignar vendedor:', error);
+      alert('Error al asignar vendedor. Intenta de nuevo.');
+    }
+  };
+
   // Filtrar clientes (sin región para cobranza)
   const filteredClients = allClients.filter(c => {
     const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
@@ -1256,11 +1350,95 @@ Tu servicio de *Izzi* está listo para instalarse.
         // Mismo mes
         matchesDate = reportDate.getMonth() === filterDate.getMonth() && 
                      reportDate.getFullYear() === filterDate.getFullYear();
+      } else if (filterReportPeriod === 'custom_week') {
+        // Período semanal personalizado
+        matchesDate = isInCustomPeriod(reportDate, filterDate, 'custom_week');
       }
     }
     
     return matchesVendor && matchesPlaza && matchesDate;
   });
+
+  // Calcular estadísticas de reportes
+  const calculateStats = () => {
+    const stats = {
+      total: filteredReports.length,
+      abiertas: 0,
+      instaladas: 0,
+      notDone: 0,
+      canceladas: 0,
+      porVendedor: {},
+      porPlaza: {}
+    };
+
+    filteredReports.forEach(r => {
+      const estado = (r.estado || r.estatus || '').toLowerCase();
+      
+      if (estado.includes('abierta') || estado.includes('abierto')) {
+        stats.abiertas++;
+      } else if (estado.includes('instalado') || estado.includes('instalada') || estado.includes('completo')) {
+        stats.instaladas++;
+      } else if (estado.includes('not done') || estado.includes('no hecho')) {
+        stats.notDone++;
+      } else if (estado.includes('cancelada') || estado.includes('cancelado')) {
+        stats.canceladas++;
+      }
+
+      // Por vendedor
+      const vendor = r.vendor || 'Sin vendedor';
+      if (!stats.porVendedor[vendor]) {
+        stats.porVendedor[vendor] = { total: 0, abiertas: 0, instaladas: 0, notDone: 0, canceladas: 0 };
+      }
+      stats.porVendedor[vendor].total++;
+      if (estado.includes('abierta') || estado.includes('abierto')) stats.porVendedor[vendor].abiertas++;
+      else if (estado.includes('instalado') || estado.includes('instalada') || estado.includes('completo')) stats.porVendedor[vendor].instaladas++;
+      else if (estado.includes('not done') || estado.includes('no hecho')) stats.porVendedor[vendor].notDone++;
+      else if (estado.includes('cancelada') || estado.includes('cancelado')) stats.porVendedor[vendor].canceladas++;
+
+      // Por plaza
+      const plaza = r.plaza || 'Sin plaza';
+      if (!stats.porPlaza[plaza]) {
+        stats.porPlaza[plaza] = { total: 0, abiertas: 0, instaladas: 0, notDone: 0, canceladas: 0 };
+      }
+      stats.porPlaza[plaza].total++;
+      if (estado.includes('abierta') || estado.includes('abierto')) stats.porPlaza[plaza].abiertas++;
+      else if (estado.includes('instalado') || estado.includes('instalada') || estado.includes('completo')) stats.porPlaza[plaza].instaladas++;
+      else if (estado.includes('not done') || estado.includes('no hecho')) stats.porPlaza[plaza].notDone++;
+      else if (estado.includes('cancelada') || estado.includes('cancelado')) stats.porPlaza[plaza].canceladas++;
+    });
+
+    // Calcular porcentajes
+    const total = stats.total || 1;
+    stats.porcentajeAbiertas = ((stats.abiertas / total) * 100).toFixed(1);
+    stats.porcentajeInstaladas = ((stats.instaladas / total) * 100).toFixed(1);
+    stats.porcentajeNotDone = ((stats.notDone / total) * 100).toFixed(1);
+    stats.porcentajeCanceladas = ((stats.canceladas / total) * 100).toFixed(1);
+
+    // Calcular porcentaje diario (promedio de ventas por día en el período)
+    let daysInPeriod = 1;
+    if (filterReportPeriod === 'month') {
+      const filterDate = new Date(filterReportDate);
+      daysInPeriod = new Date(filterDate.getFullYear(), filterDate.getMonth() + 1, 0).getDate();
+    } else if (filterReportPeriod === 'custom_week') {
+      const filterDate = new Date(filterReportDate);
+      const period = getCustomWeeklyPeriod(filterDate);
+      if (period && period.period === 5) {
+        // Período 5: del 29 al 4 del siguiente mes (7 días)
+        daysInPeriod = 7;
+      } else {
+        daysInPeriod = 7;
+      }
+    } else if (filterReportPeriod === 'week') {
+      daysInPeriod = 7;
+    }
+    
+    stats.promedioDiario = daysInPeriod > 0 ? (stats.total / daysInPeriod).toFixed(2) : stats.total.toFixed(2);
+    stats.porcentajeDiario = daysInPeriod > 0 ? ((stats.total / daysInPeriod) / Math.max(stats.total, 1) * 100).toFixed(1) : '100.0';
+
+    return stats;
+  };
+
+  const stats = calculateStats();
   
   // Función auxiliar para obtener número de semana
   const getWeekNumber = (date) => {
@@ -1272,6 +1450,73 @@ Tu servicio de *Izzi* está listo para instalarse.
       week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7),
       year: d.getUTCFullYear()
     };
+  };
+
+  // Función para obtener el período semanal personalizado (1-7, 8-14, 15-21, 22-28, 29-4)
+  const getCustomWeeklyPeriod = (date) => {
+    const d = new Date(date);
+    const day = d.getDate();
+    const month = d.getMonth();
+    const year = d.getFullYear();
+    
+    // Períodos personalizados
+    if (day >= 1 && day <= 7) {
+      return { period: 1, start: 1, end: 7, month, year };
+    } else if (day >= 8 && day <= 14) {
+      return { period: 2, start: 8, end: 14, month, year };
+    } else if (day >= 15 && day <= 21) {
+      return { period: 3, start: 15, end: 21, month, year };
+    } else if (day >= 22 && day <= 28) {
+      return { period: 4, start: 22, end: 28, month, year };
+    } else if (day >= 29) {
+      // Del 29 al 4 del siguiente mes
+      return { period: 5, start: 29, end: 4, month, year, nextMonth: true };
+    }
+    return null;
+  };
+
+  // Función para verificar si una fecha está en un período semanal personalizado
+  const isInCustomPeriod = (reportDate, filterDate, periodType) => {
+    if (periodType === 'custom_week') {
+      const reportPeriod = getCustomWeeklyPeriod(reportDate);
+      const filterPeriod = getCustomWeeklyPeriod(filterDate);
+      
+      if (!reportPeriod || !filterPeriod) return false;
+      
+      // Si ambos están en el período 5 (29-4), verificar si están en el mismo rango
+      if (reportPeriod.period === 5 && filterPeriod.period === 5) {
+        const reportDay = reportDate.getDate();
+        const filterDay = filterDate.getDate();
+        const reportMonth = reportDate.getMonth();
+        const filterMonth = filterDate.getMonth();
+        const reportYear = reportDate.getFullYear();
+        const filterYear = filterDate.getFullYear();
+        
+        // Mismo mes y año
+        if (reportMonth === filterMonth && reportYear === filterYear) {
+          return (reportDay >= 29 || filterDay >= 29) || (reportDay <= 4 && filterDay <= 4);
+        }
+        
+        // Meses consecutivos: uno en 29-31 del mes actual, otro en 1-4 del siguiente
+        const nextMonth = new Date(reportYear, reportMonth + 1, 1);
+        if (nextMonth.getMonth() === filterMonth && nextMonth.getFullYear() === filterYear) {
+          return reportDay >= 29 && filterDay <= 4;
+        }
+        
+        const prevMonth = new Date(filterYear, filterMonth - 1, 1);
+        if (prevMonth.getMonth() === reportMonth && prevMonth.getFullYear() === reportYear) {
+          return filterDay >= 29 && reportDay <= 4;
+        }
+        
+        return false;
+      }
+      
+      // Para períodos 1-4, verificar mismo período, mismo mes y mismo año
+      return reportPeriod.period === filterPeriod.period && 
+             reportPeriod.month === filterPeriod.month && 
+             reportPeriod.year === filterPeriod.year;
+    }
+    return false;
   };
 
   // Obtener saldo para mostrar
@@ -2356,58 +2601,10 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <Phone size={14}/> Llamar
                     </a>
                     <button
-                      onClick={async () => {
-                        const vendedor = prompt('Asignar vendedor:', o.VendedorAsignado || '');
-                        if (vendedor) {
-                          try {
-                            // Actualizar la orden con el vendedor asignado
-                            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
-                            await setDoc(ref, { ...o, VendedorAsignado: vendedor, normalized_vendedor: vendedor.toLowerCase() }, { merge: true });
-                            
-                            // Crear reporte automáticamente en sales_reports con todos los campos
-                            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), {
-                              // Campos nuevos (formato completo)
-                              fecha: new Date().toLocaleDateString('es-MX'),
-                              referencia: '',
-                              cuenta: o['Nº de cuenta'] || o.Cuenta || '',
-                              nOrden: o['Nº de orden'] || o.Orden || '',
-                              nombreCompleto: o.Compañía || o.Compania || o.Cliente || 'Cliente',
-                              telefono: o.Teléfonos || o.Telefonos || o.Telefono || '',
-                              mensual: '',
-                              rgu: '',
-                              serviciosContratados: 'Instalación',
-                              movil: '',
-                              tipoVenta: 'Instalación',
-                              estatus: o.Estado || 'Abierta',
-                              fechaInstalacion: o['Fecha solicitada'] || o.Creado || '',
-                              plaza: o.Hub || o.Plaza || o.Region || '',
-                              vendedor: vendedor,
-                              puesto: '',
-                              cvven: '',
-                              comentarios: `Asignado desde Operación del Día - Orden: ${o['Nº de orden'] || o.Orden || ''}`,
-                              hub: o.Hub || o.Region || '',
-                              rpt: '',
-                              tipo: 'instalacion',
-                              tipoCuenta: '',
-                              ordenMovil: '',
-                              docs: true,
-                              // Campos de compatibilidad (mantener para no romper código existente)
-                              client: o.Compañía || o.Compania || o.Cliente || 'Cliente',
-                              package: 'Instalación',
-                              folio: o['Nº de orden'] || o.Orden || 'N/A',
-                              vendor: vendedor,
-                              estado: o.Estado || 'Abierta',
-                              fechaSolicitada: o['Fecha solicitada'] || o.Creado || '',
-                              ordenId: o.id,
-                              createdAt: serverTimestamp()
-                            });
-                            
-                            alert(`✅ Vendedor asignado y reporte creado para ${vendedor}`);
-                          } catch (error) {
-                            console.error('Error al asignar vendedor:', error);
-                            alert('Error al asignar vendedor. Intenta de nuevo.');
-                          }
-                        }
+                      onClick={() => {
+                        setOrderToAssign(o);
+                        setSelectedVendor(o.VendedorAsignado || '');
+                        setShowAssignVendorModal(true);
                       }}
                       className="bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
                     >
@@ -2459,6 +2656,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <option value="all">Todos los períodos</option>
                       <option value="day">Por día</option>
                       <option value="week">Por semana</option>
+                      <option value="custom_week">Período semanal personalizado</option>
                       <option value="month">Por mes</option>
                     </select>
                     {filterReportPeriod !== 'all' && (
@@ -2474,9 +2672,106 @@ Tu servicio de *Izzi* está listo para instalarse.
                     Mostrando {filteredReports.length} de {reportsData.length} reportes
                     {filterReportVendor && ` • Vendedor: ${filterReportVendor}`}
                     {filterReportPlaza && ` • Plaza: ${filterReportPlaza}`}
-                    {filterReportPeriod !== 'all' && ` • Período: ${filterReportPeriod === 'day' ? 'Día' : filterReportPeriod === 'week' ? 'Semana' : 'Mes'} ${filterReportDate}`}
+                    {filterReportPeriod !== 'all' && ` • Período: ${
+                      filterReportPeriod === 'day' ? 'Día' : 
+                      filterReportPeriod === 'week' ? 'Semana' : 
+                      filterReportPeriod === 'custom_week' ? 'Período Semanal Personalizado' :
+                      'Mes'
+                    } ${filterReportDate}`}
                   </p>
                 </div>
+
+                {/* Dashboard de Estadísticas */}
+                {filteredReports.length > 0 && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl mb-4 border border-blue-200">
+                    <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                      <BarChart3 size={20} className="text-blue-600"/> Estadísticas de Ventas
+                    </h4>
+                    
+                    {/* Tarjetas de estadísticas principales */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                      <div className="bg-white p-4 rounded-lg border border-blue-100 shadow-sm">
+                        <div className="text-xs text-slate-500 mb-1">Total</div>
+                        <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
+                        <div className="text-xs text-blue-600 mt-1">ventas</div>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-blue-100 shadow-sm">
+                        <div className="text-xs text-slate-500 mb-1">Abiertas</div>
+                        <div className="text-2xl font-bold text-blue-600">{stats.abiertas}</div>
+                        <div className="text-xs text-blue-600 mt-1">{stats.porcentajeAbiertas}%</div>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-green-100 shadow-sm">
+                        <div className="text-xs text-slate-500 mb-1">Instaladas</div>
+                        <div className="text-2xl font-bold text-green-600">{stats.instaladas}</div>
+                        <div className="text-xs text-green-600 mt-1">{stats.porcentajeInstaladas}%</div>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-red-100 shadow-sm">
+                        <div className="text-xs text-slate-500 mb-1">Not Done</div>
+                        <div className="text-2xl font-bold text-red-600">{stats.notDone}</div>
+                        <div className="text-xs text-red-600 mt-1">{stats.porcentajeNotDone}%</div>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-orange-100 shadow-sm">
+                        <div className="text-xs text-slate-500 mb-1">Canceladas</div>
+                        <div className="text-2xl font-bold text-orange-600">{stats.canceladas}</div>
+                        <div className="text-xs text-orange-600 mt-1">{stats.porcentajeCanceladas}%</div>
+                      </div>
+                    </div>
+
+                    {/* Porcentaje diario */}
+                    <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm mb-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs text-slate-500 mb-1">Promedio Diario</div>
+                          <div className="text-xl font-bold text-indigo-600">{stats.promedioDiario} ventas/día</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-slate-500 mb-1">Porcentaje Diario</div>
+                          <div className="text-xl font-bold text-indigo-600">{stats.porcentajeDiario}%</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Estadísticas por vendedor */}
+                    {Object.keys(stats.porVendedor).length > 0 && (
+                      <div className="mb-4">
+                        <h5 className="font-bold text-sm text-slate-700 mb-2">Por Vendedor:</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {Object.entries(stats.porVendedor).map(([vendor, data]) => (
+                            <div key={vendor} className="bg-white p-3 rounded-lg border border-slate-100 text-xs">
+                              <div className="font-bold text-slate-800 mb-1">{vendor}</div>
+                              <div className="grid grid-cols-4 gap-1 text-[10px]">
+                                <div>Total: <span className="font-bold">{data.total}</span></div>
+                                <div className="text-blue-600">Ab: <span className="font-bold">{data.abiertas}</span></div>
+                                <div className="text-green-600">Ins: <span className="font-bold">{data.instaladas}</span></div>
+                                <div className="text-red-600">ND: <span className="font-bold">{data.notDone}</span></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Estadísticas por plaza */}
+                    {Object.keys(stats.porPlaza).length > 0 && (
+                      <div>
+                        <h5 className="font-bold text-sm text-slate-700 mb-2">Por Plaza:</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {Object.entries(stats.porPlaza).map(([plaza, data]) => (
+                            <div key={plaza} className="bg-white p-3 rounded-lg border border-slate-100 text-xs">
+                              <div className="font-bold text-slate-800 mb-1">{plaza}</div>
+                              <div className="grid grid-cols-4 gap-1 text-[10px]">
+                                <div>Total: <span className="font-bold">{data.total}</span></div>
+                                <div className="text-blue-600">Ab: <span className="font-bold">{data.abiertas}</span></div>
+                                <div className="text-green-600">Ins: <span className="font-bold">{data.instaladas}</span></div>
+                                <div className="text-red-600">ND: <span className="font-bold">{data.notDone}</span></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 {filteredReports.length === 0 ? <div className="text-center py-10 text-slate-400">Sin ventas que coincidan con los filtros.</div> : 
                    <div className="overflow-x-auto">
@@ -2625,6 +2920,58 @@ Tu servicio de *Izzi* está listo para instalarse.
                    </div>
                }
             </div>
+        )}
+
+        {/* Modal para asignar vendedor */}
+        {showAssignVendorModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Users size={20} className="text-purple-500"/> Asignar Vendedor
+              </h3>
+              {orderToAssign && (
+                <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+                  <p className="text-sm text-slate-600">
+                    <strong>Cliente:</strong> {orderToAssign.Compañía || orderToAssign.Compania || 'Sin nombre'}<br/>
+                    <strong>Orden:</strong> {orderToAssign['Nº de orden'] || orderToAssign.Orden || 'N/A'}<br/>
+                    <strong>Cuenta:</strong> {orderToAssign['Nº de cuenta'] || orderToAssign.Cuenta || 'N/A'}
+                  </p>
+                </div>
+              )}
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Vendedor:</label>
+                <select
+                  value={selectedVendor}
+                  onChange={(e) => setSelectedVendor(e.target.value)}
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="">-- Selecciona un vendedor --</option>
+                  {vendors.map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleAssignVendor}
+                  disabled={!selectedVendor}
+                  className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700"
+                >
+                  Asignar
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAssignVendorModal(false);
+                    setOrderToAssign(null);
+                    setSelectedVendor('');
+                  }}
+                  className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -2909,12 +3256,42 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       .replace('{Vendedor}', cliente.Vendedor || myName)
       .replace('{Video}', videoLink);
     
-    let ph = String(cliente.Telefono || '').replace(/\D/g,'');
-    // Si el teléfono no empieza con 52, agregarlo
-    if (ph && !ph.startsWith('52') && ph.length === 10) {
+    // Extraer teléfono - puede venir en diferentes formatos
+    let phoneRaw = cliente.Telefono || '';
+    
+    // Si es un array, tomar el primero
+    if (Array.isArray(phoneRaw)) {
+      phoneRaw = phoneRaw[0];
+    }
+    
+    // Si tiene múltiples números separados, tomar el primero
+    if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
+      phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+    }
+    
+    // Limpiar el teléfono - quitar todo excepto números
+    let ph = String(phoneRaw || '').replace(/\D/g,'');
+    
+    // Validar que tenga al menos 10 dígitos
+    if (!ph || ph.length < 10) {
+      alert(`El teléfono no es válido o está vacío.\nTeléfono encontrado: "${phoneRaw}"`);
+      return;
+    }
+    
+    // Si tiene 10 dígitos y no empieza con 52, agregarlo
+    if (ph.length === 10 && !ph.startsWith('52')) {
       ph = '52' + ph;
     }
-    window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+    // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
+    else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
+      ph = '52' + ph;
+    }
+    
+    // Construir URL de WhatsApp con el mensaje
+    const whatsappUrl = `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+    
+    // Abrir WhatsApp
+    window.open(whatsappUrl, '_blank');
   };
 
   const handleChatSubmit = async (e) => {
@@ -3257,7 +3634,7 @@ RESPUESTA:`;
              <PlayCircle size={18}/> Órdenes Asignadas ({myAssignedOrders.length})
            </h3>
            <div className="grid gap-2">
-             {myAssignedOrders.slice(0, 5).map((orden) => (
+             {myAssignedOrders.map((orden) => (
                <div key={orden.id} className="bg-white p-3 rounded-lg border border-indigo-100">
                  <div className="flex justify-between items-start mb-2">
                    <div className="flex-1">
