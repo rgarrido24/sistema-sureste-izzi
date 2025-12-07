@@ -300,6 +300,95 @@ const downloadCSV = (data, filename) => {
   document.body.removeChild(link);
 };
 
+// Función para exportar reportes a Excel
+const exportReportsToExcel = (reports) => {
+  if (!reports || !reports.length) {
+    alert("No hay datos para exportar");
+    return;
+  }
+  
+  // Eliminar duplicados: si hay múltiples reportes con el mismo N° ORDEN, mantener solo el primero
+  const seen = new Set();
+  const uniqueReports = reports.filter(r => {
+    const nOrden = r.nOrden || r.folio || '';
+    if (!nOrden) return true; // Si no tiene N° ORDEN, incluir (puede ser reporte antiguo)
+    if (seen.has(nOrden)) return false; // Duplicado, excluir
+    seen.add(nOrden);
+    return true; // Primera vez que vemos este N° ORDEN, incluir
+  });
+  
+  console.log(`Exportando: ${uniqueReports.length} reportes únicos de ${reports.length} totales`);
+  
+  // Preparar datos con columnas exactas requeridas
+  const excelData = uniqueReports.map(r => ({
+    'FECHA': r.fecha || r.createdAt || new Date().toLocaleDateString('es-MX'),
+    'REFERENCIA': r.referencia || '',
+    'CUENTA': r.cuenta || '',
+    'N° ORDEN': r.nOrden || r.folio || '',
+    'NOMBRE COMPLETO DE CLIENTE': r.nombreCompleto || r.client || '',
+    'TELEFONO': r.telefono || '',
+    'MENSUAL': r.mensual || '',
+    'RGU': r.rgu || '',
+    'SERVICIOS CONTRATADOS': r.serviciosContratados || r.package || '',
+    'MOVIL': r.movil || '',
+    'TIPO DE VENTA': r.tipoVenta || '',
+    'ESTATUS': r.estatus || r.estado || '',
+    'FECHA INSTALACION': r.fechaInstalacion || r.fechaSolicitada || '',
+    'PLAZA': r.plaza || '',
+    'VENDEDOR': r.vendedor || r.vendor || '',
+    'PUESTO': r.puesto || '',
+    'CVVEN': r.cvven || '',
+    'COMENTARIOS': r.comentarios || '',
+    'HUB': r.hub || '',
+    'RPT': r.rpt || '',
+    'TIPO': r.tipo || '',
+    'TIPO DE CUENTA': r.tipoCuenta || '',
+    'ORDEN MOVIL': r.ordenMovil || ''
+  }));
+  
+  // Crear workbook
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(excelData);
+  
+  // Ajustar ancho de columnas
+  const colWidths = [
+    { wch: 12 }, // FECHA
+    { wch: 15 }, // REFERENCIA
+    { wch: 12 }, // CUENTA
+    { wch: 15 }, // N° ORDEN
+    { wch: 35 }, // NOMBRE COMPLETO DE CLIENTE
+    { wch: 15 }, // TELEFONO
+    { wch: 12 }, // MENSUAL
+    { wch: 10 }, // RGU
+    { wch: 25 }, // SERVICIOS CONTRATADOS
+    { wch: 12 }, // MOVIL
+    { wch: 15 }, // TIPO DE VENTA
+    { wch: 12 }, // ESTATUS
+    { wch: 18 }, // FECHA INSTALACION
+    { wch: 15 }, // PLAZA
+    { wch: 20 }, // VENDEDOR
+    { wch: 12 }, // PUESTO
+    { wch: 10 }, // CVVEN
+    { wch: 30 }, // COMENTARIOS
+    { wch: 12 }, // HUB
+    { wch: 10 }, // RPT
+    { wch: 12 }, // TIPO
+    { wch: 15 }, // TIPO DE CUENTA
+    { wch: 15 }  // ORDEN MOVIL
+  ];
+  ws['!cols'] = colWidths;
+  
+  // Agregar hoja al workbook
+  XLSX.utils.book_append_sheet(wb, ws, 'Reportes de Ventas');
+  
+  // Generar nombre de archivo con fecha
+  const fecha = new Date().toISOString().split('T')[0];
+  const filename = `reportes_ventas_${fecha}.xlsx`;
+  
+  // Descargar
+  XLSX.writeFile(wb, filename);
+};
+
 // Calcular saldo total
 const calcularSaldoTotal = (cliente) => {
   // Si ya tiene SaldoTotal, usarlo
@@ -496,6 +585,11 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [filterVendor, setFilterVendor] = useState('');
   const [vendors, setVendors] = useState([]);
   
+  // Estados para filtros de reportes
+  const [filterReportVendor, setFilterReportVendor] = useState('');
+  const [filterReportPlaza, setFilterReportPlaza] = useState('');
+  const [reportPlazas, setReportPlazas] = useState([]);
+  
   // Estados para Operación del Día
   const [operacionData, setOperacionData] = useState([]);
   const [filterRegionOperacion, setFilterRegionOperacion] = useState('');
@@ -527,12 +621,22 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     const qPack = query(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'));
     const unsubPack = onSnapshot(qPack, (snap) => setPackages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-    const qRep = query(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), orderBy('createdAt', 'desc'), limit(50));
+    const qRep = query(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), orderBy('createdAt', 'desc'));
     const unsubRep = onSnapshot(qRep, (snap) => {
-        setReportsData(snap.docs.map(d => ({ 
+        const reports = snap.docs.map(d => ({ 
             id: d.id, ...d.data(), 
             createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toLocaleString() : 'Reciente' 
-        })));
+        }));
+        setReportsData(reports);
+        // Extraer plazas únicas
+        const uniquePlazas = [...new Set(reports.map(r => r.plaza).filter(p => p))];
+        setReportPlazas(uniquePlazas.sort());
+        // Extraer vendedores únicos de reportes
+        const uniqueVendorsReports = [...new Set(reports.map(r => r.vendor).filter(v => v))];
+        // Actualizar lista de vendedores si no está vacía
+        if (uniqueVendorsReports.length > 0) {
+          setVendors(prev => [...new Set([...prev, ...uniqueVendorsReports])].sort());
+        }
     });
 
     const qMain = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
@@ -765,6 +869,13 @@ Tu servicio de *Izzi* está listo para instalarse.
     const matchesSearch = operacionSearchTerm === '' || JSON.stringify(o).toLowerCase().includes(operacionSearchTerm.toLowerCase());
     const matchesRegion = filterRegionOperacion === '' || o.Region === filterRegionOperacion || o.Hub === filterRegionOperacion;
     return matchesSearch && matchesRegion;
+  });
+  
+  // Filtrar reportes
+  const filteredReports = reportsData.filter(r => {
+    const matchesVendor = filterReportVendor === '' || r.vendor === filterReportVendor;
+    const matchesPlaza = filterReportPlaza === '' || r.plaza === filterReportPlaza;
+    return matchesVendor && matchesPlaza;
   });
 
   // Obtener saldo para mostrar
@@ -1151,6 +1262,7 @@ Tu servicio de *Izzi* está listo para instalarse.
             <button onClick={() => setActiveTab('users')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'users' ? 'bg-purple-100 text-purple-700' : 'text-slate-500'}`}><Shield size={16}/> Usuarios</button>
             <button onClick={() => setActiveTab('template')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'template' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-500'}`}><FileText size={16}/> Plantilla</button>
             <button onClick={() => setActiveTab('packages')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'packages' ? 'bg-orange-100 text-orange-700' : 'text-slate-500'}`}><Wifi size={16}/> Paquetes</button>
+            <button onClick={() => setActiveTab('promociones')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'promociones' ? 'bg-pink-100 text-pink-700' : 'text-slate-500'}`}><Sparkles size={16}/> Promociones</button>
             <button onClick={() => setActiveTab('view')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'view' ? 'bg-white shadow' : 'text-slate-500'}`}><List size={16}/> Ver BD</button>
             <button onClick={() => setActiveTab('upload')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'upload' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Cloud size={16}/> Cargar</button>
           </div>
@@ -1591,11 +1703,57 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <Phone size={14}/> Llamar
                     </a>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const vendedor = prompt('Asignar vendedor:', o.VendedorAsignado || '');
                         if (vendedor) {
-                          const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
-                          setDoc(ref, { ...o, VendedorAsignado: vendedor, normalized_vendedor: vendedor.toLowerCase() }, { merge: true });
+                          try {
+                            // Actualizar la orden con el vendedor asignado
+                            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
+                            await setDoc(ref, { ...o, VendedorAsignado: vendedor, normalized_vendedor: vendedor.toLowerCase() }, { merge: true });
+                            
+                            // Crear reporte automáticamente en sales_reports con todos los campos
+                            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), {
+                              // Campos nuevos (formato completo)
+                              fecha: new Date().toLocaleDateString('es-MX'),
+                              referencia: '',
+                              cuenta: o['Nº de cuenta'] || o.Cuenta || '',
+                              nOrden: o['Nº de orden'] || o.Orden || '',
+                              nombreCompleto: o.Compañía || o.Compania || o.Cliente || 'Cliente',
+                              telefono: o.Teléfonos || o.Telefonos || o.Telefono || '',
+                              mensual: '',
+                              rgu: '',
+                              serviciosContratados: 'Instalación',
+                              movil: '',
+                              tipoVenta: 'Instalación',
+                              estatus: o.Estado || 'Abierta',
+                              fechaInstalacion: o['Fecha solicitada'] || o.Creado || '',
+                              plaza: o.Hub || o.Plaza || o.Region || '',
+                              vendedor: vendedor,
+                              puesto: '',
+                              cvven: '',
+                              comentarios: `Asignado desde Operación del Día - Orden: ${o['Nº de orden'] || o.Orden || ''}`,
+                              hub: o.Hub || o.Region || '',
+                              rpt: '',
+                              tipo: 'instalacion',
+                              tipoCuenta: '',
+                              ordenMovil: '',
+                              docs: true,
+                              // Campos de compatibilidad (mantener para no romper código existente)
+                              client: o.Compañía || o.Compania || o.Cliente || 'Cliente',
+                              package: 'Instalación',
+                              folio: o['Nº de orden'] || o.Orden || 'N/A',
+                              vendor: vendedor,
+                              estado: o.Estado || 'Abierta',
+                              fechaSolicitada: o['Fecha solicitada'] || o.Creado || '',
+                              ordenId: o.id,
+                              createdAt: serverTimestamp()
+                            });
+                            
+                            alert(`✅ Vendedor asignado y reporte creado para ${vendedor}`);
+                          } catch (error) {
+                            console.error('Error al asignar vendedor:', error);
+                            alert('Error al asignar vendedor. Intenta de nuevo.');
+                          }
                         }
                       }}
                       className="bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
@@ -1620,27 +1778,73 @@ Tu servicio de *Izzi* está listo para instalarse.
         {activeTab === 'reports' && (
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 animate-in fade-in">
                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileSpreadsheet size={20} className="text-green-600"/> Ventas Reportadas</h3>
-                {reportsData.length === 0 ? <div className="text-center py-10 text-slate-400">Sin ventas aún.</div> : 
+                
+                {/* Filtros */}
+                <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-200">
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <select 
+                      value={filterReportVendor} 
+                      onChange={e=>setFilterReportVendor(e.target.value)}
+                      className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
+                    >
+                      <option value="">Todos los vendedores</option>
+                      {vendors.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                    <select 
+                      value={filterReportPlaza} 
+                      onChange={e=>setFilterReportPlaza(e.target.value)}
+                      className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
+                    >
+                      <option value="">Todas las plazas</option>
+                      {reportPlazas.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Mostrando {filteredReports.length} de {reportsData.length} reportes
+                    {filterReportVendor && ` • Vendedor: ${filterReportVendor}`}
+                    {filterReportPlaza && ` • Plaza: ${filterReportPlaza}`}
+                  </p>
+                </div>
+                
+                {filteredReports.length === 0 ? <div className="text-center py-10 text-slate-400">Sin ventas que coincidan con los filtros.</div> : 
                    <div className="overflow-x-auto">
                        <table className="w-full text-sm text-left">
                            <thead className="bg-slate-50 font-bold text-xs uppercase text-slate-500">
-                               <tr><th className="p-3">Fecha</th><th className="p-3">Vendedor</th><th className="p-3">Cliente</th><th className="p-3">Paquete</th><th className="p-3">Folio</th></tr>
+                               <tr>
+                                 <th className="p-3">Fecha</th>
+                                 <th className="p-3">Vendedor</th>
+                                 <th className="p-3">Cliente</th>
+                                 <th className="p-3">Paquete</th>
+                                 <th className="p-3">Folio</th>
+                                 <th className="p-3">Plaza</th>
+                                 <th className="p-3">Cuenta</th>
+                                 <th className="p-3">Estado</th>
+                               </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-100 text-slate-700">
-                               {reportsData.map((r) => (
+                               {filteredReports.map((r) => (
                                    <tr key={r.id}>
                                        <td className="p-3 text-xs text-slate-400">{r.createdAt}</td>
                                        <td className="p-3 font-bold text-blue-600">{r.vendor}</td>
                                        <td className="p-3">{r.client}</td>
                                        <td className="p-3"><span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs font-bold">{r.package}</span></td>
                                        <td className="p-3 font-mono text-xs">{r.folio}</td>
+                                       <td className="p-3 text-xs">{r.plaza || 'N/A'}</td>
+                                       <td className="p-3 text-xs font-mono">{r.cuenta || 'N/A'}</td>
+                                       <td className="p-3 text-xs">
+                                         <span className={`px-2 py-0.5 rounded ${
+                                           r.estado === 'Instalado' ? 'bg-green-100 text-green-700' :
+                                           r.estado === 'Not Done' ? 'bg-red-100 text-red-700' :
+                                           'bg-blue-100 text-blue-700'
+                                         }`}>{r.estado || 'Abierta'}</span>
+                                       </td>
                                    </tr>
                                ))}
                            </tbody>
                        </table>
                    </div>
                 }
-                <button onClick={() => downloadCSV(reportsData, 'ventas_izzi.csv')} className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-green-700 w-full justify-center"><Download size={16}/> Exportar CSV</button>
+                <button onClick={() => exportReportsToExcel(filteredReports)} className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-green-700 w-full justify-center"><Download size={16}/> Exportar Excel</button>
             </div>
         )}
 
@@ -1762,12 +1966,39 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [showConfig, setShowConfig] = useState(false);
   const [videoLink, setVideoLink] = useState(localStorage.getItem('videoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
   const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reportForm, setReportForm] = useState({ client: '', package: '', folio: '', coords: '', portability: '', docs: false });
+  const [reportForm, setReportForm] = useState({ 
+    fecha: new Date().toLocaleDateString('es-MX'),
+    referencia: '',
+    cuenta: '',
+    nOrden: '',
+    nombreCompleto: '',
+    telefono: '',
+    mensual: '',
+    rgu: '',
+    serviciosContratados: '',
+    movil: '',
+    tipoVenta: '',
+    estatus: 'Abierta',
+    fechaInstalacion: '',
+    plaza: '',
+    vendedor: '',
+    puesto: '',
+    cvven: '',
+    comentarios: '',
+    hub: '',
+    rpt: '',
+    tipo: '',
+    tipoCuenta: '',
+    ordenMovil: '',
+    docs: false 
+  });
   const [packages, setPackages] = useState([]);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatHistory, setChatHistory] = useState([{role: 'system', text: 'Hola, soy tu asistente Izzi. ¿En qué te ayudo?'}]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [myReports, setMyReports] = useState([]);
+  const [showReports, setShowReports] = useState(false);
   const appId = 'sales-master-production';
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
   
@@ -1820,11 +2051,31 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
     const qPack = query(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'));
     onSnapshot(qPack, (snap) => setPackages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return onSnapshot(q, (snap) => {
+    
+    // Cargar reportes del vendedor (solo los suyos)
+    const qReports = query(
+      collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'),
+      where('vendor', '==', myName),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubReports = onSnapshot(qReports, (snap) => {
+      setMyReports(snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toLocaleString() : 'Reciente'
+      })));
+    });
+    
+    const unsubMain = onSnapshot(q, (snap) => {
       const all = snap.docs.map(doc => doc.data());
       const mine = all.filter(i => i['normalized_resp']?.includes(myName.toLowerCase()));
       setData(mine); setLoading(false);
     });
+    
+    return () => {
+      unsubMain();
+      unsubReports();
+    };
   }, [user, myName, currentModule]);
 
   const saveConfig = () => {
@@ -1835,10 +2086,69 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   };
 
   const submitSaleReport = async () => {
-      if (!reportForm.client || !reportForm.package || !reportForm.folio) return alert("Faltan datos obligatorios");
+      // Validar campos obligatorios
+      if (!reportForm.nombreCompleto || !reportForm.cuenta || !reportForm.nOrden) {
+        return alert("Faltan datos obligatorios: Nombre completo, Cuenta y N° Orden");
+      }
       if (!reportForm.docs) return alert("Debes confirmar la documentación.");
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), { ...reportForm, vendor: myName, createdAt: serverTimestamp() });
-      alert("¡Venta Registrada!"); setReportModalOpen(false); setReportForm({ client: '', package: '', folio: '', coords: '', portability: '', docs: false });
+      
+      // Verificar si ya existe un reporte con el mismo N° ORDEN o CUENTA
+      const qDuplicado = query(
+        collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'),
+        where('nOrden', '==', reportForm.nOrden)
+      );
+      const snapDuplicado = await getDocs(qDuplicado);
+      
+      if (!snapDuplicado.empty) {
+        const confirmar = confirm(`⚠️ Ya existe un reporte con el N° Orden ${reportForm.nOrden}.\n\n¿Deseas crear otro reporte de todas formas? (Al exportar solo aparecerá uno)`);
+        if (!confirmar) return;
+      }
+      
+      // Guardar reporte con todos los campos
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), {
+        ...reportForm,
+        vendedor: myName,
+        vendor: myName, // Mantener compatibilidad
+        client: reportForm.nombreCompleto, // Compatibilidad
+        package: reportForm.serviciosContratados || reportForm.tipoVenta, // Compatibilidad
+        folio: reportForm.nOrden, // Compatibilidad
+        cuenta: reportForm.cuenta,
+        telefono: reportForm.telefono,
+        plaza: reportForm.plaza || reportForm.hub,
+        estado: reportForm.estatus,
+        fechaInstalacion: reportForm.fechaInstalacion,
+        createdAt: serverTimestamp()
+      });
+      
+      alert("¡Venta Registrada!"); 
+      setReportModalOpen(false); 
+      // Resetear formulario
+      setReportForm({ 
+        fecha: new Date().toLocaleDateString('es-MX'),
+        referencia: '',
+        cuenta: '',
+        nOrden: '',
+        nombreCompleto: '',
+        telefono: '',
+        mensual: '',
+        rgu: '',
+        serviciosContratados: '',
+        movil: '',
+        tipoVenta: '',
+        estatus: 'Abierta',
+        fechaInstalacion: '',
+        plaza: '',
+        vendedor: '',
+        puesto: '',
+        cvven: '',
+        comentarios: '',
+        hub: '',
+        rpt: '',
+        tipo: '',
+        tipoCuenta: '',
+        ordenMovil: '',
+        docs: false 
+      });
   };
 
   // Función mejorada para enviar WhatsApp con todos los datos
@@ -1892,6 +2202,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
             <div><p className="text-xs text-slate-400 font-bold uppercase">Vendedor</p><h1 className="font-bold text-slate-800 truncate text-lg">{myName}</h1></div>
             <div className="flex gap-2">
                 <button onClick={()=>setChatOpen(true)} className="bg-violet-100 text-violet-600 p-2 rounded-full"><MessageCircleQuestion size={18}/></button>
+                <button onClick={()=>setShowReports(!showReports)} className="bg-green-500 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 shadow-lg"><FileSpreadsheet size={16}/> Mis Reportes</button>
                 <button onClick={()=>setReportModalOpen(true)} className="bg-orange-500 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 shadow-lg"><PlusCircle size={16}/> Venta</button>
                 <button onClick={()=>setShowConfig(!showConfig)} className="p-2 bg-slate-100 rounded-full"><Settings size={18}/></button>
             </div>
@@ -1957,10 +2268,79 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
              }} className="flex-1 bg-yellow-500 text-white py-2 rounded-lg text-xs font-bold">Usar Global</button>
              <button onClick={()=>setShowConfig(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold">Cerrar</button>
            </div>
-         </div>
-       )}
+        </div>
+      )}
 
-       {/* Modal Chat */}
+      {/* Sección de Mis Reportes */}
+      {showReports && (
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <FileSpreadsheet size={20} className="text-green-600"/> Mis Reportes de Ventas
+            </h3>
+            <button onClick={() => setShowReports(false)} className="text-slate-400 hover:text-slate-600">
+              <X size={20}/>
+            </button>
+          </div>
+          
+          {myReports.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <FileSpreadsheet size={48} className="mx-auto mb-4 opacity-50"/>
+              <p>No tienes reportes aún.</p>
+              <p className="text-xs mt-2">Las ventas que reportes aparecerán aquí.</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 font-bold text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3">Fecha</th>
+                      <th className="p-3">Cliente</th>
+                      <th className="p-3">Paquete</th>
+                      <th className="p-3">Folio</th>
+                      <th className="p-3">Plaza</th>
+                      <th className="p-3">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {myReports.map((r) => (
+                      <tr key={r.id}>
+                        <td className="p-3 text-xs text-slate-400">{r.createdAt}</td>
+                        <td className="p-3">{r.client}</td>
+                        <td className="p-3">
+                          <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs font-bold">
+                            {r.package}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono text-xs">{r.folio}</td>
+                        <td className="p-3 text-xs">{r.plaza || 'N/A'}</td>
+                        <td className="p-3 text-xs">
+                          <span className={`px-2 py-0.5 rounded ${
+                            r.estado === 'Instalado' ? 'bg-green-100 text-green-700' :
+                            r.estado === 'Not Done' ? 'bg-red-100 text-red-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {r.estado || 'Abierta'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button 
+                onClick={() => exportReportsToExcel(myReports)} 
+                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-green-700 w-full justify-center"
+              >
+                <Download size={16}/> Exportar Mis Reportes a Excel
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Modal Chat */}
        {chatOpen && (
            <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50">
                <div className="bg-white w-full max-w-md h-[80vh] sm:h-[600px] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -1971,22 +2351,63 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
            </div>
        )}
 
-       {/* Modal Reportar Venta */}
-       {reportModalOpen && (
-           <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-               <div className="bg-white p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-                   <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-orange-600"><PlusCircle size={24}/> Reportar Venta</h3>
-                   <div className="space-y-3">
-                       <input className="w-full p-3 border rounded-lg text-sm" placeholder="Cliente" value={reportForm.client} onChange={e=>setReportForm({...reportForm, client: e.target.value})}/>
-                       <select className="w-full p-3 border rounded-lg text-sm" value={reportForm.package} onChange={e=>setReportForm({...reportForm, package: e.target.value})}><option value="">Paquete...</option>{packages.map(p => <option key={p.id} value={p.name}>{p.name} (${p.price})</option>)}</select>
-                       <input className="w-full p-3 border rounded-lg text-sm" placeholder="Folio" value={reportForm.folio} onChange={e=>setReportForm({...reportForm, folio: e.target.value})}/>
-                       <div className="bg-blue-50 p-3 rounded-lg flex gap-2"><input type="checkbox" checked={reportForm.docs} onChange={e=>setReportForm({...reportForm, docs: e.target.checked})}/><p className="text-xs text-blue-800">Documentos completos.</p></div>
-                   </div>
-                   <button onClick={submitSaleReport} className="mt-6 w-full py-3 bg-orange-500 text-white rounded-xl font-bold">Registrar</button>
-                   <button onClick={()=>setReportModalOpen(false)} className="mt-2 w-full py-3 text-slate-400 text-sm">Cancelar</button>
-               </div>
-           </div>
-       )}
+      {/* Modal Reportar Venta */}
+      {reportModalOpen && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+              <div className="bg-white p-6 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-lg flex items-center gap-2 text-orange-600"><PlusCircle size={24}/> Reportar Venta</h3>
+                    <button onClick={()=>setReportModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+                  </div>
+                  
+                  <div className="space-y-3 text-sm">
+                    {/* Campos obligatorios */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                      <p className="text-xs font-bold text-red-800 mb-2">⚠️ Campos Obligatorios</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <input className="p-3 border rounded-lg text-sm" placeholder="N° ORDEN *" value={reportForm.nOrden} onChange={e=>setReportForm({...reportForm, nOrden: e.target.value})} required/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="CUENTA *" value={reportForm.cuenta} onChange={e=>setReportForm({...reportForm, cuenta: e.target.value})} required/>
+                      <input className="p-3 border rounded-lg text-sm col-span-2" placeholder="NOMBRE COMPLETO DE CLIENTE *" value={reportForm.nombreCompleto} onChange={e=>setReportForm({...reportForm, nombreCompleto: e.target.value})} required/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="TELEFONO" value={reportForm.telefono} onChange={e=>setReportForm({...reportForm, telefono: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="FECHA" value={reportForm.fecha} onChange={e=>setReportForm({...reportForm, fecha: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="REFERENCIA" value={reportForm.referencia} onChange={e=>setReportForm({...reportForm, referencia: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="MENSUAL" value={reportForm.mensual} onChange={e=>setReportForm({...reportForm, mensual: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="RGU" value={reportForm.rgu} onChange={e=>setReportForm({...reportForm, rgu: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm col-span-2" placeholder="SERVICIOS CONTRATADOS" value={reportForm.serviciosContratados} onChange={e=>setReportForm({...reportForm, serviciosContratados: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="MOVIL" value={reportForm.movil} onChange={e=>setReportForm({...reportForm, movil: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="TIPO DE VENTA" value={reportForm.tipoVenta} onChange={e=>setReportForm({...reportForm, tipoVenta: e.target.value})}/>
+                      <select className="p-3 border rounded-lg text-sm" value={reportForm.estatus} onChange={e=>setReportForm({...reportForm, estatus: e.target.value})}>
+                        <option value="Abierta">Abierta</option>
+                        <option value="Instalado">Instalado</option>
+                        <option value="Not Done">Not Done</option>
+                      </select>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="FECHA INSTALACION" value={reportForm.fechaInstalacion} onChange={e=>setReportForm({...reportForm, fechaInstalacion: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="PLAZA" value={reportForm.plaza} onChange={e=>setReportForm({...reportForm, plaza: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="HUB" value={reportForm.hub} onChange={e=>setReportForm({...reportForm, hub: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="PUESTO" value={reportForm.puesto} onChange={e=>setReportForm({...reportForm, puesto: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="CVVEN" value={reportForm.cvven} onChange={e=>setReportForm({...reportForm, cvven: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="RPT" value={reportForm.rpt} onChange={e=>setReportForm({...reportForm, rpt: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="TIPO" value={reportForm.tipo} onChange={e=>setReportForm({...reportForm, tipo: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="TIPO DE CUENTA" value={reportForm.tipoCuenta} onChange={e=>setReportForm({...reportForm, tipoCuenta: e.target.value})}/>
+                      <input className="p-3 border rounded-lg text-sm" placeholder="ORDEN MOVIL" value={reportForm.ordenMovil} onChange={e=>setReportForm({...reportForm, ordenMovil: e.target.value})}/>
+                      <textarea className="p-3 border rounded-lg text-sm col-span-2" placeholder="COMENTARIOS" rows="2" value={reportForm.comentarios} onChange={e=>setReportForm({...reportForm, comentarios: e.target.value})}/>
+                    </div>
+                    
+                    <div className="bg-blue-50 p-3 rounded-lg flex gap-2 mt-4">
+                      <input type="checkbox" checked={reportForm.docs} onChange={e=>setReportForm({...reportForm, docs: e.target.checked})} required/>
+                      <p className="text-xs text-blue-800">* Confirmo que la documentación está completa.</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3 mt-6">
+                    <button onClick={submitSaleReport} className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600">Registrar Venta</button>
+                    <button onClick={()=>setReportModalOpen(false)} className="px-6 py-3 text-slate-400 text-sm hover:bg-slate-100 rounded-xl">Cancelar</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
        {/* Buscador */}
        <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="🔍 Buscar cliente, cuenta, teléfono..." className="w-full p-3 rounded-xl border border-slate-200 mb-4 shadow-sm"/>
