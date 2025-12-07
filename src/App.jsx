@@ -321,6 +321,72 @@ function parseExcel(buffer) {
   return data;
 }
 
+// Función para calcular FLP (Fecha Límite de Pago) basado en fecha de instalación
+// Según ciclos de facturación diarios de Izzi
+function calcularFLP(fechaInstalacion) {
+  if (!fechaInstalacion) return '';
+  
+  // Convertir fecha a número de día del mes (1-31)
+  let diaInstalacion = 0;
+  
+  // Si es string en formato DD/MM/YYYY o DD-MM-YYYY
+  if (typeof fechaInstalacion === 'string') {
+    const partes = fechaInstalacion.split(/[\/\-]/);
+    if (partes.length >= 1) {
+      diaInstalacion = parseInt(partes[0], 10);
+    }
+  } else if (typeof fechaInstalacion === 'number') {
+    // Si es número de Excel, convertir primero
+    const fechaStr = excelDateToString(fechaInstalacion);
+    const partes = fechaStr.split('/');
+    if (partes.length >= 1) {
+      diaInstalacion = parseInt(partes[0], 10);
+    }
+  }
+  
+  if (!diaInstalacion || diaInstalacion < 1 || diaInstalacion > 31) return '';
+  
+  // CICLO 1 (Pink): Instalación días 1-11 → FLP días 12-17
+  // Mapeo exacto según tabla
+  if (diaInstalacion === 1) return '12';
+  if (diaInstalacion === 2) return '12';
+  if (diaInstalacion === 3) return '13';
+  if (diaInstalacion === 4) return '13';
+  if (diaInstalacion === 5) return '13';
+  if (diaInstalacion === 6) return '14';
+  if (diaInstalacion === 7) return '14';
+  if (diaInstalacion === 8) return '15';
+  if (diaInstalacion === 9) return '15';
+  if (diaInstalacion === 10) return '16';
+  if (diaInstalacion === 11) return '17';
+  
+  // CICLO 2 (Light Blue): Instalación días 12-21 → FLP días 18-27
+  if (diaInstalacion === 12) return '18';
+  if (diaInstalacion === 13) return '18';
+  if (diaInstalacion === 14) return '19';
+  if (diaInstalacion === 15) return '19';
+  if (diaInstalacion === 16) return '20';
+  if (diaInstalacion === 17) return '20';
+  if (diaInstalacion === 18) return '21';
+  if (diaInstalacion === 19) return '21';
+  if (diaInstalacion === 20) return '22';
+  if (diaInstalacion === 21) return '27';
+  
+  // CICLO 3 (Orange): Instalación días 22-31 → FLP días 2, 23-25, 27-30
+  if (diaInstalacion === 22) return '2';
+  if (diaInstalacion === 23) return '23';
+  if (diaInstalacion === 24) return '24';
+  if (diaInstalacion === 25) return '25';
+  if (diaInstalacion === 26) return '27';
+  if (diaInstalacion === 27) return '27';
+  if (diaInstalacion === 28) return '28';
+  if (diaInstalacion === 29) return '29';
+  if (diaInstalacion === 30) return '30';
+  if (diaInstalacion === 31) return '1'; // Para día 31, FLP es día 1 del siguiente mes
+  
+  return '';
+}
+
 // Función para convertir número de fecha de Excel a fecha legible
 function excelDateToString(excelDate) {
   if (!excelDate) return '';
@@ -669,6 +735,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [filterReportVendor, setFilterReportVendor] = useState('');
   const [filterReportPlaza, setFilterReportPlaza] = useState('');
   const [reportPlazas, setReportPlazas] = useState([]);
+  const [filterReportPeriod, setFilterReportPeriod] = useState('all'); // all, day, week, month
+  const [filterReportDate, setFilterReportDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Estados para Operación del Día
   const [operacionData, setOperacionData] = useState([]);
@@ -1123,12 +1191,46 @@ Tu servicio de *Izzi* está listo para instalarse.
     return matchesSearch && matchesRegion;
   });
   
-  // Filtrar reportes
+  // Filtrar reportes con filtros de fecha
   const filteredReports = reportsData.filter(r => {
     const matchesVendor = filterReportVendor === '' || r.vendor === filterReportVendor;
     const matchesPlaza = filterReportPlaza === '' || r.plaza === filterReportPlaza;
-    return matchesVendor && matchesPlaza;
+    
+    // Filtro de fecha
+    let matchesDate = true;
+    if (filterReportPeriod !== 'all' && r.createdAt) {
+      const reportDate = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt);
+      const filterDate = new Date(filterReportDate);
+      
+      if (filterReportPeriod === 'day') {
+        // Mismo día
+        matchesDate = reportDate.toDateString() === filterDate.toDateString();
+      } else if (filterReportPeriod === 'week') {
+        // Misma semana
+        const reportWeek = getWeekNumber(reportDate);
+        const filterWeek = getWeekNumber(filterDate);
+        matchesDate = reportWeek.week === filterWeek.week && reportWeek.year === filterWeek.year;
+      } else if (filterReportPeriod === 'month') {
+        // Mismo mes
+        matchesDate = reportDate.getMonth() === filterDate.getMonth() && 
+                     reportDate.getFullYear() === filterDate.getFullYear();
+      }
+    }
+    
+    return matchesVendor && matchesPlaza && matchesDate;
   });
+  
+  // Función auxiliar para obtener número de semana
+  const getWeekNumber = (date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return {
+      week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7),
+      year: d.getUTCFullYear()
+    };
+  };
 
   // Obtener saldo para mostrar
   const getSaldo = (c) => {
@@ -1338,25 +1440,44 @@ Tu servicio de *Izzi* está listo para instalarse.
     const targetCollection = isOperacionDia ? 'operacion_dia' : collectionName;
     const collectionLabel = isOperacionDia ? 'Operación del Día' : currentModule;
     
-    if (!confirm(`¿Reemplazar base de ${collectionLabel}? (${rawFileRows.length - 1} registros)`)) return;
+    const confirmMsg = isOperacionDia 
+      ? `¿Actualizar base de ${collectionLabel}? (${rawFileRows.length - 1} registros)\n\nLos registros existentes se actualizarán sin duplicarse.`
+      : `¿Reemplazar base de ${collectionLabel}? (${rawFileRows.length - 1} registros)`;
+    
+    if (!confirm(confirmMsg)) return;
     
     setUploadStep(3); setSyncing(true); setProgress('Iniciando...');
     
     try {
-        // Limpiar base anterior
-        const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
-        console.log("Documentos existentes a borrar:", snapshot.size);
-        
-        const chunks = []; 
-        snapshot.docs.forEach(d => chunks.push(d));
-        setProgress(`Limpiando ${snapshot.size} registros anteriores...`);
-        
-        while(chunks.length) { 
-          const batch = writeBatch(db); 
-          chunks.splice(0, 400).forEach(d => batch.delete(d.ref)); 
-          await batch.commit(); 
+        // Para operación del día, cargar existentes para actualizar sin duplicar
+        let existingOrders = new Map();
+        if (isOperacionDia) {
+          setProgress('Cargando registros existentes...');
+          const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+          snapshot.docs.forEach(d => {
+            const data = d.data();
+            const nOrden = data['Nº de orden'] || data.Orden || '';
+            if (nOrden) {
+              existingOrders.set(nOrden, { id: d.id, data: data });
+            }
+          });
+          console.log(`Registros existentes encontrados: ${existingOrders.size}`);
+        } else {
+          // Para otras colecciones, limpiar base anterior
+          const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+          console.log("Documentos existentes a borrar:", snapshot.size);
+          
+          const chunks = []; 
+          snapshot.docs.forEach(d => chunks.push(d));
+          setProgress(`Limpiando ${snapshot.size} registros anteriores...`);
+          
+          while(chunks.length) { 
+            const batch = writeBatch(db); 
+            chunks.splice(0, 400).forEach(d => batch.delete(d.ref)); 
+            await batch.commit(); 
+          }
+          console.log("Base limpiada");
         }
-        console.log("Base limpiada");
 
         // Procesar nuevos registros
         const validRows = rawFileRows.slice(1); // Quitar encabezados
@@ -1441,6 +1562,26 @@ Tu servicio de *Izzi* está listo para instalarse.
               }
             }
             
+            // Calcular FLP si hay fecha de instalación (para cobranza e instalaciones)
+            if (!isOperacionDia && docData.FechaInstalacion) {
+              const flp = calcularFLP(docData.FechaInstalacion);
+              if (flp) {
+                docData.FLP = flp;
+                docData.FechaVencimiento = flp; // También actualizar fecha de vencimiento
+              }
+            }
+            
+            // Para operación del día, calcular FLP si hay fecha solicitada o creado
+            if (isOperacionDia) {
+              const fechaInst = docData['Fecha solicitada'] || docData.Creado || '';
+              if (fechaInst) {
+                const flp = calcularFLP(fechaInst);
+                if (flp) {
+                  docData.FLP = flp;
+                }
+              }
+            }
+            
             if (hasData) {
               processedRows.push(docData);
               if (rowIndex < 3) console.log(`Fila ${rowIndex} procesada:`, docData);
@@ -1457,13 +1598,65 @@ Tu servicio de *Izzi* está listo para instalarse.
         }
 
         // Subir en lotes
-        const insertChunks = [];
-        for (let i = 0; i < processedRows.length; i += 300) {
-          insertChunks.push(processedRows.slice(i, i + 300));
-        }
-        
         let inserted = 0;
-        for (const chunk of insertChunks) {
+        let updated = 0;
+        let created = 0;
+        
+        if (isOperacionDia) {
+          // Para operación del día: actualizar existentes o crear nuevos
+          const chunks = [];
+          for (let i = 0; i < processedRows.length; i += 300) {
+            chunks.push(processedRows.slice(i, i + 300));
+          }
+          
+          for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            
+            for (const data of chunk) {
+              const nOrden = data['Nº de orden'] || data.Orden || '';
+              
+              if (nOrden && existingOrders.has(nOrden)) {
+                // Actualizar registro existente (preservar VendedorAsignado si existe)
+                const existing = existingOrders.get(nOrden);
+                const existingData = existing.data;
+                
+                // Preservar campos importantes que no deben sobrescribirse
+                const updateData = {
+                  ...data,
+                  // Preservar vendedor asignado si ya estaba asignado
+                  VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
+                  normalized_vendedor: existingData.normalized_vendedor || data.normalized_vendedor || '',
+                  // Preservar fecha de creación original
+                  createdAt: existingData.createdAt || serverTimestamp(),
+                  // Actualizar fecha de modificación
+                  updatedAt: serverTimestamp()
+                };
+                
+                const ref = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
+                batch.set(ref, updateData, { merge: true });
+                updated++;
+              } else {
+                // Crear nuevo registro
+                const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                batch.set(ref, { ...data, createdAt: serverTimestamp() });
+                created++;
+              }
+              inserted++;
+            }
+            
+            await batch.commit();
+            setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
+            console.log(`Procesados ${inserted} de ${processedRows.length}`);
+            await new Promise(r => setTimeout(r, 100));
+          }
+        } else {
+          // Para otras colecciones: crear nuevos (ya se limpió la base)
+          const insertChunks = [];
+          for (let i = 0; i < processedRows.length; i += 300) {
+            insertChunks.push(processedRows.slice(i, i + 300));
+          }
+          
+          for (const chunk of insertChunks) {
             const batch = writeBatch(db);
             chunk.forEach(data => { 
               const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection)); 
@@ -1474,10 +1667,14 @@ Tu servicio de *Izzi* está listo para instalarse.
             setProgress(`Subiendo: ${inserted} de ${processedRows.length}...`);
             console.log(`Subidos ${inserted} de ${processedRows.length}`);
             await new Promise(r => setTimeout(r, 100));
+          }
         }
         
         console.log("Carga completada!");
-        alert(`¡Listo! Se cargaron ${processedRows.length} registros en ${collectionLabel}.`); 
+        const successMsg = isOperacionDia
+          ? `¡Listo! Se procesaron ${processedRows.length} registros:\n${updated} actualizados\n${created} nuevos\n\nLos registros existentes se actualizaron sin duplicarse.`
+          : `¡Listo! Se cargaron ${processedRows.length} registros en ${collectionLabel}.`;
+        alert(successMsg); 
         setUploadStep(1); 
         if (isOperacionDia) {
           setActiveTab('operacion');
@@ -1494,7 +1691,7 @@ Tu servicio de *Izzi* está listo para instalarse.
   };
 
   // Campos disponibles para mapeo
-  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Region', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FechaPerdida', 'Estatus', 'Direccion', 'Fecha solicitada', 'Creado', 'Nº de cuenta', 'Compañía', 'Estado', 'Nº de orden', 'Clave Vendedor', 'Hub', 'Teléfonos'];
+  const FIELDS = ['Ignorar', 'Cliente', 'Vendedor', 'Cuenta', 'Plaza', 'Region', 'Telefono', 'Saldo', 'SaldoPorVencer', 'SaldoVencido', 'FechaInstalacion', 'FechaVencimiento', 'FLP', 'FechaPerdida', 'Estatus', 'Direccion', 'Fecha solicitada', 'Creado', 'Nº de cuenta', 'Compañía', 'Estado', 'Nº de orden', 'Clave Vendedor', 'Hub', 'Teléfonos'];
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
@@ -1590,6 +1787,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                     {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
                     {c.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {c.Region}</div>}
                     {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
+                    {c.FLP && <div className="flex items-center gap-1 text-purple-600 font-bold"><Calendar size={12}/> FLP: Día {c.FLP}</div>}
                     {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
                   </div>
 
@@ -2189,11 +2387,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                 
                 {/* Filtros */}
                 <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-200">
-                  <div className="flex flex-col md:flex-row gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     <select 
                       value={filterReportVendor} 
                       onChange={e=>setFilterReportVendor(e.target.value)}
-                      className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
+                      className="p-3 rounded-lg border border-slate-200 text-sm"
                     >
                       <option value="">Todos los vendedores</option>
                       {vendors.map(v => <option key={v} value={v}>{v}</option>)}
@@ -2201,16 +2399,35 @@ Tu servicio de *Izzi* está listo para instalarse.
                     <select 
                       value={filterReportPlaza} 
                       onChange={e=>setFilterReportPlaza(e.target.value)}
-                      className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
+                      className="p-3 rounded-lg border border-slate-200 text-sm"
                     >
                       <option value="">Todas las plazas</option>
                       {reportPlazas.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
+                    <select 
+                      value={filterReportPeriod} 
+                      onChange={e=>setFilterReportPeriod(e.target.value)}
+                      className="p-3 rounded-lg border border-slate-200 text-sm"
+                    >
+                      <option value="all">Todos los períodos</option>
+                      <option value="day">Por día</option>
+                      <option value="week">Por semana</option>
+                      <option value="month">Por mes</option>
+                    </select>
+                    {filterReportPeriod !== 'all' && (
+                      <input 
+                        type="date" 
+                        value={filterReportDate} 
+                        onChange={e=>setFilterReportDate(e.target.value)}
+                        className="p-3 rounded-lg border border-slate-200 text-sm"
+                      />
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 mt-2">
                     Mostrando {filteredReports.length} de {reportsData.length} reportes
                     {filterReportVendor && ` • Vendedor: ${filterReportVendor}`}
                     {filterReportPlaza && ` • Plaza: ${filterReportPlaza}`}
+                    {filterReportPeriod !== 'all' && ` • Período: ${filterReportPeriod === 'day' ? 'Día' : filterReportPeriod === 'week' ? 'Semana' : 'Mes'} ${filterReportDate}`}
                   </p>
                 </div>
                 
@@ -2410,6 +2627,8 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [myReports, setMyReports] = useState([]);
   const [showReports, setShowReports] = useState(false);
   const [myAssignedOrders, setMyAssignedOrders] = useState([]);
+  const [filterMyReportPeriod, setFilterMyReportPeriod] = useState('all');
+  const [filterMyReportDate, setFilterMyReportDate] = useState(new Date().toISOString().split('T')[0]);
   const appId = 'sales-master-production';
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
   
@@ -2675,6 +2894,39 @@ RESPUESTA:`;
     return calcularSaldoTotal(c).toFixed(2);
   };
 
+  // Función auxiliar para obtener número de semana
+  const getWeekNumberVendor = (date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return {
+      week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7),
+      year: d.getUTCFullYear()
+    };
+  };
+
+  // Filtrar reportes del vendedor por fecha
+  const filteredMyReports = myReports.filter(r => {
+    if (filterMyReportPeriod === 'all') return true;
+    if (!r.createdAt) return false;
+    
+    const reportDate = typeof r.createdAt === 'string' ? new Date(r.createdAt) : (r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt));
+    const filterDate = new Date(filterMyReportDate);
+    
+    if (filterMyReportPeriod === 'day') {
+      return reportDate.toDateString() === filterDate.toDateString();
+    } else if (filterMyReportPeriod === 'week') {
+      const reportWeek = getWeekNumberVendor(reportDate);
+      const filterWeek = getWeekNumberVendor(filterDate);
+      return reportWeek.week === filterWeek.week && reportWeek.year === filterWeek.year;
+    } else if (filterMyReportPeriod === 'month') {
+      return reportDate.getMonth() === filterDate.getMonth() && 
+             reportDate.getFullYear() === filterDate.getFullYear();
+    }
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 pb-20 font-sans">
        <nav className="flex flex-col gap-4 mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
@@ -2771,6 +3023,35 @@ RESPUESTA:`;
             </div>
           ) : (
             <>
+              {/* Filtros de fecha */}
+              <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <select 
+                    value={filterMyReportPeriod} 
+                    onChange={e=>setFilterMyReportPeriod(e.target.value)}
+                    className="p-2 rounded-lg border border-slate-200 text-sm flex-1"
+                  >
+                    <option value="all">Todos los períodos</option>
+                    <option value="day">Por día</option>
+                    <option value="week">Por semana</option>
+                    <option value="month">Por mes</option>
+                  </select>
+                  {filterMyReportPeriod !== 'all' && (
+                    <input 
+                      type="date" 
+                      value={filterMyReportDate} 
+                      onChange={e=>setFilterMyReportDate(e.target.value)}
+                      className="p-2 rounded-lg border border-slate-200 text-sm"
+                    />
+                  )}
+                </div>
+              </div>
+              
+              <p className="text-xs text-slate-500 mb-3">
+                Mostrando {filteredMyReports.length} de {myReports.length} reportes
+                {filterMyReportPeriod !== 'all' && ` • ${filterMyReportPeriod === 'day' ? 'Día' : filterMyReportPeriod === 'week' ? 'Semana' : 'Mes'}`}
+              </p>
+              
               <div className="overflow-x-auto mb-4">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 font-bold text-xs uppercase text-slate-500">
@@ -2784,7 +3065,7 @@ RESPUESTA:`;
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {myReports.map((r) => (
+                    {filteredMyReports.map((r) => (
                       <tr key={r.id}>
                         <td className="p-3 text-xs text-slate-400">{r.createdAt}</td>
                         <td className="p-3">{r.client}</td>
@@ -2810,10 +3091,10 @@ RESPUESTA:`;
                 </table>
               </div>
               <button 
-                onClick={() => exportReportsToExcel(myReports)} 
+                onClick={() => exportReportsToExcel(filteredMyReports)} 
                 className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-green-700 w-full justify-center"
               >
-                <Download size={16}/> Exportar Mis Reportes a Excel
+                <Download size={16}/> Exportar Reportes Filtrados a Excel
               </button>
             </>
           )}
@@ -3035,6 +3316,7 @@ RESPUESTA:`;
                  {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
                  {c.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {c.Region}</div>}
                  {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
+                 {c.FLP && <div className="flex items-center gap-1 text-purple-600 font-bold"><Calendar size={12}/> FLP: Día {c.FLP}</div>}
                  {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
                </div>
 
