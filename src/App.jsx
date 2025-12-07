@@ -1197,8 +1197,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       msg = msg + '\n\n' + imageToUse;
     }
     
-    // Construir URL de WhatsApp con el mensaje (asegurar que no haya espacios)
-    const whatsappUrl = `https://wa.me/${ph.trim()}?text=${encodeURIComponent(msg)}`;
+    // Construir URL de WhatsApp con el mensaje (usar api.whatsapp.com para mejor compatibilidad móvil)
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${ph.trim()}&text=${encodeURIComponent(msg)}`;
     
     console.log('Enviando WhatsApp:', { 
       phoneRaw, 
@@ -1207,8 +1207,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       whatsappUrl: whatsappUrl.substring(0, 150) 
     });
     
-    // Abrir WhatsApp
-    window.open(whatsappUrl, '_blank');
+    // Abrir WhatsApp (en móviles abre la app directamente)
+    window.location.href = whatsappUrl;
   };
 
   const saveConfig = () => {
@@ -1304,12 +1304,12 @@ Tu servicio de *Izzi* está listo para instalarse.
     
     console.log('Teléfono final:', ph, 'Longitud:', ph.length);
     
-    // Construir URL de WhatsApp con el mensaje
-    const whatsappUrl = `https://wa.me/${ph.trim()}?text=${encodeURIComponent(msg)}`;
+    // Construir URL de WhatsApp con el mensaje (usar api.whatsapp.com para mejor compatibilidad móvil)
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${ph.trim()}&text=${encodeURIComponent(msg)}`;
     console.log('URL WhatsApp:', whatsappUrl.substring(0, 150));
     
-    // Abrir WhatsApp
-    window.open(whatsappUrl, '_blank');
+    // Abrir WhatsApp (en móviles abre la app directamente)
+    window.location.href = whatsappUrl;
   };
 
   // Función para asignar vendedor a una orden
@@ -3370,13 +3370,13 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       return;
     }
     
-    // Construir URL de WhatsApp con el mensaje
-    const whatsappUrl = `https://wa.me/${ph.trim()}?text=${encodeURIComponent(msg)}`;
+    // Construir URL de WhatsApp con el mensaje (usar api.whatsapp.com para mejor compatibilidad móvil)
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${ph.trim()}&text=${encodeURIComponent(msg)}`;
     
     console.log('Enviando WhatsApp (Vendor):', { phoneRaw, ph, longitud: ph.length });
     
-    // Abrir WhatsApp
-    window.open(whatsappUrl, '_blank');
+    // Abrir WhatsApp (en móviles abre la app directamente)
+    window.location.href = whatsappUrl;
   };
 
   const handleChatSubmit = async (e) => {
@@ -3798,7 +3798,7 @@ RESPUESTA:`;
                          }
                          
                          console.log('Enviando WhatsApp:', { phoneRaw, ph, orden });
-                         window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+                         window.location.href = `https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`;
                        } catch (error) {
                          console.error('Error al enviar WhatsApp:', error);
                          alert('Error al enviar WhatsApp');
