@@ -53,7 +53,8 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID
 };
 
-const geminiApiKey = env.VITE_GEMINI_API_KEY;
+// API Key de Gemini - puedes ponerla directamente aquí o usar variable de entorno
+const geminiApiKey = env.VITE_GEMINI_API_KEY || 'AIzaSyAZDsPBqR6geJAYIla42y0hnJCM7Ztix2E';
 
 // --- INICIALIZACIÓN ---
 let app, auth, db, storage;
