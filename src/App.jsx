@@ -53,8 +53,9 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID
 };
 
-// API Key de Gemini - puedes ponerla directamente aquí o usar variable de entorno
-const geminiApiKey = env.VITE_GEMINI_API_KEY || 'AIzaSyAZDsPBqR6geJAYIla42y0hnJCM7Ztix2E';
+// API Key de Gemini - valor hardcodeado
+const geminiApiKey = 'AIzaSyAZDsPBqR6geJAYIla42y0hnJCM7Ztix2E';
+console.log('Gemini API Key configurada:', geminiApiKey ? 'Sí' : 'No', geminiApiKey?.substring(0, 15) + '...');
 
 // --- INICIALIZACIÓN ---
 let app, auth, db, storage;
@@ -73,7 +74,10 @@ try {
 
 // --- FUNCIONES AUXILIARES ---
 async function callGemini(prompt, pdfUrls = []) {
-  if (!geminiApiKey) return "Falta API Key de IA";
+  console.log('Gemini API Key:', geminiApiKey ? 'Presente' : 'Falta', geminiApiKey?.substring(0, 10) + '...');
+  if (!geminiApiKey || geminiApiKey === 'TU_API_KEY_AQUI' || geminiApiKey.trim() === '') {
+    return "Falta API Key de IA. Por favor configura VITE_GEMINI_API_KEY en las variables de entorno o en el código.";
+  }
   try {
     // Construir el prompt mejorado
     let enhancedPrompt = prompt;
