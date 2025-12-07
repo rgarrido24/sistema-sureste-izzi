@@ -700,7 +700,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [activeTab, setActiveTab] = useState('clients');
   const [dbCount, setDbCount] = useState(0);
   const [previewData, setPreviewData] = useState([]);
-  const [reportsData, setReportsData] = useState([]); 
+  const [reportsData, setReportsData] = useState([]);
+  const [allReportsData, setAllReportsData] = useState([]); // Reportes + órdenes completadas 
   const [packages, setPackages] = useState([]);
   const [newPackage, setNewPackage] = useState({ clave: '', name: '', price: '' });
   const [promociones, setPromociones] = useState([]);
@@ -814,12 +815,55 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       setRegionsOperacion(uniqueRegions.sort());
     });
 
-    // Cargar usuarios
-    const qUsers = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'));
-    const unsubUsers = onSnapshot(qUsers, (snap) => {
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    // Combinar reportes con órdenes completadas cuando cambien los datos
+    return () => {
+      unsubMain();
+      unsubRep();
+      unsubOperacion();
+      unsubUsers();
+      unsubPackages();
+      unsubPromociones();
+      unsubPDFs();
+    };
+  }, [collectionName, appId]);
 
+  // useEffect para combinar reportes con órdenes completadas
+  useEffect(() => {
+    // Filtrar órdenes de operación del día que están asignadas y completadas
+    const operacionCompletadas = operacionData
+      .filter(o => o.VendedorAsignado && (o.Estado === 'Instalado' || o.Estado === 'Completo'))
+      .map(o => ({
+        id: `operacion_${o.id}`,
+        cuenta: o['Nº de cuenta'] || o.Cuenta || '',
+        orden: o['Nº de orden'] || o.Orden || '',
+        client: o.Compañía || o.Compania || o.Cliente || '',
+        telefono: o.Teléfonos || o.Telefonos || o.Telefono || '',
+        vendor: o.VendedorAsignado || '',
+        plaza: o.Hub || o.Region || o.Plaza || '',
+        estado: o.Estado || 'Instalado',
+        package: o['Servicios Contratados'] || o.Paquete || '',
+        fechaInstalacion: o['Fecha solicitada'] || o.FechaInstalacion || '',
+        createdAt: o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString() : (o.updatedAt?.toDate ? o.updatedAt.toDate().toLocaleString() : new Date().toLocaleString()),
+        esOperacion: true
+      }));
+    
+    // Combinar reportes con órdenes completadas
+    const allReports = [...reportsData, ...operacionCompletadas];
+    setAllReportsData(allReports);
+    
+    // Actualizar plazas y vendedores únicos
+    const uniquePlazas = [...new Set(allReports.map(r => r.plaza).filter(p => p))];
+    setReportPlazas(uniquePlazas.sort());
+    const uniqueVendorsReports = [...new Set(allReports.map(r => r.vendor).filter(v => v))];
+    if (uniqueVendorsReports.length > 0) {
+      setVendors(prev => [...new Set([...prev, ...uniqueVendorsReports])].sort());
+    }
+  }, [reportsData, operacionData]);
+
+  // useEffect para Admin: cargar plantillas y usuarios
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    
     // Cargar plantilla global de cobranza
     const loadGlobalTemplate = async () => {
       const template = await getGlobalTemplate();
@@ -878,8 +922,6 @@ Tu servicio de *Izzi* está listo para instalarse.
     
     loadGlobalTemplate();
     loadInstallTemplate();
-
-    return () => { unsubPack(); unsubPromociones(); unsubPDFs(); unsubRep(); unsubMain(); unsubUsers(); unsubOperacion(); };
   }, [user, currentModule]);
 
   const addPackage = async () => {
@@ -1192,7 +1234,7 @@ Tu servicio de *Izzi* está listo para instalarse.
   });
   
   // Filtrar reportes con filtros de fecha
-  const filteredReports = reportsData.filter(r => {
+  const filteredReports = allReportsData.filter(r => {
     const matchesVendor = filterReportVendor === '' || r.vendor === filterReportVendor;
     const matchesPlaza = filterReportPlaza === '' || r.plaza === filterReportPlaza;
     
@@ -2285,6 +2327,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                         <Phone size={12}/> {o.Teléfonos || o.Telefonos || o.Telefono}
                       </div>
                     )}
+                    {(o['Fecha solicitada'] || o.FechaInstalacion) && (
+                      <div className="flex items-center gap-1 text-purple-600 font-bold col-span-2">
+                        <Calendar size={12}/> Ciclo de Facturación (FLP): {calcularFLP(o['Fecha solicitada'] || o.FechaInstalacion)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Vendedor asignado */}
@@ -2625,6 +2672,7 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [myReports, setMyReports] = useState([]);
+  const [allMyReports, setAllMyReports] = useState([]); // Reportes + órdenes completadas
   const [showReports, setShowReports] = useState(false);
   const [myAssignedOrders, setMyAssignedOrders] = useState([]);
   const [filterMyReportPeriod, setFilterMyReportPeriod] = useState('all');
@@ -2742,6 +2790,31 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubAssigned();
     };
   }, [user, myName, currentModule]);
+
+  // Combinar reportes del vendedor con órdenes completadas
+  useEffect(() => {
+    // Filtrar órdenes asignadas que están completadas
+    const operacionCompletadas = myAssignedOrders
+      .filter(o => o.VendedorAsignado && (o.Estado === 'Instalado' || o.Estado === 'Completo'))
+      .map(o => ({
+        id: `operacion_${o.id}`,
+        cuenta: o['Nº de cuenta'] || o.Cuenta || '',
+        orden: o['Nº de orden'] || o.Orden || '',
+        client: o.Compañía || o.Compania || o.Cliente || '',
+        telefono: o.Teléfonos || o.Telefonos || o.Telefono || '',
+        vendor: o.VendedorAsignado || '',
+        plaza: o.Hub || o.Region || o.Plaza || '',
+        estado: o.Estado || 'Instalado',
+        package: o['Servicios Contratados'] || o.Paquete || '',
+        fechaInstalacion: o['Fecha solicitada'] || o.FechaInstalacion || '',
+        createdAt: o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString() : (o.updatedAt?.toDate ? o.updatedAt.toDate().toLocaleString() : new Date().toLocaleString()),
+        esOperacion: true
+      }));
+    
+    // Combinar reportes con órdenes completadas
+    const allReports = [...myReports, ...operacionCompletadas];
+    setAllMyReports(allReports);
+  }, [myReports, myAssignedOrders]);
 
   const saveConfig = () => {
     localStorage.setItem('salesTemplate', salesTemplate);
@@ -2907,7 +2980,7 @@ RESPUESTA:`;
   };
 
   // Filtrar reportes del vendedor por fecha
-  const filteredMyReports = myReports.filter(r => {
+  const filteredMyReports = allMyReports.filter(r => {
     if (filterMyReportPeriod === 'all') return true;
     if (!r.createdAt) return false;
     
@@ -3048,7 +3121,7 @@ RESPUESTA:`;
               </div>
               
               <p className="text-xs text-slate-500 mb-3">
-                Mostrando {filteredMyReports.length} de {myReports.length} reportes
+                Mostrando {filteredMyReports.length} de {allMyReports.length} reportes
                 {filterMyReportPeriod !== 'all' && ` • ${filterMyReportPeriod === 'day' ? 'Día' : filterMyReportPeriod === 'week' ? 'Semana' : 'Mes'}`}
               </p>
               
