@@ -92,54 +92,63 @@ async function callGemini(prompt, pdfUrls = []) {
       enhancedPrompt += `\nIMPORTANTE: Estos PDFs contienen información actualizada sobre promociones, servicios, paquetes y políticas de Izzi. Lee y analiza el contenido completo de estos documentos para responder las preguntas. Si la información está en los PDFs, úsala como fuente principal. Si no encuentras la información en los PDFs, usa la información de paquetes y promociones que se te proporcionó anteriormente.`;
     }
     
-    // Intentar con el modelo que soporta mejor archivos
-    const model = 'gemini-2.0-flash-exp';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+    // Usar modelo disponible en free tier
+    const models = [
+      'gemini-1.5-flash',  // Modelo más común en free tier
+      'gemini-1.5-pro',    // Alternativa
+      'gemini-pro'         // Modelo básico
+    ];
     
-    const response = await fetch(url, { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ 
-        contents: [{ 
-          parts: [{ text: enhancedPrompt }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        }
-      }) 
-    });
+    let lastError = null;
     
-    const data = await response.json();
-    
-    if (data.error) {
-      console.error('Error Gemini API:', data.error);
-      // Si falla, intentar con modelo estándar
-      if (data.error.message?.includes('model') || data.error.message?.includes('not found')) {
-        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
-        const fallbackResponse = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: enhancedPrompt }] }],
+    // Intentar con cada modelo hasta que uno funcione
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+        
+        const response = await fetch(url, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ 
+            contents: [{ 
+              parts: [{ text: enhancedPrompt }]
+            }],
             generationConfig: {
               temperature: 0.7,
               topK: 40,
               topP: 0.95,
               maxOutputTokens: 2048,
             }
-          })
+          }) 
         });
-        const fallbackData = await fallbackResponse.json();
-        if (fallbackData.error) {
-          return "Error: " + (fallbackData.error.message || "Error al procesar la solicitud");
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          lastError = data.error;
+          // Si es error de cuota, continuar con el siguiente modelo
+          if (data.error.message?.includes('quota') || data.error.message?.includes('Quota exceeded')) {
+            console.log(`Modelo ${model} sin cuota, intentando siguiente...`);
+            continue;
+          }
+          // Si es otro error, devolverlo
+          return "Error: " + (data.error.message || "Error al procesar la solicitud");
         }
-        return fallbackData.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA: No se recibió respuesta";
+        
+        // Si llegamos aquí, el modelo funcionó
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA: No se recibió respuesta";
+      } catch (error) {
+        lastError = error;
+        continue;
       }
-      return "Error: " + (data.error.message || "Error al procesar la solicitud");
     }
+    
+    // Si todos los modelos fallaron
+    if (lastError?.message?.includes('quota') || lastError?.message?.includes('Quota exceeded')) {
+      return "⚠️ Cuota de API excedida. Por favor:\n1. Ve a https://aistudio.google.com/apikey\n2. Verifica tu plan y facturación\n3. O espera unos minutos y vuelve a intentar";
+    }
+    
+    return "Error: " + (lastError?.message || "No se pudo conectar con ningún modelo de Gemini");
     
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA: No se recibió respuesta";
   } catch (error) { 
@@ -2301,6 +2310,7 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [myReports, setMyReports] = useState([]);
   const [showReports, setShowReports] = useState(false);
+  const [myAssignedOrders, setMyAssignedOrders] = useState([]);
   const appId = 'sales-master-production';
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
   
@@ -2384,6 +2394,22 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       })));
     });
     
+    // Cargar órdenes asignadas desde Operación del Día
+    const qAssignedOrders = query(
+      collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia')
+    );
+    const unsubAssigned = onSnapshot(qAssignedOrders, (snap) => {
+      const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Filtrar por vendedor asignado (comparar en minúsculas)
+      const assigned = allOrders.filter(o => {
+        const vendedorAsignado = (o.VendedorAsignado || '').toLowerCase();
+        const normalizedVendedor = (o.normalized_vendedor || '').toLowerCase();
+        const myNameLower = myName.toLowerCase();
+        return vendedorAsignado === myNameLower || normalizedVendedor === myNameLower;
+      });
+      setMyAssignedOrders(assigned);
+    });
+    
     const unsubMain = onSnapshot(q, (snap) => {
       const all = snap.docs.map(doc => doc.data());
       const mine = all.filter(i => i['normalized_resp']?.includes(myName.toLowerCase()));
@@ -2395,6 +2421,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubReports();
       unsubPromociones();
       unsubPDFs();
+      unsubAssigned();
     };
   }, [user, myName, currentModule]);
 
@@ -2729,7 +2756,12 @@ RESPUESTA:`;
                       <input className="p-3 border rounded-lg text-sm" placeholder="REFERENCIA" value={reportForm.referencia} onChange={e=>setReportForm({...reportForm, referencia: e.target.value})}/>
                       <input className="p-3 border rounded-lg text-sm" placeholder="MENSUAL" value={reportForm.mensual} onChange={e=>setReportForm({...reportForm, mensual: e.target.value})}/>
                       <input className="p-3 border rounded-lg text-sm" placeholder="RGU" value={reportForm.rgu} onChange={e=>setReportForm({...reportForm, rgu: e.target.value})}/>
-                      <input className="p-3 border rounded-lg text-sm col-span-2" placeholder="SERVICIOS CONTRATADOS" value={reportForm.serviciosContratados} onChange={e=>setReportForm({...reportForm, serviciosContratados: e.target.value})}/>
+                      <select className="p-3 border rounded-lg text-sm col-span-2" value={reportForm.serviciosContratados} onChange={e=>setReportForm({...reportForm, serviciosContratados: e.target.value})}>
+                        <option value="">SERVICIOS CONTRATADOS (Selecciona del catálogo)</option>
+                        {packages.map(p => (
+                          <option key={p.id} value={p.name}>{p.name} - ${p.price}</option>
+                        ))}
+                      </select>
                       <input className="p-3 border rounded-lg text-sm" placeholder="MOVIL" value={reportForm.movil} onChange={e=>setReportForm({...reportForm, movil: e.target.value})}/>
                       <input className="p-3 border rounded-lg text-sm" placeholder="TIPO DE VENTA" value={reportForm.tipoVenta} onChange={e=>setReportForm({...reportForm, tipoVenta: e.target.value})}/>
                       <select className="p-3 border rounded-lg text-sm" value={reportForm.estatus} onChange={e=>setReportForm({...reportForm, estatus: e.target.value})}>
@@ -2762,6 +2794,92 @@ RESPUESTA:`;
               </div>
           </div>
       )}
+
+       {/* Órdenes Asignadas desde Operación del Día */}
+       {myAssignedOrders.length > 0 && (
+         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
+           <h3 className="font-bold text-indigo-800 mb-3 flex items-center gap-2">
+             <PlayCircle size={18}/> Órdenes Asignadas ({myAssignedOrders.length})
+           </h3>
+           <div className="grid gap-2">
+             {myAssignedOrders.slice(0, 5).map((orden) => (
+               <div key={orden.id} className="bg-white p-3 rounded-lg border border-indigo-100">
+                 <div className="flex justify-between items-start mb-2">
+                   <div className="flex-1">
+                     <h4 className="font-bold text-sm text-slate-800">{orden.Compañía || orden.Compania || 'Sin nombre'}</h4>
+                     <div className="text-xs text-slate-500 mt-1">
+                       {orden['Nº de orden'] && <span>Orden: {orden['Nº de orden']}</span>}
+                       {orden['Nº de cuenta'] && <span className="ml-2">Cuenta: {orden['Nº de cuenta']}</span>}
+                     </div>
+                   </div>
+                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                     orden.Estado === 'Instalado' ? 'bg-green-100 text-green-700' :
+                     orden.Estado === 'Not Done' ? 'bg-red-100 text-red-700' :
+                     'bg-blue-100 text-blue-700'
+                   }`}>
+                     {orden.Estado || 'Abierta'}
+                   </span>
+                 </div>
+                 <div className="flex gap-2 mt-2">
+                   <button 
+                     onClick={async () => {
+                       try {
+                         const installData = await getInstallTemplate();
+                         let template = installData.template || '';
+                         const imageLink = installData.imageLink || '';
+                         
+                         let msg = template
+                           .replace(/{Cliente}/g, orden.Compañía || orden.Compania || 'Cliente')
+                           .replace(/{Cuenta}/g, orden['Nº de cuenta'] || 'N/A')
+                           .replace(/{Plaza}/g, orden.Hub || orden.Region || 'N/A')
+                           .replace(/{Region}/g, orden.Region || orden.Hub || 'N/A')
+                           .replace(/{Vendedor}/g, orden.VendedorAsignado || myName || 'N/A')
+                           .replace(/{Orden}/g, orden['Nº de orden'] || 'N/A')
+                           .replace(/{Estado}/g, orden.Estado || 'N/A')
+                           .replace(/{Fecha}/g, orden['Fecha solicitada'] || orden.Creado || 'N/A')
+                           .replace(/{Imagen}/g, imageLink || '');
+                         
+                         if (imageLink) {
+                           msg = msg + '\n\n📸 *Instrucciones:*\n' + imageLink;
+                         }
+                         
+                         let ph = String(orden.Teléfonos || orden.Telefonos || '').replace(/\D/g,'');
+                         if (ph && ph.length === 10 && !ph.startsWith('52')) {
+                           ph = '52' + ph;
+                         }
+                         
+                         if (!ph || ph.length < 10) {
+                           alert('El teléfono no es válido');
+                           return;
+                         }
+                         
+                         window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+                       } catch (error) {
+                         console.error('Error al enviar WhatsApp:', error);
+                         alert('Error al enviar WhatsApp');
+                       }
+                     }}
+                     className="flex-1 bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1"
+                   >
+                     <MessageSquare size={12}/> WhatsApp
+                   </button>
+                   <a 
+                     href={`tel:${orden.Teléfonos || orden.Telefonos || ''}`}
+                     className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1 border border-slate-200"
+                   >
+                     <Phone size={12}/> Llamar
+                   </a>
+                 </div>
+               </div>
+             ))}
+             {myAssignedOrders.length > 5 && (
+               <p className="text-xs text-indigo-600 text-center mt-2">
+                 Y {myAssignedOrders.length - 5} orden(es) más...
+               </p>
+             )}
+           </div>
+         </div>
+       )}
 
        {/* Buscador */}
        <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="🔍 Buscar cliente, cuenta, teléfono..." className="w-full p-3 rounded-xl border border-slate-200 mb-4 shadow-sm"/>
