@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc, getDoc, setDoc, where } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -55,7 +56,7 @@ const firebaseConfig = {
 const geminiApiKey = env.VITE_GEMINI_API_KEY;
 
 // --- INICIALIZACIÓN ---
-let app, auth, db;
+let app, auth, db, storage;
 let initError = null;
 
 try {
@@ -63,22 +64,83 @@ try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+    storage = getStorage(app);
   }
 } catch (e) {
   initError = e;
 }
 
 // --- FUNCIONES AUXILIARES ---
-async function callGemini(prompt) {
+async function callGemini(prompt, pdfUrls = []) {
   if (!geminiApiKey) return "Falta API Key de IA";
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
-    );
+    // Construir el prompt mejorado
+    let enhancedPrompt = prompt;
+    
+    // Si hay PDFs, intentar usar la File API de Gemini primero
+    // Si no funciona, incluir las URLs en el prompt
+    if (pdfUrls && pdfUrls.length > 0) {
+      enhancedPrompt += `\n\n📄 DOCUMENTOS PDF DISPONIBLES (${pdfUrls.length} documento(s)):\n`;
+      pdfUrls.forEach((url, idx) => {
+        enhancedPrompt += `- Documento ${idx + 1}: ${url}\n`;
+      });
+      enhancedPrompt += `\nIMPORTANTE: Estos PDFs contienen información actualizada sobre promociones, servicios, paquetes y políticas de Izzi. Lee y analiza el contenido completo de estos documentos para responder las preguntas. Si la información está en los PDFs, úsala como fuente principal. Si no encuentras la información en los PDFs, usa la información de paquetes y promociones que se te proporcionó anteriormente.`;
+    }
+    
+    // Intentar con el modelo que soporta mejor archivos
+    const model = 'gemini-2.0-flash-exp';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+    
+    const response = await fetch(url, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ 
+        contents: [{ 
+          parts: [{ text: enhancedPrompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+        }
+      }) 
+    });
+    
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA";
-  } catch (error) { return "Error conexión IA"; }
+    
+    if (data.error) {
+      console.error('Error Gemini API:', data.error);
+      // Si falla, intentar con modelo estándar
+      if (data.error.message?.includes('model') || data.error.message?.includes('not found')) {
+        const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+        const fallbackResponse = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: enhancedPrompt }] }],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 2048,
+            }
+          })
+        });
+        const fallbackData = await fallbackResponse.json();
+        if (fallbackData.error) {
+          return "Error: " + (fallbackData.error.message || "Error al procesar la solicitud");
+        }
+        return fallbackData.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA: No se recibió respuesta";
+      }
+      return "Error: " + (data.error.message || "Error al procesar la solicitud");
+    }
+    
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error IA: No se recibió respuesta";
+  } catch (error) { 
+    console.error('Error Gemini:', error);
+    return "Error conexión IA: " + error.message; 
+  }
 }
 
 // Hash simple de contraseña (básico pero funcional)
@@ -563,6 +625,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [newPackage, setNewPackage] = useState({ name: '', price: '' });
   const [promociones, setPromociones] = useState([]);
   const [newPromocion, setNewPromocion] = useState({ titulo: '', descripcion: '', categoria: 'promocion', activa: true });
+  const [knowledgePDFs, setKnowledgePDFs] = useState([]);
+  const [uploadingPDF, setUploadingPDF] = useState(false);
   const [uploadStep, setUploadStep] = useState(1);
   
   // Estados para gestión de usuarios
@@ -622,6 +686,12 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     if (!user) return;
     const qPack = query(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'));
     const unsubPack = onSnapshot(qPack, (snap) => setPackages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+    const qPromociones = query(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_promociones'), orderBy('createdAt', 'desc'));
+    const unsubPromociones = onSnapshot(qPromociones, (snap) => setPromociones(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
+    const qPDFs = query(collection(db, 'artifacts', appId, 'public', 'data', 'knowledge_pdfs'), orderBy('createdAt', 'desc'));
+    const unsubPDFs = onSnapshot(qPDFs, (snap) => setKnowledgePDFs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 
     const qRep = query(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), orderBy('createdAt', 'desc'));
     const unsubRep = onSnapshot(qRep, (snap) => {
@@ -727,7 +797,7 @@ Tu servicio de *Izzi* está listo para instalarse.
     loadGlobalTemplate();
     loadInstallTemplate();
 
-    return () => { unsubPack(); unsubRep(); unsubMain(); unsubUsers(); unsubOperacion(); };
+    return () => { unsubPack(); unsubPromociones(); unsubPDFs(); unsubRep(); unsubMain(); unsubUsers(); unsubOperacion(); };
   }, [user, currentModule]);
 
   const addPackage = async () => {
@@ -737,6 +807,89 @@ Tu servicio de *Izzi* está listo para instalarse.
   };
 
   const deletePackage = async (id) => await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'izzi_packages', id));
+
+  const addPromocion = async () => {
+    if (!newPromocion.titulo || !newPromocion.descripcion) {
+      alert('Título y descripción son obligatorios');
+      return;
+    }
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_promociones'), {
+      ...newPromocion,
+      createdAt: serverTimestamp()
+    });
+    setNewPromocion({ titulo: '', descripcion: '', categoria: 'promocion', activa: true });
+  };
+
+  const deletePromocion = async (id) => {
+    if (confirm('¿Eliminar esta promoción/servicio?')) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'izzi_promociones', id));
+    }
+  };
+
+  // Función para subir PDF de conocimiento
+  const uploadKnowledgePDF = async (file) => {
+    if (!file || file.type !== 'application/pdf') {
+      alert('Solo se permiten archivos PDF');
+      return;
+    }
+    
+    // Validar tamaño (máximo 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      alert('El archivo es muy grande. Máximo 20MB');
+      return;
+    }
+    
+    setUploadingPDF(true);
+    try {
+      // Limpiar nombre del archivo (quitar caracteres especiales)
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${cleanName}`;
+      
+      // Subir a Firebase Storage
+      const storageRef = ref(storage, `knowledge_pdfs/${fileName}`);
+      console.log('Subiendo PDF:', file.name, 'Tamaño:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+      
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      console.log('PDF subido. URL:', downloadURL);
+      
+      // Guardar referencia en Firestore
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'knowledge_pdfs'), {
+        nombre: file.name,
+        url: downloadURL,
+        tamaño: file.size,
+        createdAt: serverTimestamp()
+      });
+      
+      alert(`✅ PDF "${file.name}" subido correctamente.\n\nGemini podrá usar este documento en las próximas consultas del chat.`);
+    } catch (error) {
+      console.error('Error al subir PDF:', error);
+      alert('Error al subir el PDF: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setUploadingPDF(false);
+    }
+  };
+
+  // Función para eliminar PDF
+  const deleteKnowledgePDF = async (pdf) => {
+    if (!confirm('¿Eliminar este PDF de la base de conocimiento?')) return;
+    
+    try {
+      // Eliminar de Storage
+      const storageRef = ref(storage, pdf.url);
+      await deleteObject(storageRef);
+      
+      // Eliminar de Firestore
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'knowledge_pdfs', pdf.id));
+      
+      alert('PDF eliminado correctamente');
+    } catch (error) {
+      console.error('Error al eliminar PDF:', error);
+      alert('Error al eliminar el PDF: ' + error.message);
+    }
+  };
 
   // Función para enviar WhatsApp desde Admin
   const sendTemplate = (cliente) => {
@@ -1619,6 +1772,146 @@ Tu servicio de *Izzi* está listo para instalarse.
             </div>
         )}
 
+        {activeTab === 'promociones' && (
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 animate-in fade-in">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Sparkles size={20} className="text-pink-500"/> Base de Conocimiento - Promociones y Servicios</h3>
+                <p className="text-xs text-slate-500 mb-4">Esta información será usada por el asistente AI para responder preguntas de los vendedores.</p>
+                
+                {/* Sección de PDFs de Conocimiento */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                    <h4 className="font-bold text-sm mb-3 text-blue-800 flex items-center gap-2">
+                        <FileText size={18}/> Documentos PDF de Conocimiento
+                    </h4>
+                    <p className="text-xs text-blue-700 mb-3">
+                        Sube PDFs con información de promociones, servicios y paquetes. Gemini los leerá automáticamente.
+                    </p>
+                    
+                    <div className="mb-4">
+                        <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold inline-flex items-center gap-2">
+                            <UploadCloud size={16}/> {uploadingPDF ? 'Subiendo...' : 'Subir PDF'}
+                            <input 
+                                type="file" 
+                                accept=".pdf" 
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadKnowledgePDF(file);
+                                    e.target.value = ''; // Reset input
+                                }} 
+                                className="hidden" 
+                                disabled={uploadingPDF}
+                            />
+                        </label>
+                    </div>
+                    
+                    {knowledgePDFs.length > 0 && (
+                        <div className="space-y-2 mt-4">
+                            {knowledgePDFs.map((pdf) => (
+                                <div key={pdf.id} className="flex justify-between items-center p-3 bg-white border border-blue-200 rounded-lg">
+                                    <div className="flex items-center gap-2 flex-1">
+                                        <FileText size={16} className="text-blue-600"/>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">{pdf.nombre}</p>
+                                            <p className="text-xs text-slate-500">
+                                                {(pdf.tamaño / 1024 / 1024).toFixed(2)} MB
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => deleteKnowledgePDF(pdf)} 
+                                        className="text-red-400 hover:text-red-600 ml-3"
+                                    >
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                
+                {/* Formulario para agregar promoción */}
+                <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 mb-6">
+                    <h4 className="font-bold text-sm mb-3 text-pink-800">Agregar Nueva Promoción/Servicio</h4>
+                    <div className="space-y-3">
+                        <input 
+                            className="w-full p-3 border rounded-lg text-sm" 
+                            placeholder="Título (ej: Promoción Verano 2024)" 
+                            value={newPromocion.titulo} 
+                            onChange={e=>setNewPromocion({...newPromocion, titulo: e.target.value})} 
+                        />
+                        <textarea 
+                            className="w-full p-3 border rounded-lg text-sm h-24" 
+                            placeholder="Descripción detallada de la promoción o servicio..." 
+                            value={newPromocion.descripcion} 
+                            onChange={e=>setNewPromocion({...newPromocion, descripcion: e.target.value})} 
+                        />
+                        <div className="flex gap-3">
+                            <select 
+                                className="flex-1 p-3 border rounded-lg text-sm" 
+                                value={newPromocion.categoria} 
+                                onChange={e=>setNewPromocion({...newPromocion, categoria: e.target.value})}
+                            >
+                                <option value="promocion">Promoción</option>
+                                <option value="servicio">Servicio</option>
+                                <option value="paquete">Paquete</option>
+                                <option value="beneficio">Beneficio</option>
+                            </select>
+                            <label className="flex items-center gap-2 p-3 border rounded-lg text-sm cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={newPromocion.activa} 
+                                    onChange={e=>setNewPromocion({...newPromocion, activa: e.target.checked})} 
+                                />
+                                Activa
+                            </label>
+                        </div>
+                        <button 
+                            onClick={addPromocion} 
+                            className="w-full bg-pink-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-pink-600"
+                        >
+                            + Agregar Promoción/Servicio
+                        </button>
+                    </div>
+                </div>
+
+                {/* Lista de promociones */}
+                <div className="space-y-3">
+                    <h4 className="font-bold text-sm text-slate-700 mb-3">Promociones y Servicios ({promociones.length})</h4>
+                    {promociones.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-xl">
+                            <Sparkles size={48} className="mx-auto mb-4 opacity-50"/>
+                            <p>No hay promociones aún.</p>
+                            <p className="text-xs mt-2">Agrega promociones y servicios para que el AI pueda responder preguntas.</p>
+                        </div>
+                    ) : (
+                        promociones.map(p => (
+                            <div key={p.id} className={`p-4 border rounded-xl ${p.activa ? 'bg-white border-pink-200' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <h5 className="font-bold text-slate-800 text-sm">{p.titulo}</h5>
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                                p.categoria === 'promocion' ? 'bg-pink-100 text-pink-700' :
+                                                p.categoria === 'servicio' ? 'bg-blue-100 text-blue-700' :
+                                                p.categoria === 'paquete' ? 'bg-orange-100 text-orange-700' :
+                                                'bg-green-100 text-green-700'
+                                            }`}>
+                                                {p.categoria}
+                                            </span>
+                                            {!p.activa && <span className="px-2 py-0.5 rounded text-xs bg-slate-200 text-slate-500">Inactiva</span>}
+                                        </div>
+                                        <p className="text-xs text-slate-600 whitespace-pre-wrap">{p.descripcion}</p>
+                                    </div>
+                                    <button onClick={()=>deletePromocion(p.id)} className="text-red-400 hover:text-red-600 ml-3">
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        )}
+
         {/* OPERACIÓN DEL DÍA */}
         {activeTab === 'operacion' && (
           <div className="space-y-4">
@@ -1995,6 +2288,8 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
     docs: false 
   });
   const [packages, setPackages] = useState([]);
+  const [promociones, setPromociones] = useState([]);
+  const [knowledgePDFs, setKnowledgePDFs] = useState([]);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatHistory, setChatHistory] = useState([{role: 'system', text: 'Hola, soy tu asistente Izzi. ¿En qué te ayudo?'}]);
   const [chatInput, setChatInput] = useState('');
@@ -2054,6 +2349,22 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     const qPack = query(collection(db, 'artifacts', appId, 'public', 'data', 'izzi_packages'));
     onSnapshot(qPack, (snap) => setPackages(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     
+    // Cargar promociones activas para el AI
+    const qPromociones = query(
+      collection(db, 'artifacts', appId, 'public', 'data', 'izzi_promociones'),
+      where('activa', '==', true),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubPromociones = onSnapshot(qPromociones, (snap) => {
+      setPromociones(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    
+    // Cargar PDFs de conocimiento para el AI
+    const qPDFs = query(collection(db, 'artifacts', appId, 'public', 'data', 'knowledge_pdfs'), orderBy('createdAt', 'desc'));
+    const unsubPDFs = onSnapshot(qPDFs, (snap) => {
+      setKnowledgePDFs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    
     // Cargar reportes del vendedor (solo los suyos)
     const qReports = query(
       collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'),
@@ -2077,6 +2388,8 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     return () => {
       unsubMain();
       unsubReports();
+      unsubPromociones();
+      unsubPDFs();
     };
   }, [user, myName, currentModule]);
 
@@ -2184,8 +2497,42 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   const handleChatSubmit = async (e) => {
     e.preventDefault(); if (!chatInput.trim()) return;
     const userMsg = chatInput; setChatHistory(prev => [...prev, {role: 'user', text: userMsg}]); setChatInput(''); setChatLoading(true);
+    
+    // Construir contexto con paquetes
     const packagesContext = packages.map(p => `- ${p.name}: $${p.price}`).join('\n');
-    const response = await callGemini(`Experto Izzi. Paquetes:\n${packagesContext}\nUsuario: ${userMsg}`);
+    
+    // Construir contexto con promociones y servicios activos
+    const promocionesContext = promociones
+      .filter(p => p.activa)
+      .map(p => `[${p.categoria.toUpperCase()}] ${p.titulo}: ${p.descripcion}`)
+      .join('\n\n');
+    
+    // Obtener URLs de PDFs
+    const pdfUrls = knowledgePDFs.map(pdf => pdf.url);
+    
+    // Prompt mejorado con toda la base de conocimiento
+    const prompt = `Eres un experto asistente de ventas de Izzi Sureste. Tu trabajo es ayudar a los vendedores con información sobre paquetes, promociones y servicios.
+
+PAQUETES DISPONIBLES:
+${packagesContext || 'No hay paquetes registrados aún.'}
+
+PROMOCIONES Y SERVICIOS ACTIVOS:
+${promocionesContext || 'No hay promociones activas en este momento.'}
+
+${pdfUrls.length > 0 ? `\n📄 DOCUMENTOS PDF DISPONIBLES (${pdfUrls.length} documento(s)):\nTienes acceso a documentos PDF con información detallada y actualizada sobre promociones, servicios, paquetes y políticas de Izzi. Estos documentos contienen la información más completa y actualizada. Úsalos como tu fuente principal de información.` : ''}
+
+INSTRUCCIONES:
+- Responde de forma clara, amigable y profesional
+- Si el usuario pregunta sobre algo que no está en la información proporcionada, di que no tienes esa información pero que puede consultar con su supervisor
+- Enfócate en ayudar al vendedor a cerrar ventas y resolver dudas de clientes
+- Usa emojis de forma moderada para hacer la conversación más amigable
+${pdfUrls.length > 0 ? '- PRIORIDAD: Si hay PDFs disponibles, úsalos como fuente principal. La información más completa y actualizada está en esos documentos.' : ''}
+
+PREGUNTA DEL VENDEDOR: ${userMsg}
+
+RESPUESTA:`;
+    
+    const response = await callGemini(prompt, pdfUrls);
     setChatHistory(prev => [...prev, {role: 'ai', text: response}]); setChatLoading(false);
   };
 
