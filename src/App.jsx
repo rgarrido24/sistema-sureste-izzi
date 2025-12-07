@@ -1130,8 +1130,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       .replace('{Video}', videoLink)
       .replace('{Imagen}', imageToUse || '');
     
-    // Extraer teléfono - puede venir en diferentes formatos
-    let phoneRaw = cliente.Telefono || '';
+    // Extraer teléfono - intentar múltiples campos comunes
+    let phoneRaw = cliente.Telefono || cliente.Teléfono || cliente.Telefonos || cliente.telefono || cliente.phone || cliente['Teléfono'] || cliente['Telefono'] || '';
     
     // Si es un array, tomar el primero
     if (Array.isArray(phoneRaw)) {
@@ -1139,26 +1139,57 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     // Si tiene múltiples números separados, tomar el primero
-    if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
-      phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+    if (typeof phoneRaw === 'string' && phoneRaw.length > 0) {
+      // Si tiene separadores, tomar el primero
+      if (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes('|')) {
+        phoneRaw = phoneRaw.split(/[,;|]/)[0].trim();
+      }
+      // Si tiene espacios múltiples, puede ser que tenga varios números
+      const parts = phoneRaw.split(/\s+/);
+      if (parts.length > 1) {
+        // Tomar el que tenga más dígitos
+        phoneRaw = parts.reduce((a, b) => (b.replace(/\D/g,'').length > a.replace(/\D/g,'').length ? b : a), parts[0]);
+      }
     }
     
-    // Limpiar el teléfono - quitar todo excepto números
+    // Limpiar el teléfono - quitar TODO excepto números (espacios, guiones, paréntesis, etc.)
     let ph = String(phoneRaw || '').replace(/\D/g,'');
     
     // Validar que tenga al menos 10 dígitos
     if (!ph || ph.length < 10) {
-      alert(`El teléfono no es válido o está vacío.\nTeléfono encontrado: "${phoneRaw}"`);
+      console.error('Teléfono inválido:', { phoneRaw, ph, cliente, campos: Object.keys(cliente) });
+      alert(`El teléfono no es válido o está vacío.\n\nTeléfono encontrado: "${phoneRaw}"\nTeléfono limpio: "${ph}" (${ph.length} dígitos)\n\nPor favor verifica que el cliente tenga un teléfono registrado con al menos 10 dígitos.`);
       return;
     }
     
-    // Si tiene 10 dígitos y no empieza con 52, agregarlo
-    if (ph.length === 10 && !ph.startsWith('52')) {
+    // Asegurar formato internacional (código de país + número)
+    // Si tiene 10 dígitos, agregar código de país 52 (México)
+    if (ph.length === 10) {
       ph = '52' + ph;
     }
-    // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
-    else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
-      ph = '52' + ph;
+    // Si tiene 11 dígitos y empieza con 1, puede ser 1 + 10 dígitos (quitar el 1 y agregar 52)
+    else if (ph.length === 11 && ph.startsWith('1')) {
+      ph = '52' + ph.substring(1);
+    }
+    // Si tiene más de 12 dígitos, puede tener código de país duplicado, tomar los últimos 12
+    else if (ph.length > 12) {
+      ph = ph.substring(ph.length - 12);
+    }
+    // Si no empieza con 52 y tiene entre 10-12 dígitos, agregar 52
+    else if (!ph.startsWith('52') && ph.length >= 10 && ph.length <= 12) {
+      // Si ya tiene 12 dígitos sin 52, puede ser que tenga otro código, tomar últimos 10 y agregar 52
+      if (ph.length === 12) {
+        ph = '52' + ph.substring(2);
+      } else {
+        ph = '52' + ph;
+      }
+    }
+    
+    // Validar que el número final tenga formato correcto (52 + 10 dígitos = 12 dígitos)
+    if (ph.length !== 12 || !ph.startsWith('52')) {
+      console.error('Formato de teléfono incorrecto:', { phoneRaw, ph, longitud: ph.length });
+      alert(`El formato del teléfono no es válido.\n\nTeléfono original: "${phoneRaw}"\nTeléfono procesado: "${ph}"\n\nEl número debe tener 10 dígitos (sin código de país) o 12 dígitos (con código 52).`);
+      return;
     }
     
     // Si hay imagen, agregarla al mensaje
@@ -1166,8 +1197,15 @@ Tu servicio de *Izzi* está listo para instalarse.
       msg = msg + '\n\n' + imageToUse;
     }
     
-    // Construir URL de WhatsApp con el mensaje
-    const whatsappUrl = `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+    // Construir URL de WhatsApp con el mensaje (asegurar que no haya espacios)
+    const whatsappUrl = `https://wa.me/${ph.trim()}?text=${encodeURIComponent(msg)}`;
+    
+    console.log('Enviando WhatsApp:', { 
+      phoneRaw, 
+      ph, 
+      longitud: ph.length,
+      whatsappUrl: whatsappUrl.substring(0, 150) 
+    });
     
     // Abrir WhatsApp
     window.open(whatsappUrl, '_blank');
@@ -1208,45 +1246,67 @@ Tu servicio de *Izzi* está listo para instalarse.
       msg = msg + '\n\n📸 *Instrucciones con imagen:*\n' + imageLink;
     }
     
-    // Extraer teléfono - puede venir en diferentes formatos
-    let phoneRaw = orden.Teléfonos || orden.Telefonos || orden.Telefono || '';
+    // Extraer teléfono - intentar múltiples campos comunes
+    let phoneRaw = orden.Teléfonos || orden.Telefonos || orden.Telefono || orden.telefono || orden.phone || orden['Teléfonos'] || orden['Telefonos'] || '';
     console.log('Teléfono raw:', phoneRaw);
     
-    // Si es un array o tiene múltiples números, tomar el primero
+    // Si es un array, tomar el primero
     if (Array.isArray(phoneRaw)) {
       phoneRaw = phoneRaw[0];
     }
     
-    // Si tiene múltiples números separados por coma, espacio, etc., tomar el primero
-    if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
-      phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+    // Si tiene múltiples números separados, tomar el primero
+    if (typeof phoneRaw === 'string' && phoneRaw.length > 0) {
+      // Si tiene separadores, tomar el primero
+      if (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes('|')) {
+        phoneRaw = phoneRaw.split(/[,;|]/)[0].trim();
+      }
+      // Si tiene espacios múltiples, puede ser que tenga varios números
+      const parts = phoneRaw.split(/\s+/);
+      if (parts.length > 1) {
+        // Tomar el que tenga más dígitos
+        phoneRaw = parts.reduce((a, b) => (b.replace(/\D/g,'').length > a.replace(/\D/g,'').length ? b : a), parts[0]);
+      }
     }
     
-    // Limpiar el teléfono - quitar todo excepto números
-    let ph = String(phoneRaw).replace(/\D/g,'');
-    console.log('Teléfono limpio:', ph);
+    // Limpiar el teléfono - quitar TODO excepto números
+    let ph = String(phoneRaw || '').replace(/\D/g,'');
+    console.log('Teléfono limpio:', ph, 'Longitud:', ph.length);
     
     // Validar que tenga al menos 10 dígitos
     if (!ph || ph.length < 10) {
-      alert(`El teléfono no es válido o está vacío.\nTeléfono encontrado: "${phoneRaw}"`);
+      console.error('Teléfono inválido:', { phoneRaw, ph, orden, campos: Object.keys(orden) });
+      alert(`El teléfono no es válido o está vacío.\n\nTeléfono encontrado: "${phoneRaw}"\nTeléfono limpio: "${ph}" (${ph.length} dígitos)\n\nPor favor verifica que la orden tenga un teléfono registrado con al menos 10 dígitos.`);
       return;
     }
     
-    // Si tiene 10 dígitos y no empieza con 52, agregarlo
-    if (ph.length === 10 && !ph.startsWith('52')) {
+    // Asegurar formato internacional (código de país + número)
+    if (ph.length === 10) {
       ph = '52' + ph;
-    }
-    // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
-    else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
-      ph = '52' + ph;
+    } else if (ph.length === 11 && ph.startsWith('1')) {
+      ph = '52' + ph.substring(1);
+    } else if (ph.length > 12) {
+      ph = ph.substring(ph.length - 12);
+    } else if (!ph.startsWith('52') && ph.length >= 10 && ph.length <= 12) {
+      if (ph.length === 12) {
+        ph = '52' + ph.substring(2);
+      } else {
+        ph = '52' + ph;
+      }
     }
     
-    console.log('Teléfono final:', ph);
-    console.log('Mensaje:', msg.substring(0, 100) + '...');
+    // Validar formato final
+    if (ph.length !== 12 || !ph.startsWith('52')) {
+      console.error('Formato de teléfono incorrecto:', { phoneRaw, ph, longitud: ph.length });
+      alert(`El formato del teléfono no es válido.\n\nTeléfono original: "${phoneRaw}"\nTeléfono procesado: "${ph}"`);
+      return;
+    }
+    
+    console.log('Teléfono final:', ph, 'Longitud:', ph.length);
     
     // Construir URL de WhatsApp con el mensaje
-    const whatsappUrl = `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
-    console.log('URL WhatsApp:', whatsappUrl.substring(0, 100) + '...');
+    const whatsappUrl = `https://wa.me/${ph.trim()}?text=${encodeURIComponent(msg)}`;
+    console.log('URL WhatsApp:', whatsappUrl.substring(0, 150));
     
     // Abrir WhatsApp
     window.open(whatsappUrl, '_blank');
@@ -3256,8 +3316,8 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       .replace('{Vendedor}', cliente.Vendedor || myName)
       .replace('{Video}', videoLink);
     
-    // Extraer teléfono - puede venir en diferentes formatos
-    let phoneRaw = cliente.Telefono || '';
+    // Extraer teléfono - intentar múltiples campos comunes
+    let phoneRaw = cliente.Telefono || cliente.Teléfono || cliente.Telefonos || cliente.telefono || cliente.phone || cliente['Teléfono'] || cliente['Telefono'] || '';
     
     // Si es un array, tomar el primero
     if (Array.isArray(phoneRaw)) {
@@ -3265,30 +3325,55 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     }
     
     // Si tiene múltiples números separados, tomar el primero
-    if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
-      phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+    if (typeof phoneRaw === 'string' && phoneRaw.length > 0) {
+      // Si tiene separadores, tomar el primero
+      if (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes('|')) {
+        phoneRaw = phoneRaw.split(/[,;|]/)[0].trim();
+      }
+      // Si tiene espacios múltiples, puede ser que tenga varios números
+      const parts = phoneRaw.split(/\s+/);
+      if (parts.length > 1) {
+        // Tomar el que tenga más dígitos
+        phoneRaw = parts.reduce((a, b) => (b.replace(/\D/g,'').length > a.replace(/\D/g,'').length ? b : a), parts[0]);
+      }
     }
     
-    // Limpiar el teléfono - quitar todo excepto números
+    // Limpiar el teléfono - quitar TODO excepto números
     let ph = String(phoneRaw || '').replace(/\D/g,'');
     
     // Validar que tenga al menos 10 dígitos
     if (!ph || ph.length < 10) {
-      alert(`El teléfono no es válido o está vacío.\nTeléfono encontrado: "${phoneRaw}"`);
+      console.error('Teléfono inválido (Vendor):', { phoneRaw, ph, cliente, campos: Object.keys(cliente) });
+      alert(`El teléfono no es válido o está vacío.\n\nTeléfono encontrado: "${phoneRaw}"\nTeléfono limpio: "${ph}" (${ph.length} dígitos)\n\nPor favor verifica que el cliente tenga un teléfono registrado con al menos 10 dígitos.`);
       return;
     }
     
-    // Si tiene 10 dígitos y no empieza con 52, agregarlo
-    if (ph.length === 10 && !ph.startsWith('52')) {
+    // Asegurar formato internacional (código de país + número)
+    if (ph.length === 10) {
       ph = '52' + ph;
+    } else if (ph.length === 11 && ph.startsWith('1')) {
+      ph = '52' + ph.substring(1);
+    } else if (ph.length > 12) {
+      ph = ph.substring(ph.length - 12);
+    } else if (!ph.startsWith('52') && ph.length >= 10 && ph.length <= 12) {
+      if (ph.length === 12) {
+        ph = '52' + ph.substring(2);
+      } else {
+        ph = '52' + ph;
+      }
     }
-    // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
-    else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
-      ph = '52' + ph;
+    
+    // Validar formato final
+    if (ph.length !== 12 || !ph.startsWith('52')) {
+      console.error('Formato de teléfono incorrecto (Vendor):', { phoneRaw, ph, longitud: ph.length });
+      alert(`El formato del teléfono no es válido.\n\nTeléfono original: "${phoneRaw}"\nTeléfono procesado: "${ph}"`);
+      return;
     }
     
     // Construir URL de WhatsApp con el mensaje
-    const whatsappUrl = `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+    const whatsappUrl = `https://wa.me/${ph.trim()}?text=${encodeURIComponent(msg)}`;
+    
+    console.log('Enviando WhatsApp (Vendor):', { phoneRaw, ph, longitud: ph.length });
     
     // Abrir WhatsApp
     window.open(whatsappUrl, '_blank');
