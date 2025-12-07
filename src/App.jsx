@@ -683,33 +683,74 @@ Tu servicio de *Izzi* está listo para instalarse.
 
   // Función para enviar WhatsApp de operación del día
   const sendOperacionTemplate = async (orden) => {
+    console.log('Enviando WhatsApp para orden:', orden);
+    
     // Cargar plantilla de instalaciones
     const installData = await getInstallTemplate();
     let template = installData.template || installTemplate;
     const imageLink = installData.imageLink || installImageLink;
     
-    let msg = template
-      .replace('{Cliente}', orden.Compañía || orden.Compania || 'Cliente')
-      .replace('{Cuenta}', orden['Nº de cuenta'] || 'N/A')
-      .replace('{Plaza}', orden.Hub || orden.Region || 'N/A')
-      .replace('{Region}', orden.Region || orden.Hub || 'N/A')
-      .replace('{Vendedor}', orden.VendedorAsignado || orden['Clave Vendedor'] || 'N/A')
-      .replace('{Orden}', orden['Nº de orden'] || 'N/A')
-      .replace('{Estado}', orden.Estado || 'N/A')
-      .replace('{Fecha}', orden['Fecha solicitada'] || orden.Creado || 'N/A')
-      .replace('{Imagen}', imageLink || '');
+    console.log('Plantilla cargada:', template.substring(0, 50));
+    console.log('Imagen link:', imageLink);
     
-    // Si hay imagen, agregarla al final
+    let msg = template
+      .replace(/{Cliente}/g, orden.Compañía || orden.Compania || orden.Cliente || 'Cliente')
+      .replace(/{Cuenta}/g, orden['Nº de cuenta'] || orden.Cuenta || 'N/A')
+      .replace(/{Plaza}/g, orden.Hub || orden.Plaza || orden.Region || 'N/A')
+      .replace(/{Region}/g, orden.Region || orden.Hub || 'N/A')
+      .replace(/{Vendedor}/g, orden.VendedorAsignado || orden['Clave Vendedor'] || orden.Vendedor || 'N/A')
+      .replace(/{Orden}/g, orden['Nº de orden'] || orden.Orden || 'N/A')
+      .replace(/{Estado}/g, orden.Estado || orden.Estatus || 'N/A')
+      .replace(/{Fecha}/g, orden['Fecha solicitada'] || orden.Creado || orden.Fecha || 'N/A')
+      .replace(/{Imagen}/g, imageLink || '');
+    
+    // Si hay imagen, agregarla al final del mensaje
     if (imageLink) {
-      msg = msg + '\n\n' + imageLink;
+      msg = msg + '\n\n📸 *Instrucciones con imagen:*\n' + imageLink;
     }
     
-    let ph = String(orden.Teléfonos || orden.Telefonos || '').replace(/\D/g,'');
-    if (ph && !ph.startsWith('52') && ph.length === 10) {
+    // Extraer teléfono - puede venir en diferentes formatos
+    let phoneRaw = orden.Teléfonos || orden.Telefonos || orden.Telefono || '';
+    console.log('Teléfono raw:', phoneRaw);
+    
+    // Si es un array o tiene múltiples números, tomar el primero
+    if (Array.isArray(phoneRaw)) {
+      phoneRaw = phoneRaw[0];
+    }
+    
+    // Si tiene múltiples números separados por coma, espacio, etc., tomar el primero
+    if (typeof phoneRaw === 'string' && (phoneRaw.includes(',') || phoneRaw.includes(';') || phoneRaw.includes(' '))) {
+      phoneRaw = phoneRaw.split(/[,;\s]/)[0].trim();
+    }
+    
+    // Limpiar el teléfono - quitar todo excepto números
+    let ph = String(phoneRaw).replace(/\D/g,'');
+    console.log('Teléfono limpio:', ph);
+    
+    // Validar que tenga al menos 10 dígitos
+    if (!ph || ph.length < 10) {
+      alert(`El teléfono no es válido o está vacío.\nTeléfono encontrado: "${phoneRaw}"`);
+      return;
+    }
+    
+    // Si tiene 10 dígitos y no empieza con 52, agregarlo
+    if (ph.length === 10 && !ph.startsWith('52')) {
+      ph = '52' + ph;
+    }
+    // Si tiene más de 10 pero menos de 12, puede que ya tenga código de país
+    else if (ph.length > 10 && ph.length < 12 && !ph.startsWith('52')) {
       ph = '52' + ph;
     }
     
-    window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`, '_blank');
+    console.log('Teléfono final:', ph);
+    console.log('Mensaje:', msg.substring(0, 100) + '...');
+    
+    // Construir URL de WhatsApp con el mensaje
+    const whatsappUrl = `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+    console.log('URL WhatsApp:', whatsappUrl.substring(0, 100) + '...');
+    
+    // Abrir WhatsApp
+    window.open(whatsappUrl, '_blank');
   };
 
   // Filtrar clientes (sin región para cobranza)
@@ -1521,7 +1562,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                     {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
                     {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {o['Fecha solicitada']}</div>}
                     {o['Clave Vendedor'] && <div className="flex items-center gap-1"><Users size={12}/> {o['Clave Vendedor']}</div>}
-                    {o.Teléfonos && <div className="flex items-center gap-1 col-span-2"><Phone size={12}/> {o.Teléfonos}</div>}
+                    {(o.Teléfonos || o.Telefonos || o.Telefono) && (
+                      <div className="flex items-center gap-1 col-span-2">
+                        <Phone size={12}/> {o.Teléfonos || o.Telefonos || o.Telefono}
+                      </div>
+                    )}
                   </div>
 
                   {/* Vendedor asignado */}
@@ -1540,7 +1585,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <MessageSquare size={14}/> WA
                     </button>
                     <a 
-                      href={`tel:${o.Teléfonos || o.Telefonos}`} 
+                      href={`tel:${o.Teléfonos || o.Telefonos || o.Telefono || ''}`} 
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border border-slate-200 transition-colors"
                     >
                       <Phone size={14}/> Llamar
