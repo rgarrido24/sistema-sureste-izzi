@@ -561,6 +561,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [reportsData, setReportsData] = useState([]); 
   const [packages, setPackages] = useState([]);
   const [newPackage, setNewPackage] = useState({ name: '', price: '' });
+  const [promociones, setPromociones] = useState([]);
+  const [newPromocion, setNewPromocion] = useState({ titulo: '', descripcion: '', categoria: 'promocion', activa: true });
   const [uploadStep, setUploadStep] = useState(1);
   
   // Estados para gestión de usuarios
