@@ -813,6 +813,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [showAssignVendorModal, setShowAssignVendorModal] = useState(false);
   const [orderToAssign, setOrderToAssign] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState('');
+  const [editingReport, setEditingReport] = useState(null);
+  const [showEditReportModal, setShowEditReportModal] = useState(false);
   const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
 
@@ -894,8 +896,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubMain();
       unsubRep();
       unsubOperacion();
-      unsubUsers();
-      unsubPackages();
+      unsubPack();
       unsubPromociones();
       unsubPDFs();
     };
@@ -1403,6 +1404,48 @@ Tu servicio de *Izzi* está listo para instalarse.
     } catch (error) {
       console.error('Error al asignar vendedor a instalación:', error);
       alert('Error al asignar vendedor. Intenta de nuevo.');
+    }
+  };
+
+  // Función para editar reporte
+  const handleEditReport = (report) => {
+    setEditingReport(report);
+    setShowEditReportModal(true);
+  };
+
+  // Función para guardar cambios del reporte
+  const handleSaveReport = async () => {
+    if (!editingReport) return;
+    
+    try {
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'sales_reports', editingReport.id);
+      await setDoc(ref, {
+        ...editingReport,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      
+      alert('✅ Reporte actualizado exitosamente');
+      setShowEditReportModal(false);
+      setEditingReport(null);
+    } catch (error) {
+      console.error('Error al actualizar reporte:', error);
+      alert('Error al actualizar el reporte. Intenta de nuevo.');
+    }
+  };
+
+  // Función para borrar reporte
+  const handleDeleteReport = async (report) => {
+    if (!confirm(`¿Estás seguro de que quieres borrar este reporte?\n\nCliente: ${report.client || report.nombreCompleto}\nFolio: ${report.folio || report.nOrden || 'N/A'}`)) {
+      return;
+    }
+    
+    try {
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'sales_reports', report.id);
+      await deleteDoc(ref);
+      alert('✅ Reporte borrado exitosamente');
+    } catch (error) {
+      console.error('Error al borrar reporte:', error);
+      alert('Error al borrar el reporte. Intenta de nuevo.');
     }
   };
 
@@ -3046,16 +3089,17 @@ Tu servicio de *Izzi* está listo para instalarse.
                                  <th className="p-3">Plaza</th>
                                  <th className="p-3">Cuenta</th>
                                  <th className="p-3">Estado</th>
+                                 <th className="p-3">Acciones</th>
                                </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-100 text-slate-700">
                                {filteredReports.map((r) => (
-                                   <tr key={r.id}>
+                                   <tr key={r.id} className="hover:bg-slate-50">
                                        <td className="p-3 text-xs text-slate-400">{r.createdAt}</td>
                                        <td className="p-3 font-bold text-blue-600">{r.vendor}</td>
                                        <td className="p-3">{r.client}</td>
                                        <td className="p-3"><span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-xs font-bold">{r.package}</span></td>
-                                       <td className="p-3 font-mono text-xs">{r.folio}</td>
+                                       <td className="p-3 font-mono text-xs">{r.folio || r.nOrden || 'N/A'}</td>
                                        <td className="p-3 text-xs">{r.plaza || 'N/A'}</td>
                                        <td className="p-3 text-xs font-mono">{r.cuenta || 'N/A'}</td>
                                        <td className="p-3 text-xs">
@@ -3064,6 +3108,29 @@ Tu servicio de *Izzi* está listo para instalarse.
                                            r.estado === 'Not Done' ? 'bg-red-100 text-red-700' :
                                            'bg-blue-100 text-blue-700'
                                          }`}>{r.estado || 'Abierta'}</span>
+                                       </td>
+                                       <td className="p-3">
+                                         <div className="flex gap-2">
+                                           {!r.esOperacion && (
+                                             <>
+                                               <button
+                                                 onClick={() => handleEditReport(r)}
+                                                 className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-1"
+                                               >
+                                                 <Settings size={12}/> Editar
+                                               </button>
+                                               <button
+                                                 onClick={() => handleDeleteReport(r)}
+                                                 className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-1"
+                                               >
+                                                 <Trash2 size={12}/> Borrar
+                                               </button>
+                                             </>
+                                           )}
+                                           {r.esOperacion && (
+                                             <span className="text-xs text-slate-400">Desde Operación</span>
+                                           )}
+                                         </div>
                                        </td>
                                    </tr>
                                ))}
@@ -3225,6 +3292,126 @@ Tu servicio de *Izzi* está listo para instalarse.
                     setShowAssignVendorModal(false);
                     setOrderToAssign(null);
                     setSelectedVendor('');
+                  }}
+                  className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para editar reporte */}
+        {showEditReportModal && editingReport && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Settings size={20} className="text-blue-500"/> Editar Reporte
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Cliente:</label>
+                    <input
+                      type="text"
+                      value={editingReport.client || editingReport.nombreCompleto || ''}
+                      onChange={(e) => setEditingReport({...editingReport, client: e.target.value, nombreCompleto: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Vendedor:</label>
+                    <input
+                      type="text"
+                      value={editingReport.vendor || editingReport.vendedor || ''}
+                      onChange={(e) => setEditingReport({...editingReport, vendor: e.target.value, vendedor: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">N° ORDEN / Folio:</label>
+                    <input
+                      type="text"
+                      value={editingReport.nOrden || editingReport.folio || ''}
+                      onChange={(e) => setEditingReport({...editingReport, nOrden: e.target.value, folio: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Cuenta:</label>
+                    <input
+                      type="text"
+                      value={editingReport.cuenta || ''}
+                      onChange={(e) => setEditingReport({...editingReport, cuenta: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Plaza:</label>
+                    <input
+                      type="text"
+                      value={editingReport.plaza || ''}
+                      onChange={(e) => setEditingReport({...editingReport, plaza: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Estado:</label>
+                    <select
+                      value={editingReport.estatus || editingReport.estado || 'Abierta'}
+                      onChange={(e) => setEditingReport({...editingReport, estatus: e.target.value, estado: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    >
+                      <option value="Abierta">Abierta</option>
+                      <option value="Instalado">Instalado</option>
+                      <option value="Not Done">Not Done</option>
+                      <option value="Cancelada">Cancelada</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Paquete:</label>
+                    <input
+                      type="text"
+                      value={editingReport.package || editingReport.serviciosContratados || ''}
+                      onChange={(e) => setEditingReport({...editingReport, package: e.target.value, serviciosContratados: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Teléfono:</label>
+                    <input
+                      type="text"
+                      value={editingReport.telefono || ''}
+                      onChange={(e) => setEditingReport({...editingReport, telefono: e.target.value})}
+                      className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Comentarios:</label>
+                  <textarea
+                    value={editingReport.comentarios || ''}
+                    onChange={(e) => setEditingReport({...editingReport, comentarios: e.target.value})}
+                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                    rows="3"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleSaveReport}
+                  className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700"
+                >
+                  Guardar Cambios
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEditReportModal(false);
+                    setEditingReport(null);
                   }}
                   className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
                 >
