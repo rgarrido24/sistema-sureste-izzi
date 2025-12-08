@@ -902,7 +902,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     };
   }, [collectionName, appId, currentModule, user]);
 
-  // useEffect para combinar reportes con órdenes completadas
+  // useEffect para combinar reportes con órdenes completadas e instalaciones
   useEffect(() => {
     // Filtrar órdenes de operación del día que están asignadas y completadas
     const operacionCompletadas = operacionData
@@ -910,20 +910,59 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       .map(o => ({
         id: `operacion_${o.id}`,
         cuenta: o['Nº de cuenta'] || o.Cuenta || '',
+        nOrden: o['Nº de orden'] || o.Orden || '',
         orden: o['Nº de orden'] || o.Orden || '',
+        folio: o['Nº de orden'] || o.Orden || '',
         client: o.Compañía || o.Compania || o.Cliente || '',
+        nombreCompleto: o.Compañía || o.Compania || o.Cliente || '',
         telefono: o.Teléfonos || o.Telefonos || o.Telefono || '',
         vendor: o.VendedorAsignado || '',
+        vendedor: o.VendedorAsignado || '',
         plaza: o.Hub || o.Region || o.Plaza || '',
         estado: o.Estado || 'Instalado',
+        estatus: o.Estado || 'Instalado',
         package: o['Servicios Contratados'] || o.Paquete || '',
+        serviciosContratados: o['Servicios Contratados'] || o.Paquete || '',
         fechaInstalacion: o['Fecha solicitada'] || o.FechaInstalacion || '',
         createdAt: o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString() : (o.updatedAt?.toDate ? o.updatedAt.toDate().toLocaleString() : new Date().toLocaleString()),
         esOperacion: true
       }));
     
-    // Combinar reportes con órdenes completadas
-    const allReports = [...reportsData, ...operacionCompletadas];
+    // Filtrar instalaciones que tienen vendedor asignado y están como instaladas/completas
+    const instalacionesCompletadas = allClients
+      .filter(c => {
+        // Solo si estamos en módulo de instalaciones o si tiene vendedor y está instalada
+        const tieneVendedor = c.Vendedor || c.normalized_resp;
+        const estaInstalada = c.Estatus === 'Instalado' || 
+                             c.Estatus === 'Completo' || 
+                             c.Estatus === 'Instalada' ||
+                             c.Estatus?.toLowerCase().includes('instalado') ||
+                             c.Estatus?.toLowerCase().includes('completo');
+        return tieneVendedor && estaInstalada;
+      })
+      .map(c => ({
+        id: `instalacion_${c.id}`,
+        cuenta: c.Cuenta || '',
+        nOrden: c.Orden || c['Nº de orden'] || '',
+        orden: c.Orden || c['Nº de orden'] || '',
+        folio: c.Orden || c['Nº de orden'] || '',
+        client: c.Cliente || '',
+        nombreCompleto: c.Cliente || '',
+        telefono: c.Telefono || c.Teléfono || '',
+        vendor: c.Vendedor || '',
+        vendedor: c.Vendedor || '',
+        plaza: c.Plaza || c.Ciudad || c.Region || '',
+        estado: c.Estatus || 'Instalado',
+        estatus: c.Estatus || 'Instalado',
+        package: c.Paquete || c['Servicios Contratados'] || 'Instalación',
+        serviciosContratados: c.Paquete || c['Servicios Contratados'] || 'Instalación',
+        fechaInstalacion: c.FechaInstalacion || '',
+        createdAt: c.createdAt?.toDate ? c.createdAt.toDate().toLocaleString() : (c.updatedAt?.toDate ? c.updatedAt.toDate().toLocaleString() : new Date().toLocaleString()),
+        esInstalacion: true
+      }));
+    
+    // Combinar reportes con órdenes completadas e instalaciones
+    const allReports = [...reportsData, ...operacionCompletadas, ...instalacionesCompletadas];
     setAllReportsData(allReports);
     
     // Actualizar plazas y vendedores únicos
@@ -933,7 +972,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     if (uniqueVendorsReports.length > 0) {
       setVendors(prev => [...new Set([...prev, ...uniqueVendorsReports])].sort());
     }
-  }, [reportsData, operacionData]);
+  }, [reportsData, operacionData, allClients]);
 
   // useEffect para Admin: cargar plantillas y usuarios
   useEffect(() => {
@@ -3111,7 +3150,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                                        </td>
                                        <td className="p-3">
                                          <div className="flex gap-2">
-                                           {!r.esOperacion && (
+                                           {!r.esOperacion && !r.esInstalacion && (
                                              <>
                                                <button
                                                  onClick={() => handleEditReport(r)}
@@ -3129,6 +3168,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                                            )}
                                            {r.esOperacion && (
                                              <span className="text-xs text-slate-400">Desde Operación</span>
+                                           )}
+                                           {r.esInstalacion && (
+                                             <span className="text-xs text-purple-600 font-bold">Instalación</span>
                                            )}
                                          </div>
                                        </td>
