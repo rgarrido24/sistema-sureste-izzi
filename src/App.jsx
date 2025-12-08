@@ -3695,6 +3695,8 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [myAssignedOrders, setMyAssignedOrders] = useState([]);
   const [filterMyReportPeriod, setFilterMyReportPeriod] = useState('all');
   const [filterMyReportDate, setFilterMyReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filterAssignedOrdersPeriod, setFilterAssignedOrdersPeriod] = useState('all'); // all, week, month
+  const [filterAssignedOrdersDate, setFilterAssignedOrdersDate] = useState(new Date().toISOString().split('T')[0]);
   const appId = 'sales-master-production';
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
   
@@ -4332,29 +4334,91 @@ RESPUESTA:`;
        {/* Órdenes Asignadas desde Operación del Día */}
        {myAssignedOrders.length > 0 && (
          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
-           <h3 className="font-bold text-indigo-800 mb-3 flex items-center gap-2">
-             <PlayCircle size={18}/> Órdenes Asignadas ({myAssignedOrders.length})
-           </h3>
-           <div className="grid gap-2">
-             {myAssignedOrders.map((orden) => (
-               <div key={orden.id} className="bg-white p-3 rounded-lg border border-indigo-100">
-                 <div className="flex justify-between items-start mb-2">
-                   <div className="flex-1">
-                     <h4 className="font-bold text-sm text-slate-800">{orden.Compañía || orden.Compania || 'Sin nombre'}</h4>
-                     <div className="text-xs text-slate-500 mt-1">
-                       {orden['Nº de orden'] && <span>Orden: {orden['Nº de orden']}</span>}
-                       {orden['Nº de cuenta'] && <span className="ml-2">Cuenta: {orden['Nº de cuenta']}</span>}
+           <div className="flex justify-between items-center mb-3">
+             <h3 className="font-bold text-indigo-800 flex items-center gap-2">
+               <PlayCircle size={18}/> Órdenes Asignadas ({myAssignedOrders.length})
+             </h3>
+             {/* Filtros de fecha */}
+             <div className="flex gap-2">
+               <select 
+                 value={filterAssignedOrdersPeriod} 
+                 onChange={e=>setFilterAssignedOrdersPeriod(e.target.value)}
+                 className="p-2 rounded-lg border border-indigo-200 text-xs font-bold bg-white"
+               >
+                 <option value="all">Todas</option>
+                 <option value="week">Por semana</option>
+                 <option value="month">Por mes</option>
+               </select>
+               {filterAssignedOrdersPeriod !== 'all' && (
+                 <input 
+                   type="date" 
+                   value={filterAssignedOrdersDate} 
+                   onChange={e=>setFilterAssignedOrdersDate(e.target.value)}
+                   className="p-2 rounded-lg border border-indigo-200 text-xs bg-white"
+                 />
+               )}
+             </div>
+           </div>
+           
+           {/* Filtrar órdenes por fecha */}
+           {(() => {
+             let filteredAssigned = myAssignedOrders;
+             if (filterAssignedOrdersPeriod !== 'all') {
+               filteredAssigned = myAssignedOrders.filter(o => {
+                 const fechaSolicitada = o['Fecha solicitada'] || o.Creado || '';
+                 if (!fechaSolicitada) return false;
+                 
+                 try {
+                   let fecha = new Date(fechaSolicitada);
+                   if (isNaN(fecha.getTime())) {
+                     const parts = String(fechaSolicitada).split(/[\/\-]/);
+                     if (parts.length === 3) {
+                       fecha = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                     }
+                   }
+                   
+                   if (isNaN(fecha.getTime())) return false;
+                   
+                   const filterDate = new Date(filterAssignedOrdersDate);
+                   
+                   if (filterAssignedOrdersPeriod === 'week') {
+                     const reportWeek = getWeekNumberVendor(fecha);
+                     const filterWeek = getWeekNumberVendor(filterDate);
+                     return reportWeek.week === filterWeek.week && reportWeek.year === filterWeek.year;
+                   } else if (filterAssignedOrdersPeriod === 'month') {
+                     return fecha.getMonth() === filterDate.getMonth() && 
+                            fecha.getFullYear() === filterDate.getFullYear();
+                   }
+                 } catch (e) {
+                   return false;
+                 }
+                 return false;
+               });
+             }
+             
+             return (
+               <div className="grid gap-2">
+                 {filteredAssigned.map((orden) => (
+                   <div key={orden.id} className="bg-white p-3 rounded-lg border border-indigo-100">
+                     <div className="flex justify-between items-start mb-2">
+                       <div className="flex-1">
+                         <h4 className="font-bold text-sm text-slate-800">{orden.Compañía || orden.Compania || 'Sin nombre'}</h4>
+                         <div className="text-xs text-slate-500 mt-1 space-y-1">
+                           {orden['Nº de orden'] && <div className="flex items-center gap-1"><Hash size={10}/> Orden: <span className="font-mono font-bold">{orden['Nº de orden']}</span></div>}
+                           {orden['Nº de cuenta'] && <div className="flex items-center gap-1"><Hash size={10}/> Cuenta: <span className="font-mono font-bold">{orden['Nº de cuenta']}</span></div>}
+                           {orden['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={10}/> Fecha Instalación: <span className="font-bold text-indigo-600">{orden['Fecha solicitada']}</span></div>}
+                           {orden['Servicios Contratados'] && <div className="flex items-center gap-1"><Wifi size={10}/> Paquete: <span className="font-bold text-orange-600">{orden['Servicios Contratados']}</span></div>}
+                         </div>
+                       </div>
+                       <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                         orden.Estado === 'Instalado' || orden.Estado === 'Completo' ? 'bg-green-100 text-green-700' :
+                         orden.Estado === 'Not Done' ? 'bg-red-100 text-red-700' :
+                         'bg-blue-100 text-blue-700'
+                       }`}>
+                         {orden.Estado || 'Abierta'}
+                       </span>
                      </div>
-                   </div>
-                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                     orden.Estado === 'Instalado' ? 'bg-green-100 text-green-700' :
-                     orden.Estado === 'Not Done' ? 'bg-red-100 text-red-700' :
-                     'bg-blue-100 text-blue-700'
-                   }`}>
-                     {orden.Estado || 'Abierta'}
-                   </span>
-                 </div>
-                 <div className="flex gap-2 mt-2">
+                     <div className="flex gap-2 mt-2">
                    <button 
                      onClick={async () => {
                        try {
@@ -4431,15 +4495,53 @@ RESPUESTA:`;
                    >
                      <Phone size={12}/> Llamar
                    </a>
-                 </div>
+                     </div>
+                   </div>
+                 ))}
+                 {filteredAssigned.length === 0 && (
+                   <p className="text-xs text-indigo-600 text-center py-4">
+                     No hay órdenes que coincidan con los filtros seleccionados.
+                   </p>
+                 )}
                </div>
-             ))}
-             {myAssignedOrders.length > 5 && (
-               <p className="text-xs text-indigo-600 text-center mt-2">
-                 Y {myAssignedOrders.length - 5} orden(es) más...
-               </p>
-             )}
-           </div>
+             );
+           })()}
+           {filterAssignedOrdersPeriod !== 'all' && (
+             <p className="text-xs text-indigo-600 mt-2 text-center">
+               Mostrando {(() => {
+                 let filteredAssigned = myAssignedOrders;
+                 if (filterAssignedOrdersPeriod !== 'all') {
+                   filteredAssigned = myAssignedOrders.filter(o => {
+                     const fechaSolicitada = o['Fecha solicitada'] || o.Creado || '';
+                     if (!fechaSolicitada) return false;
+                     try {
+                       let fecha = new Date(fechaSolicitada);
+                       if (isNaN(fecha.getTime())) {
+                         const parts = String(fechaSolicitada).split(/[\/\-]/);
+                         if (parts.length === 3) {
+                           fecha = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                         }
+                       }
+                       if (isNaN(fecha.getTime())) return false;
+                       const filterDate = new Date(filterAssignedOrdersDate);
+                       if (filterAssignedOrdersPeriod === 'week') {
+                         const reportWeek = getWeekNumberVendor(fecha);
+                         const filterWeek = getWeekNumberVendor(filterDate);
+                         return reportWeek.week === filterWeek.week && reportWeek.year === filterWeek.year;
+                       } else if (filterAssignedOrdersPeriod === 'month') {
+                         return fecha.getMonth() === filterDate.getMonth() && 
+                                fecha.getFullYear() === filterDate.getFullYear();
+                       }
+                     } catch (e) {
+                       return false;
+                     }
+                     return false;
+                   });
+                 }
+                 return filteredAssigned.length;
+               })()} de {myAssignedOrders.length} órdenes
+             </p>
+           )}
          </div>
        )}
 
