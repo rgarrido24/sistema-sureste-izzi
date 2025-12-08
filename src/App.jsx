@@ -818,7 +818,18 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [manualVendorName, setManualVendorName] = useState('');
   const [editingReport, setEditingReport] = useState(null);
   const [showEditReportModal, setShowEditReportModal] = useState(false);
+  const [editingPhoneClient, setEditingPhoneClient] = useState(null);
+  const [showEditPhoneModal, setShowEditPhoneModal] = useState(false);
+  const [newPhoneNumber, setNewPhoneNumber] = useState('');
   const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
+  const [templateVencidos, setTemplateVencidos] = useState(localStorage.getItem('templateVencidos') || '');
+  const [templatePorVencer, setTemplatePorVencer] = useState(localStorage.getItem('templatePorVencer') || '');
+  const [editingUser, setEditingUser] = useState(null);
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [clientNote, setClientNote] = useState('');
+  const [promesaPago, setPromesaPago] = useState('');
+  const [editingClientNote, setEditingClientNote] = useState(null);
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
 
 Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
@@ -838,6 +849,14 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
   const [showConfig, setShowConfig] = useState(false);
   
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
+
+  // Cargar plantillas desde localStorage al inicio
+  useEffect(() => {
+    const savedTemplateVencidos = localStorage.getItem('templateVencidos');
+    const savedTemplatePorVencer = localStorage.getItem('templatePorVencer');
+    if (savedTemplateVencidos) setTemplateVencidos(savedTemplateVencidos);
+    if (savedTemplatePorVencer) setTemplatePorVencer(savedTemplatePorVencer);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -1236,6 +1255,15 @@ Tu servicio de *Izzi* está listo para instalarse.
     if (currentModule === 'install') {
       templateToUse = installTemplate;
       imageToUse = installImageLink;
+    } else if (currentModule === 'sales') {
+      // Para cobranza, determinar si está vencido o por vencer
+      const esVencido = isClienteVencido(cliente);
+      if (esVencido && templateVencidos) {
+        templateToUse = templateVencidos;
+      } else if (!esVencido && templatePorVencer) {
+        templateToUse = templatePorVencer;
+      }
+      // Si no hay plantillas específicas, usar la plantilla general
     }
     
     let msg = templateToUse
@@ -1338,8 +1366,157 @@ Tu servicio de *Izzi* está listo para instalarse.
   const saveConfig = () => {
     localStorage.setItem('adminSalesTemplate', salesTemplate);
     localStorage.setItem('adminVideoLink', videoLink);
+    localStorage.setItem('templateVencidos', templateVencidos);
+    localStorage.setItem('templatePorVencer', templatePorVencer);
     alert('¡Configuración guardada!');
     setShowConfig(false);
+  };
+
+  // Función para guardar teléfono editado
+  const savePhoneNumber = async () => {
+    if (!editingPhoneClient || !newPhoneNumber || newPhoneNumber.trim().length < 10) {
+      alert('Por favor ingresa un número de teléfono válido (mínimo 10 dígitos)');
+      return;
+    }
+    
+    try {
+      const clientRef = doc(db, 'artifacts', appId, 'public', 'data', collectionName, editingPhoneClient.id);
+      await setDoc(clientRef, { Telefono: newPhoneNumber.trim() }, { merge: true });
+      alert('✅ Teléfono actualizado correctamente');
+      setShowEditPhoneModal(false);
+      setEditingPhoneClient(null);
+      setNewPhoneNumber('');
+    } catch (error) {
+      console.error('Error al actualizar teléfono:', error);
+      alert('Error al actualizar el teléfono: ' + error.message);
+    }
+  };
+
+  // Función para guardar nota y fecha de promesa de pago
+  const saveClientNote = async (cliente) => {
+    if (!clientNote.trim() && !promesaPago.trim()) {
+      alert('Por favor ingresa al menos una nota o fecha de promesa de pago');
+      return;
+    }
+    
+    try {
+      const clientRef = doc(db, 'artifacts', appId, 'public', 'data', collectionName, cliente.id);
+      const updateData = {};
+      if (clientNote.trim()) updateData.notaContacto = clientNote.trim();
+      if (promesaPago.trim()) updateData.fechaPromesaPago = promesaPago.trim();
+      updateData.fechaUltimoContacto = new Date().toISOString();
+      
+      await setDoc(clientRef, updateData, { merge: true });
+      alert('✅ Nota y fecha de promesa guardadas correctamente');
+      setEditingClientNote(null);
+      setClientNote('');
+      setPromesaPago('');
+    } catch (error) {
+      console.error('Error al guardar nota:', error);
+      alert('Error al guardar la nota: ' + error.message);
+    }
+  };
+
+  // Función para eliminar usuario
+  const deleteUser = async (userId) => {
+    if (!confirm('¿Estás seguro de eliminar permanentemente este usuario? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'users', userId));
+      alert('✅ Usuario eliminado permanentemente');
+    } catch (error) {
+      console.error('Error al eliminar usuario:', error);
+      alert('Error al eliminar el usuario: ' + error.message);
+    }
+  };
+
+  // Función para actualizar contraseña de usuario
+  const updateUserPassword = async () => {
+    if (!editingUser || !newPassword || newPassword.length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    
+    try {
+      // Actualizar en Firestore (en un sistema real, esto debería usar Firebase Auth)
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'users', editingUser.id), {
+        password: newPassword,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      
+      alert('✅ Contraseña actualizada correctamente');
+      setShowEditUserModal(false);
+      setEditingUser(null);
+      setNewPassword('');
+    } catch (error) {
+      console.error('Error al actualizar contraseña:', error);
+      alert('Error al actualizar la contraseña: ' + error.message);
+    }
+  };
+
+  // Función para eliminar todos los datos de operación y reportes
+  const deleteAllOperacionAndReports = async () => {
+    if (!confirm('⚠️ ADVERTENCIA: Esta acción eliminará PERMANENTEMENTE todos los datos de:\n\n- Operación del Día\n- Reportes de Ventas\n\n¿Estás completamente seguro? Esta acción NO se puede deshacer.')) {
+      return;
+    }
+    
+    if (!confirm('⚠️ ÚLTIMA CONFIRMACIÓN: ¿Realmente quieres eliminar TODOS los datos de operación y reportes?')) {
+      return;
+    }
+    
+    try {
+      // Eliminar todos los documentos de operacion_dia
+      const operacionRef = collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia');
+      const operacionSnap = await getDocs(operacionRef);
+      const batch1 = writeBatch(db);
+      operacionSnap.docs.forEach((docSnap) => {
+        batch1.delete(docSnap.ref);
+      });
+      await batch1.commit();
+      
+      // Eliminar todos los documentos de sales_reports
+      const reportsRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports');
+      const reportsSnap = await getDocs(reportsRef);
+      const batch2 = writeBatch(db);
+      reportsSnap.docs.forEach((docSnap) => {
+        batch2.delete(docSnap.ref);
+      });
+      await batch2.commit();
+      
+      alert(`✅ Se eliminaron ${operacionSnap.size} registros de Operación del Día y ${reportsSnap.size} reportes de ventas.\n\nEl sistema está listo para empezar de cero.`);
+    } catch (error) {
+      console.error('Error al eliminar datos:', error);
+      alert('Error al eliminar los datos: ' + error.message);
+    }
+  };
+
+  // Función para determinar si un cliente está vencido o por vencer (basado en FLP)
+  const isClienteVencido = (cliente) => {
+    // Si tiene FLP (Fecha Límite de Pago)
+    if (cliente.FLP) {
+      const flpStr = String(cliente.FLP);
+      const hoy = new Date();
+      const diaHoy = hoy.getDate();
+      const mesHoy = hoy.getMonth() + 1;
+      const añoHoy = hoy.getFullYear();
+      
+      // FLP puede ser solo el día (ej: "12") o una fecha completa
+      let diaFLP = parseInt(flpStr.split('/')[0] || flpStr, 10);
+      if (isNaN(diaFLP)) return false;
+      
+      // Si el día de FLP ya pasó este mes, está vencido
+      if (diaFLP < diaHoy) {
+        return true;
+      }
+      // Si es el día de hoy o futuro, está por vencer
+      return false;
+    }
+    
+    // Si no tiene FLP, usar SaldoVencido como indicador
+    const saldoVencido = parseFloat(String(cliente.SaldoVencido || '0').replace(/[^0-9.-]/g, '')) || 0;
+    return saldoVencido > 0;
   };
 
   // Función para enviar WhatsApp de operación del día
@@ -2535,13 +2712,26 @@ Tu servicio de *Izzi* está listo para instalarse.
                   )}
 
                   {/* Estatus */}
-                  <div className="flex gap-2 mb-3">
+                  <div className="flex gap-2 mb-3 items-center justify-between">
                     <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
                       c.Estatus?.includes('Perdida') ? 'bg-red-100 text-red-700' : 
                       c.Estatus === 'M1' ? 'bg-amber-100 text-amber-700' : 
                       c.Estatus === 'M2' ? 'bg-orange-100 text-orange-700' :
                       'bg-slate-100 text-slate-500'
                     }`}>{c.Estatus || 'Sin estatus'}</span>
+                    {(c.Estatus === 'M1' || c.Estatus === 'M2') && (
+                      <button
+                        onClick={() => {
+                          setEditingPhoneClient(c);
+                          setNewPhoneNumber(c.Telefono || '');
+                          setShowEditPhoneModal(true);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                        title="Editar número de teléfono"
+                      >
+                        <Phone size={12}/> Editar Teléfono
+                      </button>
+                    )}
                   </div>
                   
                   {/* Botones */}
@@ -2669,15 +2859,35 @@ Tu servicio de *Izzi* está listo para instalarse.
               <div className="space-y-2">
                 {users.map(u => (
                   <div key={u.id} className="flex justify-between items-center p-3 border rounded-lg bg-slate-50">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-bold text-slate-800 text-sm">{u.name}</p>
                       <p className="text-xs text-slate-500">Usuario: {u.username} | Rol: {u.role === 'admin' ? 'Administrador' : 'Vendedor'}</p>
                     </div>
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${
-                      u.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {u.role === 'admin' ? 'Admin' : 'Vendedor'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        u.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {u.role === 'admin' ? 'Admin' : 'Vendedor'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingUser(u);
+                          setNewPassword('');
+                          setShowEditUserModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 p-1"
+                        title="Editar contraseña"
+                      >
+                        <Wrench size={16}/>
+                      </button>
+                      <button
+                        onClick={() => deleteUser(u.id)}
+                        className="text-red-600 hover:text-red-800 p-1"
+                        title="Eliminar usuario"
+                      >
+                        <Trash2 size={16}/>
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {users.length === 0 && (
@@ -2685,16 +2895,95 @@ Tu servicio de *Izzi* está listo para instalarse.
                 )}
               </div>
             </div>
+
+            {/* Botón para eliminar datos de operación y reportes */}
+            <div className="mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
+              <h4 className="font-bold text-sm mb-3 text-red-800 flex items-center gap-2">
+                <AlertTriangle size={18}/> Zona de Peligro
+              </h4>
+              <p className="text-xs text-red-700 mb-3">
+                Esta acción eliminará PERMANENTEMENTE todos los datos de Operación del Día y Reportes de Ventas. 
+                Esta acción NO se puede deshacer.
+              </p>
+              <button
+                onClick={deleteAllOperacionAndReports}
+                className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center justify-center gap-2"
+              >
+                <Trash2 size={16}/> Eliminar Todos los Datos de Operación y Reportes
+              </button>
+            </div>
           </div>
         )}
 
         {/* PLANTILLAS GLOBALES */}
         {activeTab === 'template' && (
           <div className="space-y-6">
-            {/* PLANTILLA DE COBRANZA */}
+            {/* PLANTILLA DE COBRANZA - VENCIDOS */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-yellow-500"/> Plantilla Global de Cobranza</h3>
-              <p className="text-sm text-slate-500 mb-4">Esta plantilla será la predeterminada para todos los vendedores. Cada vendedor puede personalizar la suya.</p>
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-red-500"/> Plantilla de Cobranza - Clientes Vencidos</h3>
+              <p className="text-sm text-slate-500 mb-4">Esta plantilla se usará automáticamente para clientes cuya fecha límite de pago (FLP) ya pasó o tienen saldo vencido.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Plantilla de Mensaje WhatsApp (Clientes Vencidos)</label>
+                  <textarea 
+                    value={templateVencidos} 
+                    onChange={e => setTemplateVencidos(e.target.value)} 
+                    className="w-full p-3 border rounded-lg text-sm h-64 font-mono"
+                    placeholder="Escribe tu plantilla para clientes vencidos aquí..."
+                  />
+                  <p className="text-xs text-slate-400 mt-2">
+                    Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{Vendedor}'}, {'{Video}'}, {'{FLP}'}
+                  </p>
+                </div>
+                
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('templateVencidos', templateVencidos);
+                    alert('✅ Plantilla de clientes vencidos guardada');
+                  }}
+                  className="w-full bg-red-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-red-700"
+                >
+                  💾 Guardar Plantilla de Vencidos
+                </button>
+              </div>
+            </div>
+
+            {/* PLANTILLA DE COBRANZA - POR VENCER */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-yellow-500"/> Plantilla de Cobranza - Clientes Por Vencer</h3>
+              <p className="text-sm text-slate-500 mb-4">Esta plantilla se usará automáticamente para clientes cuya fecha límite de pago (FLP) aún no ha llegado.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Plantilla de Mensaje WhatsApp (Clientes Por Vencer)</label>
+                  <textarea 
+                    value={templatePorVencer} 
+                    onChange={e => setTemplatePorVencer(e.target.value)} 
+                    className="w-full p-3 border rounded-lg text-sm h-64 font-mono"
+                    placeholder="Escribe tu plantilla para clientes por vencer aquí..."
+                  />
+                  <p className="text-xs text-slate-400 mt-2">
+                    Variables disponibles: {'{Cliente}'}, {'{Cuenta}'}, {'{Plaza}'}, {'{SaldoTotal}'}, {'{SaldoPorVencer}'}, {'{SaldoVencido}'}, {'{Estatus}'}, {'{Vendedor}'}, {'{Video}'}, {'{FLP}'}
+                  </p>
+                </div>
+                
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('templatePorVencer', templatePorVencer);
+                    alert('✅ Plantilla de clientes por vencer guardada');
+                  }}
+                  className="w-full bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-yellow-700"
+                >
+                  💾 Guardar Plantilla de Por Vencer
+                </button>
+              </div>
+            </div>
+
+            {/* PLANTILLA GENERAL DE COBRANZA (FALLBACK) */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={20} className="text-yellow-500"/> Plantilla General de Cobranza (Fallback)</h3>
+              <p className="text-sm text-slate-500 mb-4">Esta plantilla se usará si no hay plantillas específicas configuradas. Cada vendedor puede personalizar la suya.</p>
               
               <div className="space-y-4">
                 <div>
@@ -3644,6 +3933,98 @@ Tu servicio de *Izzi* está listo para instalarse.
             </div>
           </div>
         )}
+
+        {/* Modal para editar teléfono */}
+        {showEditPhoneModal && editingPhoneClient && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Phone size={20} className="text-blue-500"/> Editar Teléfono
+              </h3>
+              <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+                <p className="text-sm text-slate-600">
+                  <strong>Cliente:</strong> {editingPhoneClient.Cliente || editingPhoneClient.Compañía || 'Sin nombre'}<br/>
+                  <strong>Cuenta:</strong> {editingPhoneClient.Cuenta || 'N/A'}<br/>
+                  <strong>Teléfono actual:</strong> {editingPhoneClient.Telefono || 'N/A'}
+                </p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">Nuevo número de teléfono:</label>
+                <input
+                  type="text"
+                  value={newPhoneNumber}
+                  onChange={(e) => setNewPhoneNumber(e.target.value)}
+                  placeholder="Ej: 9931234567"
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={savePhoneNumber}
+                  className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700"
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEditPhoneModal(false);
+                    setEditingPhoneClient(null);
+                    setNewPhoneNumber('');
+                  }}
+                  className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para editar usuario */}
+        {showEditUserModal && editingUser && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Wrench size={20} className="text-purple-500"/> Editar Usuario
+              </h3>
+              <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+                <p className="text-sm text-slate-600">
+                  <strong>Usuario:</strong> {editingUser.username}<br/>
+                  <strong>Nombre:</strong> {editingUser.name}<br/>
+                  <strong>Rol:</strong> {editingUser.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                </p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-slate-700 mb-2">Nueva contraseña:</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={updateUserPassword}
+                  className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-purple-700"
+                >
+                  Actualizar Contraseña
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEditUserModal(false);
+                    setEditingUser(null);
+                    setNewPassword('');
+                  }}
+                  className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3697,6 +4078,12 @@ function VendorDashboard({ user, myName, currentModule, setModule }) {
   const [filterMyReportDate, setFilterMyReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterAssignedOrdersPeriod, setFilterAssignedOrdersPeriod] = useState('all'); // all, week, month
   const [filterAssignedOrdersDate, setFilterAssignedOrdersDate] = useState(new Date().toISOString().split('T')[0]);
+  const [editingPhoneClient, setEditingPhoneClient] = useState(null);
+  const [showEditPhoneModal, setShowEditPhoneModal] = useState(false);
+  const [newPhoneNumber, setNewPhoneNumber] = useState('');
+  const [clientNote, setClientNote] = useState('');
+  const [promesaPago, setPromesaPago] = useState('');
+  const [editingClientNote, setEditingClientNote] = useState(null);
   const appId = 'sales-master-production';
   const collectionName = currentModule === 'sales' ? 'sales_master' : 'install_master';
   
@@ -3847,6 +4234,52 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     localStorage.setItem('videoLink', videoLink);
     alert('¡Configuración guardada!');
     setShowConfig(false);
+  };
+
+  // Función para guardar teléfono editado (VendorDashboard)
+  const savePhoneNumberVendor = async () => {
+    if (!editingPhoneClient || !newPhoneNumber || newPhoneNumber.trim().length < 10) {
+      alert('Por favor ingresa un número de teléfono válido (mínimo 10 dígitos)');
+      return;
+    }
+    
+    try {
+      const clientRef = doc(db, 'artifacts', appId, 'public', 'data', collectionName, editingPhoneClient.id);
+      await setDoc(clientRef, { Telefono: newPhoneNumber.trim() }, { merge: true });
+      alert('✅ Teléfono actualizado correctamente');
+      setShowEditPhoneModal(false);
+      setEditingPhoneClient(null);
+      setNewPhoneNumber('');
+    } catch (error) {
+      console.error('Error al actualizar teléfono:', error);
+      alert('Error al actualizar el teléfono: ' + error.message);
+    }
+  };
+
+  // Función para guardar nota y fecha de promesa de pago (VendorDashboard)
+  const saveClientNoteVendor = async () => {
+    if (!editingClientNote) return;
+    if (!clientNote.trim() && !promesaPago.trim()) {
+      alert('Por favor ingresa al menos una nota o fecha de promesa de pago');
+      return;
+    }
+    
+    try {
+      const clientRef = doc(db, 'artifacts', appId, 'public', 'data', collectionName, editingClientNote.id);
+      const updateData = {};
+      if (clientNote.trim()) updateData.notaContacto = clientNote.trim();
+      if (promesaPago.trim()) updateData.fechaPromesaPago = promesaPago.trim();
+      updateData.fechaUltimoContacto = new Date().toISOString();
+      
+      await setDoc(clientRef, updateData, { merge: true });
+      alert('✅ Nota y fecha de promesa guardadas correctamente');
+      setEditingClientNote(null);
+      setClientNote('');
+      setPromesaPago('');
+    } catch (error) {
+      console.error('Error al guardar nota:', error);
+      alert('Error al guardar la nota: ' + error.message);
+    }
   };
 
   const submitSaleReport = async () => {
@@ -4583,14 +5016,58 @@ RESPUESTA:`;
                )}
 
                {/* Estatus */}
-               <div className="flex gap-2 mb-3">
+               <div className="flex gap-2 mb-3 items-center justify-between">
                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
                    c.Estatus === 'M1' ? 'bg-amber-100 text-amber-700' : 
                    c.Estatus === 'M2' ? 'bg-orange-100 text-orange-700' :
                    c.Estatus === 'M3' ? 'bg-red-100 text-red-700' :
                    'bg-slate-100 text-slate-500'
                  }`}>{c.Estatus || 'Sin estatus'}</span>
+                 {c.Estatus === 'M1' && (
+                   <button
+                     onClick={() => {
+                       setEditingPhoneClient(c);
+                       setNewPhoneNumber(c.Telefono || '');
+                       setShowEditPhoneModal(true);
+                     }}
+                     className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                     title="Editar número de teléfono"
+                   >
+                     <Phone size={12}/> Editar Teléfono
+                   </button>
+                 )}
                </div>
+
+               {/* Notas y Fecha de Promesa de Pago (solo para M1) */}
+               {c.Estatus === 'M1' && (
+                 <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                   {c.notaContacto && (
+                     <div className="mb-2">
+                       <p className="text-[10px] font-bold text-amber-800 mb-1">📝 Nota de Contacto:</p>
+                       <p className="text-[10px] text-amber-700">{c.notaContacto}</p>
+                       {c.fechaUltimoContacto && (
+                         <p className="text-[9px] text-amber-600 mt-1">Último contacto: {new Date(c.fechaUltimoContacto).toLocaleDateString('es-MX')}</p>
+                       )}
+                     </div>
+                   )}
+                   {c.fechaPromesaPago && (
+                     <div>
+                       <p className="text-[10px] font-bold text-amber-800 mb-1">📅 Fecha de Promesa de Pago:</p>
+                       <p className="text-[10px] text-amber-700">{c.fechaPromesaPago}</p>
+                     </div>
+                   )}
+                   <button
+                     onClick={() => {
+                       setEditingClientNote(c);
+                       setClientNote(c.notaContacto || '');
+                       setPromesaPago(c.fechaPromesaPago || '');
+                     }}
+                     className="mt-2 text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                   >
+                     <FileText size={10}/> {c.notaContacto || c.fechaPromesaPago ? 'Editar' : 'Agregar'} Nota/Promesa
+                   </button>
+                 </div>
+               )}
                
                {/* Botones */}
                <div className="grid grid-cols-2 gap-2">
@@ -4618,6 +5095,106 @@ RESPUESTA:`;
            <Users size={48} className="mx-auto mb-4 opacity-50"/>
            <p>No tienes clientes asignados.</p>
            <p className="text-xs mt-2">El administrador debe cargar la base de datos y asignarte clientes.</p>
+         </div>
+       )}
+
+       {/* Modal para editar teléfono (VendorDashboard) */}
+       {showEditPhoneModal && editingPhoneClient && (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+               <Phone size={20} className="text-blue-500"/> Editar Teléfono
+             </h3>
+             <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+               <p className="text-sm text-slate-600">
+                 <strong>Cliente:</strong> {editingPhoneClient.Cliente || editingPhoneClient.Compañía || 'Sin nombre'}<br/>
+                 <strong>Cuenta:</strong> {editingPhoneClient.Cuenta || 'N/A'}<br/>
+                 <strong>Teléfono actual:</strong> {editingPhoneClient.Telefono || 'N/A'}
+               </p>
+             </div>
+             <div className="mb-4">
+               <label className="block text-sm font-bold text-slate-700 mb-2">Nuevo número de teléfono:</label>
+               <input
+                 type="text"
+                 value={newPhoneNumber}
+                 onChange={(e) => setNewPhoneNumber(e.target.value)}
+                 placeholder="Ej: 9931234567"
+                 className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+               />
+             </div>
+             <div className="flex gap-3">
+               <button
+                 onClick={savePhoneNumberVendor}
+                 className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700"
+               >
+                 Guardar
+               </button>
+               <button
+                 onClick={() => {
+                   setShowEditPhoneModal(false);
+                   setEditingPhoneClient(null);
+                   setNewPhoneNumber('');
+                 }}
+                 className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
+               >
+                 Cancelar
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Modal para notas y fecha de promesa de pago (VendorDashboard) */}
+       {editingClientNote && (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+               <FileText size={20} className="text-amber-500"/> Nota de Contacto y Promesa de Pago
+             </h3>
+             <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+               <p className="text-sm text-slate-600">
+                 <strong>Cliente:</strong> {editingClientNote.Cliente || editingClientNote.Compañía || 'Sin nombre'}<br/>
+                 <strong>Cuenta:</strong> {editingClientNote.Cuenta || 'N/A'}
+               </p>
+             </div>
+             <div className="mb-4">
+               <label className="block text-sm font-bold text-slate-700 mb-2">Nota de contacto:</label>
+               <textarea
+                 value={clientNote}
+                 onChange={(e) => setClientNote(e.target.value)}
+                 placeholder="Escribe una nota sobre el contacto con el cliente..."
+                 className="w-full p-3 border border-slate-300 rounded-lg text-sm h-24"
+               />
+             </div>
+             <div className="mb-4">
+               <label className="block text-sm font-bold text-slate-700 mb-2">Fecha de promesa de pago:</label>
+               <input
+                 type="text"
+                 value={promesaPago}
+                 onChange={(e) => setPromesaPago(e.target.value)}
+                 placeholder="Ej: 15/01/2024 o Día 15"
+                 className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+               />
+             </div>
+             <div className="flex gap-3">
+               <button
+                 onClick={saveClientNoteVendor}
+                 className="flex-1 bg-amber-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-amber-700"
+               >
+                 Guardar
+               </button>
+               <button
+                 onClick={() => {
+                   setEditingClientNote(null);
+                   setClientNote('');
+                   setPromesaPago('');
+                 }}
+                 className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
+               >
+                 Cancelar
+               </button>
+             </div>
+           </div>
          </div>
        )}
     </div>
