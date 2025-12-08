@@ -442,6 +442,68 @@ const downloadCSV = (data, filename) => {
   document.body.removeChild(link);
 };
 
+// Función para exportar instalaciones a Excel
+const exportInstalacionesToExcel = (instalaciones) => {
+  if (!instalaciones || !instalaciones.length) {
+    alert("No hay datos para exportar");
+    return;
+  }
+  
+  // Preparar datos con todas las columnas disponibles
+  const excelData = instalaciones.map(i => ({
+    'CUENTA': i.Cuenta || '',
+    'CLIENTE': i.Cliente || '',
+    'TELEFONO': i.Telefono || i.Teléfono || '',
+    'PLAZA': i.Plaza || '',
+    'CIUDAD': i.Ciudad || i.Plaza || '',
+    'REGION': i.Region || '',
+    'VENDEDOR': i.Vendedor || '',
+    'FECHA INSTALACION': i.FechaInstalacion || '',
+    'FLP': i.FLP || '',
+    'FECHA VENCIMIENTO': i.FechaVencimiento || '',
+    'ESTATUS': i.Estatus || '',
+    'SALDO': i.Saldo || '',
+    'SALDO TOTAL': i.SaldoTotal || '',
+    'SALDO POR VENCER': i.SaldoPorVencer || '',
+    'SALDO VENCIDO': i.SaldoVencido || ''
+  }));
+  
+  // Crear workbook
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(excelData);
+  
+  // Ajustar ancho de columnas
+  const colWidths = [
+    { wch: 12 }, // CUENTA
+    { wch: 35 }, // CLIENTE
+    { wch: 15 }, // TELEFONO
+    { wch: 20 }, // PLAZA
+    { wch: 20 }, // CIUDAD
+    { wch: 15 }, // REGION
+    { wch: 20 }, // VENDEDOR
+    { wch: 18 }, // FECHA INSTALACION
+    { wch: 10 }, // FLP
+    { wch: 18 }, // FECHA VENCIMIENTO
+    { wch: 12 }, // ESTATUS
+    { wch: 12 }, // SALDO
+    { wch: 12 }, // SALDO TOTAL
+    { wch: 15 }, // SALDO POR VENCER
+    { wch: 15 }  // SALDO VENCIDO
+  ];
+  ws['!cols'] = colWidths;
+  
+  // Agregar hoja al workbook
+  XLSX.utils.book_append_sheet(wb, ws, 'Instalaciones');
+  
+  // Generar nombre de archivo con fecha
+  const fecha = new Date().toISOString().split('T')[0];
+  const fileName = `Instalaciones_${fecha}.xlsx`;
+  
+  // Descargar
+  XLSX.writeFile(wb, fileName);
+  alert(`✅ Reporte descargado: ${fileName}`);
+};
+
 // Función para exportar reportes a Excel
 const exportReportsToExcel = (reports) => {
   if (!reports || !reports.length) {
@@ -732,6 +794,10 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [filterVendor, setFilterVendor] = useState('');
   const [vendors, setVendors] = useState([]);
   
+  // Estados para filtros de instalaciones (por ciudad/estado)
+  const [filterCiudad, setFilterCiudad] = useState('');
+  const [ciudades, setCiudades] = useState([]);
+  
   // Estados para filtros de reportes
   const [filterReportVendor, setFilterReportVendor] = useState('');
   const [filterReportPlaza, setFilterReportPlaza] = useState('');
@@ -806,6 +872,11 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       // Extraer vendedores únicos
       const uniqueVendors = [...new Set(clients.map(c => c.Vendedor).filter(v => v))];
       setVendors(uniqueVendors.sort());
+      // Si es módulo de instalaciones, extraer ciudades únicas
+      if (currentModule === 'install') {
+        const uniqueCiudades = [...new Set(clients.map(c => c.Ciudad || c.Plaza || c.Region).filter(c => c))];
+        setCiudades(uniqueCiudades.sort());
+      }
     });
     
     // Cargar datos de Operación del Día
@@ -1312,6 +1383,29 @@ Tu servicio de *Izzi* está listo para instalarse.
     window.location.href = whatsappUrl;
   };
 
+  // Función para asignar vendedor a una instalación
+  const handleAssignVendorInstall = async () => {
+    if (!orderToAssign || !selectedVendor) {
+      alert('Por favor selecciona un vendedor');
+      return;
+    }
+
+    try {
+      const c = orderToAssign;
+      // Actualizar la instalación con el vendedor asignado
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'install_master', c.id);
+      await setDoc(ref, { ...c, Vendedor: selectedVendor, normalized_resp: selectedVendor.toLowerCase() }, { merge: true });
+      
+      alert(`✅ Vendedor ${selectedVendor} asignado a la instalación`);
+      setShowAssignVendorModal(false);
+      setOrderToAssign(null);
+      setSelectedVendor('');
+    } catch (error) {
+      console.error('Error al asignar vendedor a instalación:', error);
+      alert('Error al asignar vendedor. Intenta de nuevo.');
+    }
+  };
+
   // Función para asignar vendedor a una orden
   const handleAssignVendor = async () => {
     if (!orderToAssign || !selectedVendor) {
@@ -1373,11 +1467,13 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
   };
 
-  // Filtrar clientes (sin región para cobranza)
+  // Filtrar clientes (sin región para cobranza, con ciudad para instalaciones)
   const filteredClients = allClients.filter(c => {
     const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
     const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor;
-    return matchesSearch && matchesVendor;
+    // Si es módulo de instalaciones, filtrar por ciudad también
+    const matchesCiudad = currentModule !== 'install' || filterCiudad === '' || c.Ciudad === filterCiudad || c.Plaza === filterCiudad || c.Region === filterCiudad;
+    return matchesSearch && matchesVendor && matchesCiudad;
   });
   
   // Filtrar operación del día (con región)
@@ -1784,6 +1880,46 @@ Tu servicio de *Izzi* está listo para instalarse.
       ['Nº de orden', 'Compañía', 'Estado', 'Hub', 'Fecha solicitada'].includes(v)
     );
     
+    // Detectar ciudad desde el nombre del archivo (solo para instalaciones)
+    let ciudadDetectada = '';
+    if (currentModule === 'install' && fileName) {
+      const fileNameLower = fileName.toLowerCase().replace(/[^a-záéíóúñ\s]/g, '');
+      const ciudadesMap = {
+        'villahermosa': 'Villahermosa',
+        'minatitlan': 'Minatitlán',
+        'playa del carmen': 'Playa del Carmen',
+        'yucatan': 'Yucatán',
+        'cordoba': 'Córdoba',
+        'coatzacoalcos': 'Coatzacoalcos',
+        'tlaxcala': 'Tlaxcala',
+        'tapachula': 'Tapachula',
+        'cardenas': 'Cárdenas',
+        'cancun': 'Cancún'
+      };
+      
+      for (const [key, value] of Object.entries(ciudadesMap)) {
+        if (fileNameLower.includes(key)) {
+          ciudadDetectada = value;
+          break;
+        }
+      }
+      
+      // Si no se detectó, intentar extraer del nombre del archivo
+      if (!ciudadDetectada) {
+        // Buscar palabras que puedan ser ciudades
+        const palabras = fileNameLower.split(/[\s_\-\.]+/);
+        for (const palabra of palabras) {
+          if (palabra.length > 3) {
+            // Capitalizar primera letra
+            ciudadDetectada = palabra.charAt(0).toUpperCase() + palabra.slice(1);
+            break;
+          }
+        }
+      }
+      
+      console.log('Ciudad detectada desde archivo:', ciudadDetectada);
+    }
+    
     const targetCollection = isOperacionDia ? 'operacion_dia' : collectionName;
     const collectionLabel = isOperacionDia ? 'Operación del Día' : currentModule;
     
@@ -1927,6 +2063,14 @@ Tu servicio de *Izzi* está listo para instalarse.
                   docData.FLP = flp;
                 }
               }
+            }
+            
+            // Agregar ciudad detectada desde el nombre del archivo (solo para instalaciones)
+            if (currentModule === 'install' && ciudadDetectada && !docData.Ciudad) {
+              docData.Ciudad = ciudadDetectada;
+              // También agregar a Plaza y Region si no existen
+              if (!docData.Plaza) docData.Plaza = ciudadDetectada;
+              if (!docData.Region) docData.Region = ciudadDetectada;
             }
             
             if (hasData) {
@@ -2100,6 +2244,16 @@ Tu servicio de *Izzi* está listo para instalarse.
                   placeholder="🔍 Buscar cliente, cuenta, teléfono..." 
                   className="flex-1 p-3 rounded-lg border border-slate-200 text-sm"
                 />
+                {currentModule === 'install' && (
+                  <select 
+                    value={filterCiudad} 
+                    onChange={e=>setFilterCiudad(e.target.value)}
+                    className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
+                  >
+                    <option value="">Todas las ciudades</option>
+                    {ciudades.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                )}
                 <select 
                   value={filterVendor} 
                   onChange={e=>setFilterVendor(e.target.value)}
@@ -2112,10 +2266,21 @@ Tu servicio de *Izzi* está listo para instalarse.
                   <Settings size={18}/>
                 </button>
               </div>
-              <p className="text-xs text-slate-500 mt-2">
-                Mostrando {filteredClients.length} de {allClients.length} clientes
-                {filterVendor && ` • Vendedor: ${filterVendor}`}
-              </p>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-slate-500">
+                  Mostrando {filteredClients.length} de {allClients.length} {currentModule === 'install' ? 'instalaciones' : 'clientes'}
+                  {filterCiudad && ` • Ciudad: ${filterCiudad}`}
+                  {filterVendor && ` • Vendedor: ${filterVendor}`}
+                </p>
+                {currentModule === 'install' && filteredClients.length > 0 && (
+                  <button 
+                    onClick={() => exportInstalacionesToExcel(filteredClients)}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-green-700"
+                  >
+                    <Download size={16}/> Descargar Reporte
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Lista de clientes */}
@@ -2164,7 +2329,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                   </div>
                   
                   {/* Botones */}
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className={`grid gap-2 ${currentModule === 'install' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                     <button 
                       onClick={()=>sendTemplate(c)} 
                       className="bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
@@ -2177,6 +2342,17 @@ Tu servicio de *Izzi* está listo para instalarse.
                     >
                       <Phone size={16}/> Llamar
                     </a>
+                    {currentModule === 'install' && (
+                      <button 
+                        onClick={() => {
+                          setOrderToAssign(c);
+                          setShowAssignVendorModal(true);
+                        }}
+                        className="bg-purple-500 hover:bg-purple-600 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <Users size={16}/> Asignar
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -2992,9 +3168,10 @@ Tu servicio de *Izzi* está listo para instalarse.
               {orderToAssign && (
                 <div className="mb-4 p-3 bg-slate-50 rounded-lg">
                   <p className="text-sm text-slate-600">
-                    <strong>Cliente:</strong> {orderToAssign.Compañía || orderToAssign.Compania || 'Sin nombre'}<br/>
-                    <strong>Orden:</strong> {orderToAssign['Nº de orden'] || orderToAssign.Orden || 'N/A'}<br/>
-                    <strong>Cuenta:</strong> {orderToAssign['Nº de cuenta'] || orderToAssign.Cuenta || 'N/A'}
+                    <strong>Cliente:</strong> {orderToAssign.Cliente || orderToAssign.Compañía || orderToAssign.Compania || 'Sin nombre'}<br/>
+                    {orderToAssign['Nº de orden'] && <><strong>Orden:</strong> {orderToAssign['Nº de orden'] || orderToAssign.Orden || 'N/A'}<br/></>}
+                    <strong>Cuenta:</strong> {orderToAssign.Cuenta || orderToAssign['Nº de cuenta'] || 'N/A'}
+                    {orderToAssign.Ciudad && <><br/><strong>Ciudad:</strong> {orderToAssign.Ciudad}</>}
                   </p>
                 </div>
               )}
@@ -3013,7 +3190,7 @@ Tu servicio de *Izzi* está listo para instalarse.
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={handleAssignVendor}
+                  onClick={currentModule === 'install' ? handleAssignVendorInstall : handleAssignVendor}
                   disabled={!selectedVendor}
                   className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700"
                 >
@@ -3185,7 +3362,13 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     
     const unsubMain = onSnapshot(q, (snap) => {
       const all = snap.docs.map(doc => doc.data());
-      const mine = all.filter(i => i['normalized_resp']?.includes(myName.toLowerCase()));
+      // Filtrar por vendedor: buscar en normalized_resp o en Vendedor (comparar en minúsculas)
+      const mine = all.filter(i => {
+        const normalizedResp = (i['normalized_resp'] || '').toLowerCase();
+        const vendedor = (i['Vendedor'] || '').toLowerCase();
+        const myNameLower = myName.toLowerCase();
+        return normalizedResp.includes(myNameLower) || vendedor === myNameLower;
+      });
       setData(mine); setLoading(false);
     });
     
