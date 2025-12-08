@@ -891,7 +891,27 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     const unsubMain = onSnapshot(qMain, (snap) => {
       setDbCount(snap.size);
       // Cargar todos los clientes para la vista de clientes
-      const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const clients = snap.docs.map(d => {
+        const data = d.data();
+        // Normalizar campos para instalaciones (asegurar que Cliente y Estatus existan)
+        if (currentModule === 'install') {
+          // Si hay Compañía pero no Cliente, copiar a Cliente
+          if (data.Compañía && !data.Cliente) {
+            data.Cliente = data.Compañía;
+          }
+          if (data.Compania && !data.Cliente) {
+            data.Cliente = data.Compania;
+          }
+          // Si hay Estado pero no Estatus, copiar a Estatus
+          if (data.Estado && !data.Estatus) {
+            data.Estatus = data.Estado;
+          }
+          if (data['Estado'] && !data.Estatus) {
+            data.Estatus = data['Estado'];
+          }
+        }
+        return { id: d.id, ...data };
+      });
       setAllClients(clients);
       // Extraer vendedores únicos
       const uniqueVendors = [...new Set(clients.map(c => c.Vendedor).filter(v => v))];
@@ -2451,6 +2471,24 @@ Tu servicio de *Izzi* está listo para instalarse.
               if (!docData.Region) docData.Region = ciudadDetectada;
             }
             
+            // Normalizar campos para instalaciones (asegurar que Cliente y Estatus existan)
+            if (currentModule === 'install') {
+              // Si hay Compañía pero no Cliente, copiar a Cliente
+              if (docData.Compañía && !docData.Cliente) {
+                docData.Cliente = docData.Compañía;
+              }
+              if (docData.Compania && !docData.Cliente) {
+                docData.Cliente = docData.Compania;
+              }
+              // Si hay Estado pero no Estatus, copiar a Estatus
+              if (docData.Estado && !docData.Estatus) {
+                docData.Estatus = docData.Estado;
+              }
+              if (docData['Estado'] && !docData.Estatus) {
+                docData.Estatus = docData['Estado'];
+              }
+            }
+            
             if (hasData) {
               processedRows.push(docData);
               if (rowIndex < 3) console.log(`Fila ${rowIndex} procesada:`, docData);
@@ -2682,7 +2720,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                 <div key={c.id || i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
                   {/* Encabezado */}
                   <div className="flex justify-between mb-2">
-                    <h3 className="font-bold text-slate-800 text-sm truncate flex-1">{c.Cliente || 'Sin nombre'}</h3>
+                    <h3 className="font-bold text-slate-800 text-sm truncate flex-1">
+                      {c.Cliente || c.Compañía || c.Compania || c['Compañía'] || 'Sin nombre'}
+                    </h3>
                     <span className="font-mono font-bold text-green-600 text-lg">${getSaldo(c)}</span>
                   </div>
                   
@@ -2714,12 +2754,14 @@ Tu servicio de *Izzi* está listo para instalarse.
                   {/* Estatus */}
                   <div className="flex gap-2 mb-3 items-center justify-between">
                     <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                      c.Estatus?.includes('Perdida') ? 'bg-red-100 text-red-700' : 
-                      c.Estatus === 'M1' ? 'bg-amber-100 text-amber-700' : 
-                      c.Estatus === 'M2' ? 'bg-orange-100 text-orange-700' :
+                      (c.Estatus || c.Estado || c['Estado'])?.includes('Perdida') ? 'bg-red-100 text-red-700' : 
+                      (c.Estatus || c.Estado || c['Estado'])?.toLowerCase() === 'completa' || (c.Estatus || c.Estado || c['Estado'])?.toLowerCase() === 'completo' ? 'bg-green-100 text-green-700' :
+                      (c.Estatus || c.Estado || c['Estado'])?.toLowerCase() === 'instalado' ? 'bg-green-100 text-green-700' :
+                      (c.Estatus || c.Estado || c['Estado']) === 'M1' ? 'bg-amber-100 text-amber-700' : 
+                      (c.Estatus || c.Estado || c['Estado']) === 'M2' ? 'bg-orange-100 text-orange-700' :
                       'bg-slate-100 text-slate-500'
-                    }`}>{c.Estatus || 'Sin estatus'}</span>
-                    {(c.Estatus === 'M1' || c.Estatus === 'M2') && (
+                    }`}>{c.Estatus || c.Estado || c['Estado'] || 'Sin estatus'}</span>
+                    {((c.Estatus || c.Estado || c['Estado']) === 'M1' || (c.Estatus || c.Estado || c['Estado']) === 'M2') && (
                       <button
                         onClick={() => {
                           setEditingPhoneClient(c);
