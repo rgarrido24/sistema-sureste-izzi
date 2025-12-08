@@ -899,7 +899,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubPromociones();
       unsubPDFs();
     };
-  }, [collectionName, appId]);
+  }, [collectionName, appId, currentModule, user]);
 
   // useEffect para combinar reportes con órdenes completadas
   useEffect(() => {
@@ -2215,6 +2215,21 @@ Tu servicio de *Izzi* está listo para instalarse.
         {/* VISTA DE CLIENTES PARA ADMIN */}
         {activeTab === 'clients' && (
           <div className="space-y-4">
+            {currentModule === 'install' && allClients.length === 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+                <FileSpreadsheet size={48} className="mx-auto mb-4 text-blue-500 opacity-50"/>
+                <h3 className="font-bold text-blue-800 mb-2">No hay instalaciones cargadas</h3>
+                <p className="text-sm text-blue-600 mb-4">
+                  Para comenzar, ve a la pestaña <strong>"Cargar"</strong> y sube tu archivo Excel de instalaciones.
+                </p>
+                <button 
+                  onClick={() => setActiveTab('upload')}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 inline-flex items-center gap-2"
+                >
+                  <UploadCloud size={20}/> Ir a Cargar Archivo
+                </button>
+              </div>
+            )}
             {/* Configuración */}
             {showConfig && (
               <div className="bg-white p-4 rounded-xl shadow-lg border-t-4 border-blue-500">
@@ -2365,7 +2380,16 @@ Tu servicio de *Izzi* está listo para instalarse.
             {filteredClients.length === 0 && (
               <div className="text-center py-10 text-slate-400 bg-white rounded-xl">
                 <Users size={48} className="mx-auto mb-4 opacity-50"/>
-                <p>No hay clientes que coincidan con la búsqueda.</p>
+                <p className="mb-2">
+                  {currentModule === 'install' 
+                    ? 'No hay instalaciones cargadas aún.' 
+                    : 'No hay clientes que coincidan con la búsqueda.'}
+                </p>
+                {currentModule === 'install' && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Ve a la pestaña <strong>"Cargar"</strong> para subir archivos de instalaciones.
+                  </p>
+                )}
               </div>
             )}
           </div>
