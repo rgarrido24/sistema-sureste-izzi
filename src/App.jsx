@@ -815,6 +815,7 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [showAssignVendorModal, setShowAssignVendorModal] = useState(false);
   const [orderToAssign, setOrderToAssign] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState('');
+  const [manualVendorName, setManualVendorName] = useState('');
   const [editingReport, setEditingReport] = useState(null);
   const [showEditReportModal, setShowEditReportModal] = useState(false);
   const [videoLink, setVideoLink] = useState(localStorage.getItem('adminVideoLink') || 'https://youtu.be/TU-VIDEO-AQUI');
@@ -1435,9 +1436,9 @@ Tu servicio de *Izzi* está listo para instalarse.
     window.location.href = whatsappUrl;
   };
 
-  // Función para asignar vendedor a una instalación
-  const handleAssignVendorInstall = async () => {
-    if (!orderToAssign || !selectedVendor) {
+  // Función para asignar vendedor a una instalación (con nombre como parámetro)
+  const handleAssignVendorInstallWithName = async (vendorName) => {
+    if (!orderToAssign || !vendorName) {
       alert('Por favor selecciona un vendedor');
       return;
     }
@@ -1446,16 +1447,31 @@ Tu servicio de *Izzi* está listo para instalarse.
       const c = orderToAssign;
       // Actualizar la instalación con el vendedor asignado
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'install_master', c.id);
-      await setDoc(ref, { ...c, Vendedor: selectedVendor, normalized_resp: selectedVendor.toLowerCase() }, { merge: true });
+      await setDoc(ref, { ...c, Vendedor: vendorName, normalized_resp: vendorName.toLowerCase() }, { merge: true });
       
-      alert(`✅ Vendedor ${selectedVendor} asignado a la instalación`);
+      alert(`✅ Vendedor ${vendorName} asignado a la instalación`);
       setShowAssignVendorModal(false);
       setOrderToAssign(null);
       setSelectedVendor('');
+      setManualVendorName('');
+      
+      // Agregar el vendedor a la lista si no existe
+      if (!vendors.includes(vendorName)) {
+        setVendors(prev => [...prev, vendorName].sort());
+      }
     } catch (error) {
       console.error('Error al asignar vendedor a instalación:', error);
       alert('Error al asignar vendedor. Intenta de nuevo.');
     }
+  };
+
+  // Función para asignar vendedor a una instalación (versión antigua para compatibilidad)
+  const handleAssignVendorInstall = async () => {
+    if (!orderToAssign || !selectedVendor) {
+      alert('Por favor selecciona un vendedor');
+      return;
+    }
+    await handleAssignVendorInstallWithName(selectedVendor);
   };
 
   // Función para editar reporte
@@ -1500,9 +1516,9 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
   };
 
-  // Función para asignar vendedor a una orden
-  const handleAssignVendor = async () => {
-    if (!orderToAssign || !selectedVendor) {
+  // Función para asignar vendedor a una orden (con nombre como parámetro)
+  const handleAssignVendorWithName = async (vendorName) => {
+    if (!orderToAssign || !vendorName) {
       alert('Por favor selecciona un vendedor');
       return;
     }
@@ -1511,7 +1527,7 @@ Tu servicio de *Izzi* está listo para instalarse.
       const o = orderToAssign;
       // Actualizar la orden con el vendedor asignado
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
-      await setDoc(ref, { ...o, VendedorAsignado: selectedVendor, normalized_vendedor: selectedVendor.toLowerCase() }, { merge: true });
+      await setDoc(ref, { ...o, VendedorAsignado: vendorName, normalized_vendedor: vendorName.toLowerCase() }, { merge: true });
       
       // Crear reporte automáticamente en sales_reports con todos los campos
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), {
@@ -1530,7 +1546,7 @@ Tu servicio de *Izzi* está listo para instalarse.
         estatus: o.Estado || 'Abierta',
         fechaInstalacion: o['Fecha solicitada'] || o.Creado || '',
         plaza: o.Hub || o.Plaza || o.Region || '',
-        vendedor: selectedVendor,
+        vendedor: vendorName,
         puesto: '',
         cvven: '',
         comentarios: `Asignado desde Operación del Día - Orden: ${o['Nº de orden'] || o.Orden || ''}`,
@@ -1544,21 +1560,36 @@ Tu servicio de *Izzi* está listo para instalarse.
         client: o.Compañía || o.Compania || o.Cliente || 'Cliente',
         package: 'Instalación',
         folio: o['Nº de orden'] || o.Orden || 'N/A',
-        vendor: selectedVendor,
+        vendor: vendorName,
         estado: o.Estado || 'Abierta',
         fechaSolicitada: o['Fecha solicitada'] || o.Creado || '',
         ordenId: o.id,
         createdAt: serverTimestamp()
       });
       
-      alert(`✅ Vendedor asignado y reporte creado para ${selectedVendor}`);
+      alert(`✅ Vendedor ${vendorName} asignado y reporte creado`);
       setShowAssignVendorModal(false);
       setOrderToAssign(null);
       setSelectedVendor('');
+      setManualVendorName('');
+      
+      // Agregar el vendedor a la lista si no existe
+      if (!vendors.includes(vendorName)) {
+        setVendors(prev => [...prev, vendorName].sort());
+      }
     } catch (error) {
       console.error('Error al asignar vendedor:', error);
       alert('Error al asignar vendedor. Intenta de nuevo.');
     }
+  };
+
+  // Función para asignar vendedor a una orden (versión antigua para compatibilidad)
+  const handleAssignVendor = async () => {
+    if (!orderToAssign || !selectedVendor) {
+      alert('Por favor selecciona un vendedor');
+      return;
+    }
+    await handleAssignVendorWithName(selectedVendor);
   };
 
   // Filtrar clientes (sin región para cobranza, con ciudad para instalaciones)
@@ -1578,41 +1609,75 @@ Tu servicio de *Izzi* está listo para instalarse.
     // Filtro de estado
     let matchesEstado = true;
     if (filterOperacionEstado !== '') {
-      const estado = (o.Estado || '').toLowerCase();
-      const filterEstado = filterOperacionEstado.toLowerCase();
-      matchesEstado = estado.includes(filterEstado) || 
-                     (filterEstado === 'abierta' && (estado.includes('abierta') || estado.includes('abierto'))) ||
-                     (filterEstado === 'instalado' && (estado.includes('instalado') || estado.includes('completo'))) ||
-                     (filterEstado === 'not done' && estado.includes('not done')) ||
-                     (filterEstado === 'cancelada' && (estado.includes('cancelada') || estado.includes('cancelado')));
+      const estado = (o.Estado || o.Estatus || '').toLowerCase().trim();
+      const filterEstado = filterOperacionEstado.toLowerCase().trim();
+      
+      if (filterEstado === 'abierta') {
+        matchesEstado = estado.includes('abierta') || estado.includes('abierto') || estado === 'abierta';
+      } else if (filterEstado === 'instalado') {
+        matchesEstado = estado.includes('instalado') || estado.includes('instalada') || 
+                       estado.includes('completo') || estado.includes('completa') ||
+                       estado === 'instalado' || estado === 'completo';
+      } else if (filterEstado === 'not done') {
+        matchesEstado = estado.includes('not done') || estado.includes('notdone') || 
+                       estado.includes('no hecho') || estado === 'not done';
+      } else if (filterEstado === 'cancelada') {
+        matchesEstado = estado.includes('cancelada') || estado.includes('cancelado') || 
+                       estado === 'cancelada' || estado === 'cancelado';
+      } else {
+        // Búsqueda genérica
+        matchesEstado = estado.includes(filterEstado);
+      }
     }
     
     // Filtro de fecha
     let matchesFecha = true;
     if (filterOperacionFecha !== 'all') {
-      const fechaSolicitada = o['Fecha solicitada'] || o.Creado || '';
+      const fechaSolicitada = o['Fecha solicitada'] || o.Creado || o['Fecha solicitada'] || '';
       if (fechaSolicitada) {
         try {
-          const fecha = new Date(fechaSolicitada);
-          const hoy = new Date();
-          hoy.setHours(0, 0, 0, 0);
-          const fechaComparar = new Date(fecha);
-          fechaComparar.setHours(0, 0, 0, 0);
+          // Intentar parsear la fecha en diferentes formatos
+          let fecha = null;
+          if (typeof fechaSolicitada === 'string') {
+            // Si es string, intentar parsear
+            fecha = new Date(fechaSolicitada);
+            // Si el parseo falla, intentar formato DD/MM/YYYY o DD-MM-YYYY
+            if (isNaN(fecha.getTime())) {
+              const parts = fechaSolicitada.split(/[\/\-]/);
+              if (parts.length === 3) {
+                // Formato DD/MM/YYYY o DD-MM-YYYY
+                fecha = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+              }
+            }
+          } else if (fechaSolicitada instanceof Date) {
+            fecha = fechaSolicitada;
+          }
           
-          if (filterOperacionFecha === 'today') {
-            matchesFecha = fechaComparar.getTime() === hoy.getTime();
-          } else if (filterOperacionFecha === 'past') {
-            matchesFecha = fechaComparar.getTime() < hoy.getTime();
-          } else if (filterOperacionFecha === 'future') {
-            matchesFecha = fechaComparar.getTime() > hoy.getTime();
+          if (fecha && !isNaN(fecha.getTime())) {
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            const fechaComparar = new Date(fecha);
+            fechaComparar.setHours(0, 0, 0, 0);
+            
+            if (filterOperacionFecha === 'today') {
+              matchesFecha = fechaComparar.getTime() === hoy.getTime();
+            } else if (filterOperacionFecha === 'past') {
+              matchesFecha = fechaComparar.getTime() < hoy.getTime();
+            } else if (filterOperacionFecha === 'future') {
+              matchesFecha = fechaComparar.getTime() > hoy.getTime();
+            }
+          } else {
+            // Si no se puede parsear la fecha, no mostrar cuando el filtro es específico
+            matchesFecha = false;
           }
         } catch (e) {
-          // Si no se puede parsear la fecha, no filtrar
-          matchesFecha = true;
+          console.error('Error al parsear fecha:', fechaSolicitada, e);
+          // Si no se puede parsear la fecha, no mostrar cuando el filtro es específico
+          matchesFecha = false;
         }
       } else {
-        // Si no hay fecha, no mostrar si el filtro es específico
-        matchesFecha = filterOperacionFecha === 'all';
+        // Si no hay fecha, no mostrar cuando el filtro es específico
+        matchesFecha = false;
       }
     }
     
@@ -3390,23 +3455,57 @@ Tu servicio de *Izzi* está listo para instalarse.
                 </div>
               )}
               <div className="mb-4">
-                <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Vendedor:</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Vendedor de la Lista:</label>
                 <select
                   value={selectedVendor}
-                  onChange={(e) => setSelectedVendor(e.target.value)}
-                  className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                  onChange={(e) => {
+                    setSelectedVendor(e.target.value);
+                    if (e.target.value) {
+                      setManualVendorName(''); // Limpiar campo manual si se selecciona de la lista
+                    }
+                  }}
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm mb-3"
                 >
-                  <option value="">-- Selecciona un vendedor --</option>
+                  <option value="">-- Selecciona un vendedor de la lista --</option>
                   {vendors.map(v => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
+                
+                <label className="block text-sm font-bold text-slate-700 mb-2">O escribir nombre manualmente:</label>
+                <input
+                  type="text"
+                  value={manualVendorName}
+                  onChange={(e) => {
+                    setManualVendorName(e.target.value);
+                    if (e.target.value) {
+                      setSelectedVendor(''); // Limpiar selección si se escribe manualmente
+                    }
+                  }}
+                  placeholder="Escribe el nombre del vendedor..."
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  {selectedVendor ? `Vendedor seleccionado: ${selectedVendor}` : manualVendorName ? `Vendedor manual: ${manualVendorName}` : 'Selecciona de la lista o escribe manualmente'}
+                </p>
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={currentModule === 'install' ? handleAssignVendorInstall : handleAssignVendor}
-                  disabled={!selectedVendor}
-                  className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700"
+                  onClick={() => {
+                    const vendorToAssign = selectedVendor || manualVendorName.trim();
+                    if (!vendorToAssign) {
+                      alert('Por favor selecciona un vendedor de la lista o escribe el nombre manualmente');
+                      return;
+                    }
+                    // Usar el vendedor seleccionado o el manual
+                    const finalVendor = selectedVendor || manualVendorName.trim();
+                    if (currentModule === 'install') {
+                      handleAssignVendorInstallWithName(finalVendor);
+                    } else {
+                      handleAssignVendorWithName(finalVendor);
+                    }
+                  }}
+                  className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-purple-700"
                 >
                   Asignar
                 </button>
@@ -3415,6 +3514,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                     setShowAssignVendorModal(false);
                     setOrderToAssign(null);
                     setSelectedVendor('');
+                    setManualVendorName('');
                   }}
                   className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
                 >
