@@ -1644,7 +1644,29 @@ Tu servicio de *Izzi* está listo para instalarse.
       const c = orderToAssign;
       // Actualizar la instalación con el vendedor asignado
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'install_master', c.id);
-      await setDoc(ref, { ...c, Vendedor: vendorName, normalized_resp: vendorName.toLowerCase() }, { merge: true });
+      await setDoc(ref, { ...c, Vendedor: vendorName, VendedorAsignado: vendorName, normalized_resp: vendorName.toLowerCase() }, { merge: true });
+      
+      // Si la instalación tiene un Nº de orden, también actualizar en operacion_dia si existe
+      const nOrden = c['Nº de orden'] || c.Orden || c.Cuenta;
+      if (nOrden) {
+        try {
+          const qOperacion = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
+            where('Nº de orden', '==', nOrden)
+          );
+          const snapOperacion = await getDocs(qOperacion);
+          if (!snapOperacion.empty) {
+            // Actualizar todas las órdenes que coincidan
+            const batch = writeBatch(db);
+            snapOperacion.docs.forEach(docSnap => {
+              batch.update(docSnap.ref, { VendedorAsignado: vendorName, Vendedor: vendorName, normalized_vendedor: vendorName.toLowerCase() });
+            });
+            await batch.commit();
+          }
+        } catch (error) {
+          console.log('No se encontró orden en operacion_dia o error al actualizar:', error);
+        }
+      }
       
       alert(`✅ Vendedor ${vendorName} asignado a la instalación`);
       setShowAssignVendorModal(false);
@@ -3385,7 +3407,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                     {o.Hub && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Hub}</div>}
                     {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
                     {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {o['Fecha solicitada']}</div>}
-                    {o['Clave Vendedor'] && <div className="flex items-center gap-1"><Users size={12}/> {o['Clave Vendedor']}</div>}
+                    {(o['Clave Vendedor'] || o.VendedorAsignado || o.Vendedor) && (
+                      <div className="flex items-center gap-1">
+                        <Users size={12}/> {o.VendedorAsignado || o.Vendedor || o['Clave Vendedor']}
+                      </div>
+                    )}
                     {(o.Teléfonos || o.Telefonos || o.Telefono) && (
                       <div className="flex items-center gap-1 col-span-2">
                         <Phone size={12}/> {o.Teléfonos || o.Telefonos || o.Telefono}
@@ -3399,9 +3425,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                   </div>
 
                   {/* Vendedor asignado */}
-                  {o.VendedorAsignado && (
+                  {(o.VendedorAsignado || o.Vendedor || o['Clave Vendedor']) && (
                     <div className="mb-2 text-xs">
-                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">👤 Asignado: {o.VendedorAsignado}</span>
+                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                        👤 Asignado: {o.VendedorAsignado || o.Vendedor || o['Clave Vendedor']}
+                      </span>
                     </div>
                   )}
 
