@@ -810,6 +810,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [filterRegionOperacion, setFilterRegionOperacion] = useState('');
   const [regionsOperacion, setRegionsOperacion] = useState([]);
   const [operacionSearchTerm, setOperacionSearchTerm] = useState('');
+  const [filterOperacionEstado, setFilterOperacionEstado] = useState(''); // '', 'Abierta', 'Instalado', 'Not Done', 'Cancelada'
+  const [filterOperacionFecha, setFilterOperacionFecha] = useState('all'); // 'all', 'today', 'past', 'future'
   const [showAssignVendorModal, setShowAssignVendorModal] = useState(false);
   const [orderToAssign, setOrderToAssign] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState('');
@@ -890,6 +892,15 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       const uniqueRegions = [...new Set(operacion.map(o => o.Region || o.Hub).filter(r => r))];
       setRegionsOperacion(uniqueRegions.sort());
     });
+    
+    // Cargar TODOS los vendedores desde sales_master para el dropdown de asignación
+    const qSalesMaster = query(collection(db, 'artifacts', appId, 'public', 'data', 'sales_master'));
+    const unsubSalesMaster = onSnapshot(qSalesMaster, (snap) => {
+      const salesClients = snap.docs.map(d => d.data());
+      const allVendorsFromSales = [...new Set(salesClients.map(c => c.Vendedor).filter(v => v))];
+      // Combinar con vendedores existentes sin duplicados
+      setVendors(prev => [...new Set([...prev, ...allVendorsFromSales])].sort());
+    });
 
     // Combinar reportes con órdenes completadas cuando cambien los datos
     return () => {
@@ -899,6 +910,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubPack();
       unsubPromociones();
       unsubPDFs();
+      unsubSalesMaster();
     };
   }, [collectionName, appId, currentModule, user]);
 
@@ -1558,11 +1570,53 @@ Tu servicio de *Izzi* está listo para instalarse.
     return matchesSearch && matchesVendor && matchesCiudad;
   });
   
-  // Filtrar operación del día (con región)
+  // Filtrar operación del día (con región, estado y fecha)
   const filteredOperacion = operacionData.filter(o => {
     const matchesSearch = operacionSearchTerm === '' || JSON.stringify(o).toLowerCase().includes(operacionSearchTerm.toLowerCase());
     const matchesRegion = filterRegionOperacion === '' || o.Region === filterRegionOperacion || o.Hub === filterRegionOperacion;
-    return matchesSearch && matchesRegion;
+    
+    // Filtro de estado
+    let matchesEstado = true;
+    if (filterOperacionEstado !== '') {
+      const estado = (o.Estado || '').toLowerCase();
+      const filterEstado = filterOperacionEstado.toLowerCase();
+      matchesEstado = estado.includes(filterEstado) || 
+                     (filterEstado === 'abierta' && (estado.includes('abierta') || estado.includes('abierto'))) ||
+                     (filterEstado === 'instalado' && (estado.includes('instalado') || estado.includes('completo'))) ||
+                     (filterEstado === 'not done' && estado.includes('not done')) ||
+                     (filterEstado === 'cancelada' && (estado.includes('cancelada') || estado.includes('cancelado')));
+    }
+    
+    // Filtro de fecha
+    let matchesFecha = true;
+    if (filterOperacionFecha !== 'all') {
+      const fechaSolicitada = o['Fecha solicitada'] || o.Creado || '';
+      if (fechaSolicitada) {
+        try {
+          const fecha = new Date(fechaSolicitada);
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
+          const fechaComparar = new Date(fecha);
+          fechaComparar.setHours(0, 0, 0, 0);
+          
+          if (filterOperacionFecha === 'today') {
+            matchesFecha = fechaComparar.getTime() === hoy.getTime();
+          } else if (filterOperacionFecha === 'past') {
+            matchesFecha = fechaComparar.getTime() < hoy.getTime();
+          } else if (filterOperacionFecha === 'future') {
+            matchesFecha = fechaComparar.getTime() > hoy.getTime();
+          }
+        } catch (e) {
+          // Si no se puede parsear la fecha, no filtrar
+          matchesFecha = true;
+        }
+      } else {
+        // Si no hay fecha, no mostrar si el filtro es específico
+        matchesFecha = filterOperacionFecha === 'all';
+      }
+    }
+    
+    return matchesSearch && matchesRegion && matchesEstado && matchesFecha;
   });
   
   // Filtrar reportes con filtros de fecha
@@ -2857,7 +2911,7 @@ Tu servicio de *Izzi* está listo para instalarse.
           <div className="space-y-4">
             {/* Barra de búsqueda y filtros */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex flex-col md:flex-row gap-3 mb-3">
                 <input 
                   value={operacionSearchTerm} 
                   onChange={e=>setOperacionSearchTerm(e.target.value)} 
@@ -2879,10 +2933,37 @@ Tu servicio de *Izzi* está listo para instalarse.
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
+                <select 
+                  value={filterOperacionEstado} 
+                  onChange={e=>setFilterOperacionEstado(e.target.value)}
+                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
+                >
+                  <option value="">Todos los estados</option>
+                  <option value="Abierta">Abiertas</option>
+                  <option value="Instalado">Instaladas/Completas</option>
+                  <option value="Not Done">Not Done</option>
+                  <option value="Cancelada">Canceladas</option>
+                </select>
+                <select 
+                  value={filterOperacionFecha} 
+                  onChange={e=>setFilterOperacionFecha(e.target.value)}
+                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
+                >
+                  <option value="all">Todas las fechas</option>
+                  <option value="today">Hoy</option>
+                  <option value="past">Pasadas</option>
+                  <option value="future">Futuras</option>
+                </select>
               </div>
-              <p className="text-xs text-slate-500 mt-2">
+              <p className="text-xs text-slate-500">
                 Mostrando {filteredOperacion.length} de {operacionData.length} órdenes
                 {filterRegionOperacion && ` • Región: ${filterRegionOperacion}`}
+                {filterOperacionEstado && ` • Estado: ${filterOperacionEstado}`}
+                {filterOperacionFecha !== 'all' && ` • Fecha: ${
+                  filterOperacionFecha === 'today' ? 'Hoy' :
+                  filterOperacionFecha === 'past' ? 'Pasadas' :
+                  'Futuras'
+                }`}
               </p>
             </div>
 
