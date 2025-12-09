@@ -829,6 +829,9 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [clientNote, setClientNote] = useState('');
+  
+  // Estados para mapeo CVVEN -> Vendedores (para asignación automática futura)
+  const [cvvenVendorMap, setCvvenVendorMap] = useState({}); // { 'CVVEN123': ['Vendedor1', 'Vendedor2'], ... }
   const [promesaPago, setPromesaPago] = useState('');
   const [editingClientNote, setEditingClientNote] = useState(null);
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
@@ -1778,6 +1781,108 @@ Tu servicio de *Izzi* está listo para instalarse.
     } catch (error) {
       console.error('Error al borrar reporte:', error);
       alert('Error al borrar el reporte. Intenta de nuevo.');
+    }
+  };
+
+  // Función para quitar vendedor de una instalación
+  const removeVendorFromInstall = async (c) => {
+    if (!confirm(`¿Estás seguro de quitar la asignación del vendedor "${c.Vendedor}" de esta instalación?`)) {
+      return;
+    }
+
+    try {
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'install_master', c.id);
+      await setDoc(ref, { ...c, Vendedor: null, VendedorAsignado: null, normalized_resp: null }, { merge: true });
+      
+      // También quitar de operacion_dia si existe
+      const nCuenta = c.Cuenta || c['Nº de cuenta'];
+      if (nCuenta) {
+        try {
+          const qOperacionCuenta = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
+            where('Nº de cuenta', '==', nCuenta)
+          );
+          const snapOperacionCuenta = await getDocs(qOperacionCuenta);
+          if (!snapOperacionCuenta.empty) {
+            const batch = writeBatch(db);
+            snapOperacionCuenta.docs.forEach(docSnap => {
+              batch.update(docSnap.ref, { VendedorAsignado: null, Vendedor: null, normalized_vendedor: null });
+            });
+            await batch.commit();
+          } else {
+            const qOperacionCuenta2 = query(
+              collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
+              where('Cuenta', '==', nCuenta)
+            );
+            const snapOperacionCuenta2 = await getDocs(qOperacionCuenta2);
+            if (!snapOperacionCuenta2.empty) {
+              const batch = writeBatch(db);
+              snapOperacionCuenta2.docs.forEach(docSnap => {
+                batch.update(docSnap.ref, { VendedorAsignado: null, Vendedor: null, normalized_vendedor: null });
+              });
+              await batch.commit();
+            }
+          }
+        } catch (error) {
+          console.log('Error al quitar vendedor de operacion_dia:', error);
+        }
+      }
+      
+      alert('✅ Asignación de vendedor eliminada');
+    } catch (error) {
+      console.error('Error al quitar vendedor:', error);
+      alert('Error al quitar la asignación: ' + error.message);
+    }
+  };
+
+  // Función para quitar vendedor de una orden de operación
+  const removeVendorFromOperacion = async (o) => {
+    if (!confirm(`¿Estás seguro de quitar la asignación del vendedor "${o.Vendedor || o.VendedorAsignado}" de esta orden?`)) {
+      return;
+    }
+
+    try {
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
+      await setDoc(ref, { ...o, VendedorAsignado: null, Vendedor: null, normalized_vendedor: null }, { merge: true });
+      
+      // También quitar de install_master si existe
+      const nCuenta = o['Nº de cuenta'] || o.Cuenta;
+      if (nCuenta) {
+        try {
+          const qInstall = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'install_master'),
+            where('Cuenta', '==', nCuenta)
+          );
+          const snapInstall = await getDocs(qInstall);
+          if (!snapInstall.empty) {
+            const batch = writeBatch(db);
+            snapInstall.docs.forEach(docSnap => {
+              batch.update(docSnap.ref, { Vendedor: null, VendedorAsignado: null, normalized_resp: null });
+            });
+            await batch.commit();
+          } else {
+            const qInstall2 = query(
+              collection(db, 'artifacts', appId, 'public', 'data', 'install_master'),
+              where('Nº de cuenta', '==', nCuenta)
+            );
+            const snapInstall2 = await getDocs(qInstall2);
+            if (!snapInstall2.empty) {
+              const batch = writeBatch(db);
+              snapInstall2.docs.forEach(docSnap => {
+                batch.update(docSnap.ref, { Vendedor: null, VendedorAsignado: null, normalized_resp: null });
+              });
+              await batch.commit();
+            }
+          }
+        } catch (error) {
+          console.log('Error al quitar vendedor de install_master:', error);
+        }
+      }
+      
+      alert('✅ Asignación de vendedor eliminada');
+    } catch (error) {
+      console.error('Error al quitar vendedor:', error);
+      alert('Error al quitar la asignación: ' + error.message);
     }
   };
 
@@ -2828,8 +2933,30 @@ Tu servicio de *Izzi* está listo para instalarse.
 
                   {/* Vendedor */}
                   {c.Vendedor && (
-                    <div className="mb-2 text-xs">
-                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">👤 {c.Vendedor}</span>
+                    <div className="mb-2 text-xs flex items-center gap-2">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex-1">👤 {c.Vendedor}</span>
+                      {currentModule === 'install' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setOrderToAssign(c);
+                              setSelectedVendor(c.Vendedor || '');
+                              setShowAssignVendorModal(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 p-1"
+                            title="Editar vendedor"
+                          >
+                            <Wrench size={12}/>
+                          </button>
+                          <button
+                            onClick={() => removeVendorFromInstall(c)}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Quitar asignación"
+                          >
+                            <X size={12}/>
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -3501,10 +3628,28 @@ Tu servicio de *Izzi* está listo para instalarse.
 
                   {/* Vendedor asignado */}
                   {(o.Vendedor || o.VendedorAsignado) && (
-                    <div className="mb-2 text-xs">
-                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                    <div className="mb-2 text-xs flex items-center gap-2">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex-1">
                         👤 {o.Vendedor || o.VendedorAsignado}
                       </span>
+                      <button
+                        onClick={() => {
+                          setOrderToAssign(o);
+                          setSelectedVendor(o.Vendedor || o.VendedorAsignado || '');
+                          setShowAssignVendorModal(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 p-1"
+                        title="Editar vendedor"
+                      >
+                        <Wrench size={12}/>
+                      </button>
+                      <button
+                        onClick={() => removeVendorFromOperacion(o)}
+                        className="text-red-600 hover:text-red-800 p-1"
+                        title="Quitar asignación"
+                      >
+                        <X size={12}/>
+                      </button>
                     </div>
                   )}
 
