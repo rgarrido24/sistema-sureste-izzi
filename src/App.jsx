@@ -1677,22 +1677,37 @@ Tu servicio de *Izzi* está listo para instalarse.
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'install_master', c.id);
       await setDoc(ref, { ...c, Vendedor: vendorName, VendedorAsignado: vendorName, normalized_resp: vendorName.toLowerCase() }, { merge: true });
       
-      // Si la instalación tiene un Nº de orden, también actualizar en operacion_dia si existe
-      const nOrden = c['Nº de orden'] || c.Orden || c.Cuenta;
-      if (nOrden) {
+      // Si la instalación tiene un número de cuenta, también actualizar en operacion_dia si existe
+      const nCuenta = c.Cuenta || c['Nº de cuenta'];
+      if (nCuenta) {
         try {
-          const qOperacion = query(
+          // Buscar por número de cuenta
+          const qOperacionCuenta = query(
             collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
-            where('Nº de orden', '==', nOrden)
+            where('Nº de cuenta', '==', nCuenta)
           );
-          const snapOperacion = await getDocs(qOperacion);
-          if (!snapOperacion.empty) {
-            // Actualizar todas las órdenes que coincidan
+          const snapOperacionCuenta = await getDocs(qOperacionCuenta);
+          if (!snapOperacionCuenta.empty) {
+            // Actualizar todas las órdenes que coincidan por cuenta
             const batch = writeBatch(db);
-            snapOperacion.docs.forEach(docSnap => {
+            snapOperacionCuenta.docs.forEach(docSnap => {
               batch.update(docSnap.ref, { VendedorAsignado: vendorName, Vendedor: vendorName, normalized_vendedor: vendorName.toLowerCase() });
             });
             await batch.commit();
+          } else {
+            // Si no se encuentra por 'Nº de cuenta', intentar por 'Cuenta'
+            const qOperacionCuenta2 = query(
+              collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
+              where('Cuenta', '==', nCuenta)
+            );
+            const snapOperacionCuenta2 = await getDocs(qOperacionCuenta2);
+            if (!snapOperacionCuenta2.empty) {
+              const batch = writeBatch(db);
+              snapOperacionCuenta2.docs.forEach(docSnap => {
+                batch.update(docSnap.ref, { VendedorAsignado: vendorName, Vendedor: vendorName, normalized_vendedor: vendorName.toLowerCase() });
+              });
+              await batch.commit();
+            }
           }
         } catch (error) {
           console.log('No se encontró orden en operacion_dia o error al actualizar:', error);
@@ -3467,9 +3482,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                     {o.Hub && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Hub}</div>}
                     {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
                     {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {o['Fecha solicitada']}</div>}
-                    {(o['Clave Vendedor'] || o.VendedorAsignado || o.Vendedor) && (
+                    {(o.Vendedor || o.VendedorAsignado) && (
                       <div className="flex items-center gap-1">
-                        <Users size={12}/> {o.VendedorAsignado || o.Vendedor || o['Clave Vendedor']}
+                        <Users size={12}/> {o.Vendedor || o.VendedorAsignado}
                       </div>
                     )}
                     {(o.Teléfonos || o.Telefonos || o.Telefono) && (
@@ -3485,10 +3500,10 @@ Tu servicio de *Izzi* está listo para instalarse.
                   </div>
 
                   {/* Vendedor asignado */}
-                  {(o.VendedorAsignado || o.Vendedor || o['Clave Vendedor']) && (
+                  {(o.Vendedor || o.VendedorAsignado) && (
                     <div className="mb-2 text-xs">
-                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                        👤 Asignado: {o.VendedorAsignado || o.Vendedor || o['Clave Vendedor']}
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                        👤 {o.Vendedor || o.VendedorAsignado}
                       </span>
                     </div>
                   )}
@@ -3510,7 +3525,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                     <button
                       onClick={() => {
                         setOrderToAssign(o);
-                        setSelectedVendor(o.VendedorAsignado || '');
+                        setSelectedVendor(o.Vendedor || o.VendedorAsignado || '');
                         setShowAssignVendorModal(true);
                       }}
                       className="bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
