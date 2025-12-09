@@ -836,7 +836,11 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [clientNote, setClientNote] = useState('');
   
   // Estados para mapeo CVVEN -> Vendedores (para asignación automática futura)
-  const [cvvenVendorMap, setCvvenVendorMap] = useState({}); // { 'CVVEN123': ['Vendedor1', 'Vendedor2'], ... }
+  const [cvvenVendorMap, setCvvenVendorMap] = useState(() => {
+    // Cargar desde localStorage si existe
+    const saved = localStorage.getItem('cvvenVendorMap');
+    return saved ? JSON.parse(saved) : {};
+  }); // { 'CVVEN123': ['Vendedor1', 'Vendedor2'], ... }
   const [promesaPago, setPromesaPago] = useState('');
   const [editingClientNote, setEditingClientNote] = useState(null);
   const [salesTemplate, setSalesTemplate] = useState(localStorage.getItem('adminSalesTemplate') || `¡Hola {Cliente}! 👋
@@ -2362,6 +2366,79 @@ Tu servicio de *Izzi* está listo para instalarse.
 
   const stats = calculateStats();
   
+  // Función para cargar Excel de asignaciones CVVEN -> Vendedores
+  const handleCvvenAssignmentsUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('Por favor selecciona un archivo Excel (.xlsx o .xls)');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onerror = () => {
+      alert("Error al leer el archivo");
+    };
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+        
+        if (rows.length < 2) {
+          alert('El archivo debe tener al menos una fila de encabezados y una fila de datos');
+          return;
+        }
+        
+        // Buscar columnas CVVEN y ASIGNACION
+        const headers = rows[0].map(h => String(h || '').toLowerCase().trim());
+        const cvvenIndex = headers.findIndex(h => h.includes('cvven') || h.includes('clave'));
+        const asignacionIndex = headers.findIndex(h => h.includes('asignacion') || h.includes('asignación') || h.includes('vendedor'));
+        
+        if (cvvenIndex === -1 || asignacionIndex === -1) {
+          alert('No se encontraron las columnas CVVEN y ASIGNACION en el archivo.\n\nAsegúrate de que el archivo tenga columnas con estos nombres (o variaciones como "Clave Vendedor" y "Vendedor").');
+          return;
+        }
+        
+        // Procesar filas y crear mapeo
+        const newMap = {};
+        let processed = 0;
+        
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          const cvven = cleanValue(String(row[cvvenIndex] || ''));
+          const asignacion = cleanValue(String(row[asignacionIndex] || ''));
+          
+          if (cvven && asignacion) {
+            // Si el CVVEN ya existe, agregar el vendedor a la lista (puede haber múltiples vendedores por CVVEN)
+            if (!newMap[cvven]) {
+              newMap[cvven] = [];
+            }
+            if (!newMap[cvven].includes(asignacion)) {
+              newMap[cvven].push(asignacion);
+            }
+            processed++;
+          }
+        }
+        
+        // Guardar en estado y localStorage
+        setCvvenVendorMap(newMap);
+        localStorage.setItem('cvvenVendorMap', JSON.stringify(newMap));
+        
+        alert(`✅ Asignaciones CVVEN cargadas exitosamente!\n\n${processed} asignaciones procesadas\n${Object.keys(newMap).length} CVVEN únicos mapeados`);
+        
+        // Limpiar el input
+        e.target.value = '';
+      } catch (error) {
+        console.error("Error procesando Excel de asignaciones:", error);
+        alert("Error al procesar el archivo: " + error.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   // Función auxiliar para obtener número de semana
   const getWeekNumber = (date) => {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -3299,6 +3376,29 @@ Tu servicio de *Izzi* está listo para instalarse.
         {activeTab === 'users' && (user?.role === 'admin' || user?.role === 'admin_general') && (
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Gestión de Usuarios</h3>
+            
+            {/* Cargar Excel de Asignaciones CVVEN */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <h4 className="font-bold text-sm mb-3 text-blue-800">📋 Cargar Asignaciones CVVEN → Vendedores</h4>
+              <p className="text-xs text-blue-700 mb-3">
+                Sube un archivo Excel con las columnas <strong>CVVEN</strong> y <strong>ASIGNACION</strong> (o variaciones como "Clave Vendedor" y "Vendedor").
+                Esto permitirá que el sistema sugiera vendedores automáticamente al asignar ventas.
+              </p>
+              <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm inline-flex items-center gap-2">
+                <UploadCloud size={18}/> Cargar Excel de Asignaciones CVVEN
+                <input 
+                  type="file" 
+                  accept=".xlsx,.xls" 
+                  onChange={handleCvvenAssignmentsUpload} 
+                  className="hidden" 
+                />
+              </label>
+              {Object.keys(cvvenVendorMap).length > 0 && (
+                <p className="text-xs text-green-700 mt-2">
+                  ✅ {Object.keys(cvvenVendorMap).length} CVVEN mapeados con asignaciones cargadas
+                </p>
+              )}
+            </div>
             
             {/* Formulario para crear usuario */}
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
@@ -4297,10 +4397,48 @@ Tu servicio de *Izzi* está listo para instalarse.
                     {orderToAssign['Nº de orden'] && <><strong>Orden:</strong> {orderToAssign['Nº de orden'] || orderToAssign.Orden || 'N/A'}<br/></>}
                     <strong>Cuenta:</strong> {orderToAssign.Cuenta || orderToAssign['Nº de cuenta'] || 'N/A'}
                     {orderToAssign.Ciudad && <><br/><strong>Ciudad:</strong> {orderToAssign.Ciudad}</>}
+                    {(orderToAssign['Clave Vendedor'] || orderToAssign.CVVEN) && (
+                      <><br/><strong>CVVEN:</strong> {cleanValue(orderToAssign['Clave Vendedor'] || orderToAssign.CVVEN || '')}</>
+                    )}
                   </p>
                 </div>
               )}
               <div className="mb-4">
+                {/* Mostrar vendedores sugeridos según CVVEN si existe */}
+                {orderToAssign && (orderToAssign['Clave Vendedor'] || orderToAssign.CVVEN) && (() => {
+                  const cvven = cleanValue(orderToAssign['Clave Vendedor'] || orderToAssign.CVVEN || '');
+                  const suggestedVendors = cvven && cvvenVendorMap[cvven] ? cvvenVendorMap[cvven] : [];
+                  
+                  if (suggestedVendors.length > 0) {
+                    return (
+                      <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <label className="block text-sm font-bold text-blue-700 mb-2">
+                          📋 Vendedores sugeridos para CVVEN {cvven}:
+                        </label>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {suggestedVendors.map((vendor, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setSelectedVendor(vendor);
+                                setManualVendorName('');
+                              }}
+                              className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                                selectedVendor === vendor
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                              }`}
+                            >
+                              {vendor}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                
                 <label className="block text-sm font-bold text-slate-700 mb-2">Seleccionar Vendedor de la Lista:</label>
                 <select
                   value={selectedVendor}
