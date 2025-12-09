@@ -2579,6 +2579,12 @@ Tu servicio de *Izzi* está listo para instalarse.
     'fecha_vencimiento': 'FechaVencimiento',
     'vendedor': 'Vendedor',
     'cliente': 'Cliente',
+    'titular': 'Cliente',
+    'nombre titular': 'Cliente',
+    'nombre_titular': 'Cliente',
+    'nombre del titular': 'Cliente',
+    'nombre del cliente': 'Cliente',
+    'nombre_cliente': 'Cliente',
     'telefono1': 'Telefono',
     'telefono': 'Telefono',
     'tel': 'Telefono',
@@ -2802,6 +2808,11 @@ Tu servicio de *Izzi* está listo para instalarse.
     try {
         // Para operación del día, cargar existentes para actualizar sin duplicar
         let existingOrders = new Map();
+        // Para instalaciones, cargar existentes para evitar duplicados por número de cuenta
+        let existingInstalls = new Map();
+        // Para cobranza (sales_master), cargar existentes para actualizar sin duplicar por número de cuenta
+        let existingSales = new Map();
+        
         if (isOperacionDia) {
           setProgress('Cargando registros existentes...');
           const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
@@ -2813,6 +2824,30 @@ Tu servicio de *Izzi* está listo para instalarse.
             }
           });
           console.log(`Registros existentes encontrados: ${existingOrders.size}`);
+        } else if (currentModule === 'sales' || targetCollection === 'sales_master') {
+          // Para cobranza: cargar existentes para actualizar sin duplicar por número de cuenta
+          setProgress('Cargando registros existentes de cobranza...');
+          const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+          snapshot.docs.forEach(d => {
+            const data = d.data();
+            const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+            if (nCuenta) {
+              existingSales.set(nCuenta, { id: d.id, data: data });
+            }
+          });
+          console.log(`Registros existentes de cobranza encontrados: ${existingSales.size}`);
+        } else if (currentModule === 'install' || targetCollection === 'install_master') {
+          // Para instalaciones, cargar existentes para evitar duplicados por número de cuenta
+          setProgress('Cargando instalaciones existentes...');
+          const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+          snapshot.docs.forEach(d => {
+            const data = d.data();
+            const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+            if (nCuenta) {
+              existingInstalls.set(nCuenta, { id: d.id, data: data });
+            }
+          });
+          console.log(`Instalaciones existentes encontradas: ${existingInstalls.size}`);
         } else {
           // Para otras colecciones, limpiar base anterior
           const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
@@ -2857,9 +2892,16 @@ Tu servicio de *Izzi* está listo para instalarse.
                       // Limpiar el valor (quitar comillas, espacios)
                       const cleanedValue = cleanValue(value);
                       // Solo guardar si no es "Output" o vacío después de limpiar
+                      // Para el campo Cliente, también ignorar si es solo "izzi" (probablemente es el nombre de la empresa, no del titular)
                       if (cleanedValue && cleanedValue !== 'Output') {
-                        docData[fieldName] = cleanedValue;
-                        hasData = true;
+                        // Si es el campo Cliente y el valor es solo "izzi" (sin más texto), no guardarlo
+                        if (fieldName === 'Cliente' && cleanedValue.toLowerCase().trim() === 'izzi') {
+                          // No guardar este valor, probablemente es el nombre de la empresa, no del titular
+                          console.log(`Ignorando valor "izzi" en campo Cliente (fila ${rowIndex + 1})`);
+                        } else {
+                          docData[fieldName] = cleanedValue;
+                          hasData = true;
+                        }
                       }
                     }
                     if (fieldName === 'Vendedor' && value) {
@@ -3065,6 +3107,10 @@ Tu servicio de *Izzi* está listo para instalarse.
                   Vendedor: existingData.Vendedor || data.Vendedor || '',
                   VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
                   normalized_resp: existingData.normalized_resp || data.normalized_resp || '',
+                  // Preservar nombre del cliente si el nuevo es solo "izzi" o similar
+                  Cliente: (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') 
+                    ? cleanValue(data.Cliente) 
+                    : (existingData.Cliente || data.Cliente || ''),
                   // Preservar fecha de creación original
                   createdAt: existingData.createdAt || serverTimestamp(),
                   // Actualizar fecha de modificación
@@ -3074,10 +3120,14 @@ Tu servicio de *Izzi* está listo para instalarse.
                 batch.update(existing.id, updateData);
                 updated++;
               } else {
-                // Crear nuevo registro
-                const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
-                batch.set(ref, { ...data, createdAt: serverTimestamp() });
-                created++;
+                // Crear nuevo registro (solo si el Cliente no es "izzi")
+                if (!data.Cliente || cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                  const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                  batch.set(ref, { ...data, createdAt: serverTimestamp() });
+                  created++;
+                } else {
+                  console.log(`Ignorando registro con Cliente="izzi" (cuenta: ${nCuenta})`);
+                }
               }
               inserted++;
             }
@@ -3097,8 +3147,11 @@ Tu servicio de *Izzi* está listo para instalarse.
           for (const chunk of insertChunks) {
             const batch = writeBatch(db);
             chunk.forEach(data => { 
-              const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection)); 
-              batch.set(ref, data); 
+              // No crear registros si el Cliente es solo "izzi"
+              if (!data.Cliente || cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection)); 
+                batch.set(ref, data);
+              }
             });
             await batch.commit(); 
             inserted += chunk.length; 
@@ -3113,6 +3166,8 @@ Tu servicio de *Izzi* está listo para instalarse.
           ? `¡Listo! Se procesaron ${processedRows.length} registros:\n${updated} actualizados\n${created} nuevos\n\nLos registros existentes se actualizaron sin duplicarse.`
           : (currentModule === 'install' || targetCollection === 'install_master')
           ? `¡Listo! Se procesaron ${processedRows.length} registros:\n${updated} actualizados\n${created} nuevos\n\nLas instalaciones existentes se actualizaron sin duplicarse.`
+          : (currentModule === 'sales' || targetCollection === 'sales_master')
+          ? `¡Listo! Se procesaron ${processedRows.length} registros:\n${updated} actualizados\n${created} nuevos\n\nLos registros de cobranza existentes se actualizaron sin duplicarse.\n\nNota: Se ignoraron registros donde el nombre del cliente era solo "izzi".`
           : `¡Listo! Se cargaron ${processedRows.length} registros en ${collectionLabel}.`;
         alert(successMsg); 
         setUploadStep(1); 
