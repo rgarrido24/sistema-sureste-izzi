@@ -1546,6 +1546,76 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
   };
 
+  // Función para eliminar todos los datos de instalaciones
+  const deleteAllInstalaciones = async () => {
+    if (!confirm('⚠️ ADVERTENCIA: Esta acción eliminará PERMANENTEMENTE todos los datos de:\n\n- Instalaciones (Clientes)\n\n¿Estás completamente seguro? Esta acción NO se puede deshacer.')) {
+      return;
+    }
+    
+    if (!confirm('⚠️ ÚLTIMA CONFIRMACIÓN: ¿Realmente quieres eliminar TODOS los datos de instalaciones?')) {
+      return;
+    }
+    
+    try {
+      // Eliminar todos los documentos de install_master
+      const installRef = collection(db, 'artifacts', appId, 'public', 'data', 'install_master');
+      const installSnap = await getDocs(installRef);
+      
+      // Procesar en lotes de 500 (límite de Firestore)
+      const chunks = [];
+      installSnap.docs.forEach(d => chunks.push(d));
+      
+      let deleted = 0;
+      while (chunks.length) {
+        const batch = writeBatch(db);
+        chunks.splice(0, 500).forEach(d => {
+          batch.delete(d.ref);
+          deleted++;
+        });
+        await batch.commit();
+      }
+      
+      alert(`✅ Se eliminaron ${deleted} registros de Instalaciones.\n\nEl sistema está listo para empezar de cero.`);
+    } catch (error) {
+      console.error('Error al eliminar datos de instalaciones:', error);
+      alert('Error al eliminar los datos: ' + error.message);
+    }
+  };
+
+  // Función helper para formatear fecha sin hora (solo DD/MM/YYYY)
+  const formatDateOnly = (dateString) => {
+    if (!dateString) return '';
+    
+    // Si ya es solo fecha en formato DD/MM/YYYY, devolverla
+    if (typeof dateString === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateString.trim())) {
+      return dateString.trim();
+    }
+    
+    // Si tiene hora (formato DD/MM/YYYY HH:MM:SS), extraer solo la fecha
+    if (typeof dateString === 'string' && dateString.includes(' ')) {
+      return dateString.split(' ')[0];
+    }
+    
+    // Intentar parsear como Date
+    try {
+      const fecha = new Date(dateString);
+      if (!isNaN(fecha.getTime())) {
+        const dia = String(fecha.getDate()).padStart(2, '0');
+        const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+        const año = fecha.getFullYear();
+        return `${dia}/${mes}/${año}`;
+      }
+    } catch (e) {
+      // Si falla, intentar parsear formato DD/MM/YYYY con hora
+      const match = dateString.match(/^(\d{2}\/\d{2}\/\d{4})/);
+      if (match) {
+        return match[1];
+      }
+    }
+    
+    return dateString; // Si no se puede parsear, devolver original
+  };
+
   // Función para determinar si un cliente está vencido o por vencer (basado en FLP)
   const isClienteVencido = (cliente) => {
     // Si tiene FLP (Fecha Límite de Pago)
@@ -2572,6 +2642,10 @@ Tu servicio de *Izzi* está listo para instalarse.
                     // Convertir fechas de Excel (números) a formato legible
                     if (fieldName.toLowerCase().includes('fecha') && value) {
                       value = excelDateToString(value);
+                      // Formatear fecha para quitar hora si la tiene
+                      if (typeof value === 'string' && value.includes(' ')) {
+                        value = value.split(' ')[0]; // Solo tomar la parte de la fecha
+                      }
                     }
                     
                     if (value) {
@@ -2751,6 +2825,53 @@ Tu servicio de *Izzi* está listo para instalarse.
             console.log(`Procesados ${inserted} de ${processedRows.length}`);
             await new Promise(r => setTimeout(r, 100));
           }
+        } else if (currentModule === 'install' || targetCollection === 'install_master') {
+          // Para instalaciones: actualizar existentes por número de cuenta o crear nuevos
+          const chunks = [];
+          for (let i = 0; i < processedRows.length; i += 300) {
+            chunks.push(processedRows.slice(i, i + 300));
+          }
+          
+          for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            
+            for (const data of chunk) {
+              const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+              
+              if (nCuenta && existingInstalls.has(nCuenta)) {
+                // Actualizar registro existente (preservar VendedorAsignado si existe)
+                const existing = existingInstalls.get(nCuenta);
+                const existingData = existing.data;
+                
+                // Preservar campos importantes que no deben sobrescribirse
+                const updateData = {
+                  ...data,
+                  // Preservar vendedor asignado si ya estaba asignado
+                  Vendedor: existingData.Vendedor || data.Vendedor || '',
+                  VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
+                  normalized_resp: existingData.normalized_resp || data.normalized_resp || '',
+                  // Preservar fecha de creación original
+                  createdAt: existingData.createdAt || serverTimestamp(),
+                  // Actualizar fecha de modificación
+                  updatedAt: serverTimestamp()
+                };
+                
+                batch.update(existing.id, updateData);
+                updated++;
+              } else {
+                // Crear nuevo registro
+                const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                batch.set(ref, { ...data, createdAt: serverTimestamp() });
+                created++;
+              }
+              inserted++;
+            }
+            
+            await batch.commit();
+            setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
+            console.log(`Procesados ${inserted} de ${processedRows.length}`);
+            await new Promise(r => setTimeout(r, 100));
+          }
         } else {
           // Para otras colecciones: crear nuevos (ya se limpió la base)
           const insertChunks = [];
@@ -2775,6 +2896,8 @@ Tu servicio de *Izzi* está listo para instalarse.
         console.log("Carga completada!");
         const successMsg = isOperacionDia
           ? `¡Listo! Se procesaron ${processedRows.length} registros:\n${updated} actualizados\n${created} nuevos\n\nLos registros existentes se actualizaron sin duplicarse.`
+          : (currentModule === 'install' || targetCollection === 'install_master')
+          ? `¡Listo! Se procesaron ${processedRows.length} registros:\n${updated} actualizados\n${created} nuevos\n\nLas instalaciones existentes se actualizaron sin duplicarse.`
           : `¡Listo! Se cargaron ${processedRows.length} registros en ${collectionLabel}.`;
         alert(successMsg); 
         setUploadStep(1); 
@@ -3161,15 +3284,23 @@ Tu servicio de *Izzi* está listo para instalarse.
                 <AlertTriangle size={18}/> Zona de Peligro
               </h4>
               <p className="text-xs text-red-700 mb-3">
-                Esta acción eliminará PERMANENTEMENTE todos los datos de Operación del Día y Reportes de Ventas. 
-                Esta acción NO se puede deshacer.
+                Estas acciones eliminarán PERMANENTEMENTE todos los datos. 
+                Estas acciones NO se pueden deshacer.
               </p>
-              <button
-                onClick={deleteAllOperacionAndReports}
-                className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center justify-center gap-2"
-              >
-                <Trash2 size={16}/> Eliminar Todos los Datos de Operación y Reportes
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={deleteAllOperacionAndReports}
+                  className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={16}/> Eliminar Todos los Datos de Operación y Reportes
+                </button>
+                <button
+                  onClick={deleteAllInstalaciones}
+                  className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={16}/> Eliminar Todos los Datos de Instalaciones (Clientes)
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -3608,7 +3739,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                     {!o['Nº de cuenta'] && o.Cuenta && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {o.Cuenta}</div>}
                     {o.Hub && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Hub}</div>}
                     {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
-                    {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {o['Fecha solicitada']}</div>}
+                    {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {formatDateOnly(o['Fecha solicitada'])}</div>}
                     {(o.Vendedor || o.VendedorAsignado) && (
                       <div className="flex items-center gap-1">
                         <Users size={12}/> {o.Vendedor || o.VendedorAsignado}
@@ -5163,7 +5294,7 @@ RESPUESTA:`;
                          <div className="text-xs text-slate-500 mt-1 space-y-1">
                            {orden['Nº de orden'] && <div className="flex items-center gap-1"><Hash size={10}/> Orden: <span className="font-mono font-bold">{orden['Nº de orden']}</span></div>}
                            {orden['Nº de cuenta'] && <div className="flex items-center gap-1"><Hash size={10}/> Cuenta: <span className="font-mono font-bold">{orden['Nº de cuenta']}</span></div>}
-                           {orden['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={10}/> Fecha Instalación: <span className="font-bold text-indigo-600">{orden['Fecha solicitada']}</span></div>}
+                           {orden['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={10}/> Fecha Instalación: <span className="font-bold text-indigo-600">{formatDateOnly(orden['Fecha solicitada'])}</span></div>}
                            {orden['Servicios Contratados'] && <div className="flex items-center gap-1"><Wifi size={10}/> Paquete: <span className="font-bold text-orange-600">{orden['Servicios Contratados']}</span></div>}
                          </div>
                        </div>
