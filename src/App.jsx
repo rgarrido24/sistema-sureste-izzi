@@ -642,9 +642,14 @@ export default function SalesMasterCloud() {
   if (isAuthenticating) return <div className="h-screen flex items-center justify-center bg-slate-50 text-blue-600 gap-3"><RefreshCw className="animate-spin"/> Iniciando SalesMaster...</div>;
   if (!role) return <LoginScreen onLogin={(r, name, userData) => { setRole(r); setVendorName(name); setUser(userData); }} />;
 
-  return role === 'admin' 
-    ? <AdminDashboard user={user} currentModule={currentModule} setModule={setCurrentModule} /> 
-    : <VendorDashboard user={user} myName={vendorName} currentModule={currentModule} setModule={setCurrentModule} />;
+  // Determinar tipo de dashboard según rol
+  if (role === 'admin' || role === 'admin_general') {
+    return <AdminDashboard user={user} currentModule={currentModule} setModule={setCurrentModule} />;
+  } else if (role === 'admin_region') {
+    return <AdminDashboard user={user} currentModule={currentModule} setModule={setCurrentModule} />;
+  } else {
+    return <VendorDashboard user={user} myName={vendorName} currentModule={currentModule} setModule={setCurrentModule} />;
+  }
 }
 
 // --- PANTALLAS ---
@@ -2169,38 +2174,62 @@ Tu servicio de *Izzi* está listo para instalarse.
     // Filtro de fecha (rango de fechas)
     let matchesFecha = true;
     if (filterOperacionFechaInicio || filterOperacionFechaFin) {
-      const fechaSolicitada = o['Fecha solicitada'] || o.Creado || o['Fecha solicitada'] || '';
+      const fechaSolicitadaRaw = o['Fecha solicitada'] || o.Creado || o['Fecha solicitada'] || '';
+      const fechaSolicitada = cleanValue(fechaSolicitadaRaw);
       if (fechaSolicitada) {
         try {
+          // Formatear fecha para quitar hora si la tiene
+          const fechaFormateada = formatDateOnly(fechaSolicitada);
+          
           // Intentar parsear la fecha en diferentes formatos
           let fecha = null;
-          if (typeof fechaSolicitada === 'string') {
-            // Si es string, intentar parsear
-            fecha = new Date(fechaSolicitada);
-            // Si el parseo falla, intentar formato DD/MM/YYYY o DD-MM-YYYY
-            if (isNaN(fecha.getTime())) {
-              const parts = fechaSolicitada.split(/[\/\-]/);
-              if (parts.length === 3) {
-                // Formato DD/MM/YYYY o DD-MM-YYYY
-                fecha = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-              }
+          if (typeof fechaFormateada === 'string') {
+            // Intentar formato DD/MM/YYYY primero (formato común en los datos)
+            const parts = fechaFormateada.split(/[\/\-]/);
+            if (parts.length === 3) {
+              // Formato DD/MM/YYYY o DD-MM-YYYY
+              fecha = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            } else {
+              // Intentar parsear como fecha estándar
+              fecha = new Date(fechaFormateada);
             }
-          } else if (fechaSolicitada instanceof Date) {
-            fecha = fechaSolicitada;
+          } else if (fechaFormateada instanceof Date) {
+            fecha = fechaFormateada;
           }
           
           if (fecha && !isNaN(fecha.getTime())) {
-            const hoy = new Date();
-            hoy.setHours(0, 0, 0, 0);
-            const fechaComparar = new Date(fecha);
-            fechaComparar.setHours(0, 0, 0, 0);
-            
-            if (filterOperacionFecha === 'today') {
-              matchesFecha = fechaComparar.getTime() === hoy.getTime();
-            } else if (filterOperacionFecha === 'past') {
-              matchesFecha = fechaComparar.getTime() < hoy.getTime();
-            } else if (filterOperacionFecha === 'future') {
-              matchesFecha = fechaComparar.getTime() > hoy.getTime();
+            // Si hay filtros de rango de fechas (filterOperacionFechaInicio/Fin)
+            if (filterOperacionFechaInicio || filterOperacionFechaFin) {
+              const fechaComparar = new Date(fecha);
+              fechaComparar.setHours(0, 0, 0, 0);
+              
+              if (filterOperacionFechaInicio) {
+                // El input type="date" devuelve YYYY-MM-DD, convertir a Date
+                const fechaInicio = new Date(filterOperacionFechaInicio + 'T00:00:00');
+                if (fechaComparar.getTime() < fechaInicio.getTime()) {
+                  matchesFecha = false;
+                }
+              }
+              if (filterOperacionFechaFin) {
+                const fechaFin = new Date(filterOperacionFechaFin + 'T23:59:59');
+                if (fechaComparar.getTime() > fechaFin.getTime()) {
+                  matchesFecha = false;
+                }
+              }
+            } else {
+              // Filtro antiguo (today, past, future) - mantener compatibilidad
+              const hoy = new Date();
+              hoy.setHours(0, 0, 0, 0);
+              const fechaComparar = new Date(fecha);
+              fechaComparar.setHours(0, 0, 0, 0);
+              
+              if (filterOperacionFecha === 'today') {
+                matchesFecha = fechaComparar.getTime() === hoy.getTime();
+              } else if (filterOperacionFecha === 'past') {
+                matchesFecha = fechaComparar.getTime() < hoy.getTime();
+              } else if (filterOperacionFecha === 'future') {
+                matchesFecha = fechaComparar.getTime() > hoy.getTime();
+              }
             }
           } else {
             // Si no se puede parsear la fecha, no mostrar cuando el filtro es específico
@@ -3009,7 +3038,10 @@ Tu servicio de *Izzi* está listo para instalarse.
           <div className="flex items-center gap-4">
              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Shield className="text-blue-600"/> Admin</h1>
              <div className="flex bg-slate-100 p-1 rounded-lg">
-                <button onClick={() => setModule('sales')} className={`px-4 py-1 rounded-md text-sm font-bold transition-all ${currentModule === 'sales' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Cobranza</button>
+                {/* Solo admin_general puede acceder a Cobranza */}
+                {(user?.role === 'admin' || user?.role === 'admin_general') && (
+                  <button onClick={() => setModule('sales')} className={`px-4 py-1 rounded-md text-sm font-bold transition-all ${currentModule === 'sales' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Cobranza</button>
+                )}
                 <button onClick={() => setModule('install')} className={`px-4 py-1 rounded-md text-sm font-bold transition-all ${currentModule === 'install' ? 'bg-white shadow text-purple-600' : 'text-slate-500'}`}>Instalaciones</button>
              </div>
           </div>
@@ -3263,8 +3295,8 @@ Tu servicio de *Izzi* está listo para instalarse.
           </div>
         )}
 
-        {/* GESTIÓN DE USUARIOS */}
-        {activeTab === 'users' && (
+        {/* GESTIÓN DE USUARIOS - Solo para admin_general */}
+        {activeTab === 'users' && (user?.role === 'admin' || user?.role === 'admin_general') && (
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Shield size={20} className="text-purple-500"/> Gestión de Usuarios</h3>
             
@@ -3297,7 +3329,8 @@ Tu servicio de *Izzi* está listo para instalarse.
                   onChange={e => setNewUser({...newUser, role: e.target.value})}
                 >
                   <option value="vendor">Vendedor</option>
-                  <option value="admin">Administrador</option>
+                  <option value="admin_region">Administrador Regional</option>
+                  {(user?.role === 'admin' || user?.role === 'admin_general') && <option value="admin_general">Administrador General</option>}
                 </select>
                 <input 
                   type="email"
@@ -3338,13 +3371,21 @@ Tu servicio de *Izzi* está listo para instalarse.
                   <div key={u.id} className="flex justify-between items-center p-3 border rounded-lg bg-slate-50">
                     <div className="flex-1">
                       <p className="font-bold text-slate-800 text-sm">{u.name}</p>
-                      <p className="text-xs text-slate-500">Usuario: {u.username} | Rol: {u.role === 'admin' ? 'Administrador' : 'Vendedor'}</p>
+                      <p className="text-xs text-slate-500">Usuario: {u.username} | Rol: {
+                        u.role === 'admin_general' ? 'Administrador General' : 
+                        u.role === 'admin_region' ? 'Administrador Regional' : 
+                        'Vendedor'
+                      }</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
-                        u.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                        u.role === 'admin_general' || u.role === 'admin' ? 'bg-red-100 text-red-700' : 
+                        u.role === 'admin_region' ? 'bg-orange-100 text-orange-700' : 
+                        'bg-blue-100 text-blue-700'
                       }`}>
-                        {u.role === 'admin' ? 'Admin' : 'Vendedor'}
+                        {u.role === 'admin_general' || u.role === 'admin' ? 'Admin General' : 
+                         u.role === 'admin_region' ? 'Admin Regional' : 
+                         'Vendedor'}
                       </span>
                       <button
                         onClick={() => {
