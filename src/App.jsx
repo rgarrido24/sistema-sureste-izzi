@@ -798,6 +798,11 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterVendor, setFilterVendor] = useState('');
   const [vendors, setVendors] = useState([]);
+  const [excludedVendors, setExcludedVendors] = useState(() => {
+    // Cargar vendedores excluidos desde localStorage
+    const saved = localStorage.getItem('excludedVendors');
+    return saved ? JSON.parse(saved) : [];
+  });
   
   // Estados para filtros de instalaciones (por ciudad/estado)
   const [filterCiudad, setFilterCiudad] = useState('');
@@ -3202,7 +3207,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                   className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
                 >
                   <option value="">Todos los vendedores</option>
-                  {vendors.map(v => <option key={v} value={v}>{v}</option>)}
+                  {availableVendors.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
                 <button onClick={()=>setShowConfig(!showConfig)} className="p-3 bg-slate-100 rounded-lg hover:bg-slate-200">
                   <Settings size={18}/>
@@ -3397,6 +3402,58 @@ Tu servicio de *Izzi* está listo para instalarse.
                 <p className="text-xs text-green-700 mt-2">
                   ✅ {Object.keys(cvvenVendorMap).length} CVVEN mapeados con asignaciones cargadas
                 </p>
+              )}
+            </div>
+
+            {/* Gestionar Lista de Vendedores */}
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
+              <h4 className="font-bold text-sm mb-3 text-orange-800">👥 Gestionar Lista de Vendedores</h4>
+              <p className="text-xs text-orange-700 mb-3">
+                Elimina vendedores de los filtros y dropdowns si no los necesitas. Esto no elimina las asignaciones existentes.
+              </p>
+              
+              {/* Vendedores activos */}
+              <div className="mb-3">
+                <p className="text-xs font-bold text-orange-800 mb-2">Vendedores Activos ({availableVendors.length}):</p>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {availableVendors.length > 0 ? (
+                    availableVendors.map(v => (
+                      <div key={v} className="flex items-center gap-1 bg-white px-2 py-1 rounded border border-orange-200">
+                        <span className="text-xs">{v}</span>
+                        <button
+                          onClick={() => removeVendorFromList(v)}
+                          className="text-red-600 hover:text-red-800 p-0.5"
+                          title="Eliminar de la lista"
+                        >
+                          <X size={12}/>
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-orange-600">No hay vendedores activos</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Vendedores excluidos */}
+              {excludedVendors.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-orange-800 mb-2">Vendedores Excluidos ({excludedVendors.length}):</p>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                    {excludedVendors.map(v => (
+                      <div key={v} className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border border-slate-300">
+                        <span className="text-xs text-slate-500 line-through">{v}</span>
+                        <button
+                          onClick={() => restoreVendorToList(v)}
+                          className="text-green-600 hover:text-green-800 p-0.5"
+                          title="Restaurar a la lista"
+                        >
+                          <Check size={12}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
             
