@@ -1582,6 +1582,18 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
   };
 
+  // Función helper para limpiar valores (quitar comillas, espacios, etc.)
+  const cleanValue = (value) => {
+    if (!value) return '';
+    // Convertir a string y quitar comillas al inicio y final
+    let cleaned = String(value).trim();
+    // Quitar comillas dobles o simples al inicio y final
+    cleaned = cleaned.replace(/^["']|["']$/g, '');
+    // Quitar espacios al inicio y final nuevamente
+    cleaned = cleaned.trim();
+    return cleaned;
+  };
+
   // Función helper para formatear fecha sin hora (solo DD/MM/YYYY)
   const formatDateOnly = (dateString) => {
     if (!dateString) return '';
@@ -2711,15 +2723,25 @@ Tu servicio de *Izzi* está listo para instalarse.
                     }
                     
                     if (value) {
-                      docData[fieldName] = value;
-                      hasData = true;
+                      // Limpiar el valor (quitar comillas, espacios)
+                      const cleanedValue = cleanValue(value);
+                      // Solo guardar si no es "Output" o vacío después de limpiar
+                      if (cleanedValue && cleanedValue !== 'Output') {
+                        docData[fieldName] = cleanedValue;
+                        hasData = true;
+                      }
                     }
                     if (fieldName === 'Vendedor' && value) {
-                      docData['normalized_resp'] = value.toLowerCase();
+                      const cleanedValue = cleanValue(value);
+                      if (cleanedValue && cleanedValue !== 'Output') {
+                        docData['normalized_resp'] = cleanedValue.toLowerCase();
+                      }
                     }
                     // Normalizar región
                     if (fieldName === 'Region' && value) {
-                      const regionLower = value.toLowerCase().trim();
+                      const cleanedValue = cleanValue(value);
+                      if (!cleanedValue || cleanedValue === 'Output') return;
+                      const regionLower = cleanedValue.toLowerCase().trim();
                       // Normalizar nombres de regiones
                       if (regionLower.includes('noreste') || regionLower === 'ne') {
                         docData['Region'] = 'Noreste';
@@ -3119,18 +3141,18 @@ Tu servicio de *Izzi* está listo para instalarse.
                   
                   {/* Información */}
                   <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
-                    {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {c.Cuenta}</div>}
-                    {c.Plaza && <div className="flex items-center gap-1"><Building size={12}/> {c.Plaza}</div>}
-                    {c.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {c.Region}</div>}
-                    {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {c.FechaVencimiento}</div>}
-                    {c.FLP && <div className="flex items-center gap-1 text-purple-600 font-bold"><Calendar size={12}/> FLP: Día {c.FLP}</div>}
-                    {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {c.Telefono}</div>}
+                    {c.Cuenta && <div className="flex items-center gap-1"><Hash size={12}/> {cleanValue(c.Cuenta)}</div>}
+                    {c.Plaza && cleanValue(c.Plaza) && cleanValue(c.Plaza) !== 'Output' && <div className="flex items-center gap-1"><Building size={12}/> {cleanValue(c.Plaza)}</div>}
+                    {c.Region && cleanValue(c.Region) && cleanValue(c.Region) !== 'Output' && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {cleanValue(c.Region)}</div>}
+                    {c.FechaVencimiento && <div className="flex items-center gap-1 text-red-500"><Calendar size={12}/> Vence: {cleanValue(c.FechaVencimiento)}</div>}
+                    {c.FLP && <div className="flex items-center gap-1 text-purple-600 font-bold"><Calendar size={12}/> FLP: Día {cleanValue(c.FLP)}</div>}
+                    {c.Telefono && <div className="flex items-center gap-1"><Phone size={12}/> {cleanValue(c.Telefono)}</div>}
                   </div>
 
                   {/* Vendedor */}
                   {c.Vendedor && (
                     <div className="mb-2 text-xs flex items-center gap-2">
-                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex-1">👤 {c.Vendedor}</span>
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex-1">👤 {cleanValue(c.Vendedor)}</span>
                       {currentModule === 'install' && (
                         <>
                           <button
@@ -3198,7 +3220,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <MessageSquare size={16}/> WhatsApp
                     </button>
                     <a 
-                      href={`tel:${c.Telefono}`} 
+                      href={`tel:${cleanValue(c.Telefono || '')}`} 
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-slate-200 transition-colors"
                     >
                       <Phone size={16}/> Llamar
@@ -3807,25 +3829,25 @@ Tu servicio de *Izzi* está listo para instalarse.
                   
                   {/* Información */}
                   <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
-                    {o['Nº de cuenta'] && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {o['Nº de cuenta']}</div>}
-                    {o['Nº de orden'] && <div className="flex items-center gap-1"><FileText size={12}/> Orden: {o['Nº de orden']}</div>}
-                    {!o['Nº de cuenta'] && o.Cuenta && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {o.Cuenta}</div>}
-                    {o.Hub && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Hub}</div>}
-                    {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
-                    {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {formatDateOnly(o['Fecha solicitada'])}</div>}
+                    {o['Nº de cuenta'] && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {cleanValue(o['Nº de cuenta'])}</div>}
+                    {o['Nº de orden'] && <div className="flex items-center gap-1"><FileText size={12}/> Orden: {cleanValue(o['Nº de orden'])}</div>}
+                    {!o['Nº de cuenta'] && o.Cuenta && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {cleanValue(o.Cuenta)}</div>}
+                    {o.Hub && cleanValue(o.Hub) && cleanValue(o.Hub) !== 'Output' && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {cleanValue(o.Hub)}</div>}
+                    {o.Region && cleanValue(o.Region) && cleanValue(o.Region) !== 'Output' && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {cleanValue(o.Region)}</div>}
+                    {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {formatDateOnly(cleanValue(o['Fecha solicitada']))}</div>}
                     {(o.Vendedor || o.VendedorAsignado) && (
                       <div className="flex items-center gap-1">
-                        <Users size={12}/> {o.Vendedor || o.VendedorAsignado}
+                        <Users size={12}/> {cleanValue(o.Vendedor || o.VendedorAsignado)}
                       </div>
                     )}
                     {(o.Teléfonos || o.Telefonos || o.Telefono) && (
                       <div className="flex items-center gap-1 col-span-2">
-                        <Phone size={12}/> {o.Teléfonos || o.Telefonos || o.Telefono}
+                        <Phone size={12}/> {cleanValue(o.Teléfonos || o.Telefonos || o.Telefono)}
                       </div>
                     )}
                     {(o['Fecha solicitada'] || o.FechaInstalacion) && (
                       <div className="flex items-center gap-1 text-purple-600 font-bold col-span-2">
-                        <Calendar size={12}/> Ciclo de Facturación (FLP): {calcularFLP(o['Fecha solicitada'] || o.FechaInstalacion)}
+                        <Calendar size={12}/> Ciclo de Facturación (FLP): {calcularFLP(cleanValue(o['Fecha solicitada'] || o.FechaInstalacion))}
                       </div>
                     )}
                   </div>
@@ -3834,7 +3856,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                   {(o.Vendedor || o.VendedorAsignado) && (
                     <div className="mb-2 text-xs flex items-center gap-2">
                       <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex-1">
-                        👤 {o.Vendedor || o.VendedorAsignado}
+                        👤 {cleanValue(o.Vendedor || o.VendedorAsignado)}
                       </span>
                       <button
                         onClick={() => {
@@ -3866,7 +3888,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <MessageSquare size={14}/> WA
                     </button>
                     <a 
-                      href={`tel:${o.Teléfonos || o.Telefonos || o.Telefono || ''}`} 
+                      href={`tel:${cleanValue(o.Teléfonos || o.Telefonos || o.Telefono || '')}`} 
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border border-slate-200 transition-colors"
                     >
                       <Phone size={14}/> Llamar
