@@ -1854,6 +1854,68 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
   };
 
+  // Función para eliminar completamente una instalación
+  const deleteInstallation = async (c) => {
+    const clienteNombre = c.Cliente || c.Compañía || c.Compania || c['Compañía'] || 'esta instalación';
+    const cuentaNum = c.Cuenta || c['Nº de cuenta'] || '';
+    
+    if (!confirm(`⚠️ ¿Estás seguro de eliminar completamente esta instalación?\n\nCliente: ${clienteNombre}\nCuenta: ${cuentaNum}\n\nEsta acción NO se puede deshacer.`)) {
+      return;
+    }
+    
+    if (!confirm(`⚠️ ÚLTIMA CONFIRMACIÓN: ¿Realmente quieres eliminar esta instalación de forma permanente?`)) {
+      return;
+    }
+
+    try {
+      // Eliminar de install_master
+      if (c.id) {
+        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'install_master', c.id);
+        await deleteDoc(ref);
+      }
+      
+      // También eliminar de operacion_dia si existe (por número de cuenta)
+      const nCuenta = c.Cuenta || c['Nº de cuenta'];
+      if (nCuenta) {
+        try {
+          const qOperacionCuenta = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
+            where('Nº de cuenta', '==', nCuenta)
+          );
+          const snapOperacionCuenta = await getDocs(qOperacionCuenta);
+          if (!snapOperacionCuenta.empty) {
+            const batch = writeBatch(db);
+            snapOperacionCuenta.docs.forEach(docSnap => {
+              batch.delete(docSnap.ref);
+            });
+            await batch.commit();
+          } else {
+            // Si no se encuentra por 'Nº de cuenta', intentar por 'Cuenta'
+            const qOperacionCuenta2 = query(
+              collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'),
+              where('Cuenta', '==', nCuenta)
+            );
+            const snapOperacionCuenta2 = await getDocs(qOperacionCuenta2);
+            if (!snapOperacionCuenta2.empty) {
+              const batch = writeBatch(db);
+              snapOperacionCuenta2.docs.forEach(docSnap => {
+                batch.delete(docSnap.ref);
+              });
+              await batch.commit();
+            }
+          }
+        } catch (error) {
+          console.log('Error al eliminar de operacion_dia:', error);
+        }
+      }
+      
+      alert('✅ Instalación eliminada permanentemente');
+    } catch (error) {
+      console.error('Error al eliminar instalación:', error);
+      alert('Error al eliminar la instalación: ' + error.message);
+    }
+  };
+
   // Función para quitar vendedor de una instalación
   const removeVendorFromInstall = async (c) => {
     if (!confirm(`¿Estás seguro de quitar la asignación del vendedor "${c.Vendedor}" de esta instalación?`)) {
@@ -3041,7 +3103,18 @@ Tu servicio de *Izzi* está listo para instalarse.
                     <h3 className="font-bold text-slate-800 text-sm truncate flex-1">
                       {c.Cliente || c.Compañía || c.Compania || c['Compañía'] || 'Sin nombre'}
                     </h3>
-                    <span className="font-mono font-bold text-green-600 text-lg">${getSaldo(c)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-green-600 text-lg">${getSaldo(c)}</span>
+                      {currentModule === 'install' && (
+                        <button
+                          onClick={() => deleteInstallation(c)}
+                          className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1.5 rounded transition-colors"
+                          title="Eliminar instalación permanentemente"
+                        >
+                          <Trash2 size={16}/>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Información */}
