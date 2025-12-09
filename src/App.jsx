@@ -811,7 +811,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [regionsOperacion, setRegionsOperacion] = useState([]);
   const [operacionSearchTerm, setOperacionSearchTerm] = useState('');
   const [filterOperacionEstado, setFilterOperacionEstado] = useState(''); // '', 'Abierta', 'Instalado', 'Not Done', 'Cancelada'
-  const [filterOperacionFecha, setFilterOperacionFecha] = useState('all'); // 'all', 'today', 'past', 'future'
+  const [filterOperacionFechaInicio, setFilterOperacionFechaInicio] = useState(''); // Fecha inicio para rango
+  const [filterOperacionFechaFin, setFilterOperacionFechaFin] = useState(''); // Fecha fin para rango
   const [showAssignVendorModal, setShowAssignVendorModal] = useState(false);
   const [orderToAssign, setOrderToAssign] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState('');
@@ -941,6 +942,16 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       // Combinar con vendedores existentes sin duplicados
       setVendors(prev => [...new Set([...prev, ...allVendorsFromSales])].sort());
     });
+    
+    // Cargar usuarios si es admin
+    let unsubUsers = null;
+    if (user?.role === 'admin') {
+      const qUsers = query(collection(db, 'artifacts', appId, 'public', 'data', 'users'));
+      unsubUsers = onSnapshot(qUsers, (snap) => {
+        const usersList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setUsers(usersList);
+      });
+    }
 
     // Combinar reportes con órdenes completadas cuando cambien los datos
     return () => {
@@ -951,6 +962,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubPromociones();
       unsubPDFs();
       unsubSalesMaster();
+      if (unsubUsers) unsubUsers();
     };
   }, [collectionName, appId, currentModule, user]);
 
@@ -1452,27 +1464,46 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
   };
 
-  // Función para actualizar contraseña de usuario
-  const updateUserPassword = async () => {
-    if (!editingUser || !newPassword || newPassword.length < 6) {
+  // Función para actualizar usuario (contraseña, nombre, rol, email)
+  const updateUser = async () => {
+    if (!editingUser) return;
+    
+    // Validar que si se cambia la contraseña, tenga al menos 6 caracteres
+    if (newPassword && newPassword.length < 6) {
       alert('La contraseña debe tener al menos 6 caracteres');
       return;
     }
     
+    if (!editingUserName || editingUserName.trim() === '') {
+      alert('El nombre es obligatorio');
+      return;
+    }
+    
     try {
-      // Actualizar en Firestore (en un sistema real, esto debería usar Firebase Auth)
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'users', editingUser.id), {
-        password: newPassword,
+      const updateData = {
+        name: editingUserName.trim(),
+        role: editingUserRole,
+        email: editingUserEmail.trim() || '',
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      };
       
-      alert('✅ Contraseña actualizada correctamente');
+      // Solo actualizar contraseña si se proporcionó una nueva
+      if (newPassword && newPassword.trim() !== '') {
+        updateData.passwordHash = hashPassword(newPassword);
+      }
+      
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', editingUser.id), updateData, { merge: true });
+      
+      alert('✅ Usuario actualizado correctamente');
       setShowEditUserModal(false);
       setEditingUser(null);
       setNewPassword('');
+      setEditingUserName('');
+      setEditingUserRole('');
+      setEditingUserEmail('');
     } catch (error) {
-      console.error('Error al actualizar contraseña:', error);
-      alert('Error al actualizar la contraseña: ' + error.message);
+      console.error('Error al actualizar usuario:', error);
+      alert('Error al actualizar el usuario: ' + error.message);
     }
   };
 
@@ -1746,7 +1777,29 @@ Tu servicio de *Izzi* está listo para instalarse.
       const o = orderToAssign;
       // Actualizar la orden con el vendedor asignado
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', o.id);
-      await setDoc(ref, { ...o, VendedorAsignado: vendorName, normalized_vendedor: vendorName.toLowerCase() }, { merge: true });
+      await setDoc(ref, { ...o, VendedorAsignado: vendorName, Vendedor: vendorName, normalized_vendedor: vendorName.toLowerCase() }, { merge: true });
+      
+      // Si la orden tiene un Nº de cuenta, también actualizar en install_master si existe
+      const nCuenta = o['Nº de cuenta'] || o.Cuenta;
+      if (nCuenta) {
+        try {
+          const qInstall = query(
+            collection(db, 'artifacts', appId, 'public', 'data', 'install_master'),
+            where('Cuenta', '==', nCuenta)
+          );
+          const snapInstall = await getDocs(qInstall);
+          if (!snapInstall.empty) {
+            // Actualizar todas las instalaciones que coincidan
+            const batch = writeBatch(db);
+            snapInstall.docs.forEach(docSnap => {
+              batch.update(docSnap.ref, { Vendedor: vendorName, VendedorAsignado: vendorName, normalized_resp: vendorName.toLowerCase() });
+            });
+            await batch.commit();
+          }
+        } catch (error) {
+          console.log('No se encontró instalación en install_master o error al actualizar:', error);
+        }
+      }
       
       // Crear reporte automáticamente en sales_reports con todos los campos
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'), {
@@ -1849,9 +1902,9 @@ Tu servicio de *Izzi* está listo para instalarse.
       }
     }
     
-    // Filtro de fecha
+    // Filtro de fecha (rango de fechas)
     let matchesFecha = true;
-    if (filterOperacionFecha !== 'all') {
+    if (filterOperacionFechaInicio || filterOperacionFechaFin) {
       const fechaSolicitada = o['Fecha solicitada'] || o.Creado || o['Fecha solicitada'] || '';
       if (fechaSolicitada) {
         try {
@@ -3362,25 +3415,31 @@ Tu servicio de *Izzi* está listo para instalarse.
                   <option value="Not Done">Not Done</option>
                   <option value="Cancelada">Canceladas</option>
                 </select>
-                <select 
-                  value={filterOperacionFecha} 
-                  onChange={e=>setFilterOperacionFecha(e.target.value)}
+                <input 
+                  type="date" 
+                  value={filterOperacionFechaInicio} 
+                  onChange={e=>setFilterOperacionFechaInicio(e.target.value)}
+                  placeholder="Fecha inicio"
                   className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
-                >
-                  <option value="all">Todas las fechas</option>
-                  <option value="today">Hoy</option>
-                  <option value="past">Pasadas</option>
-                  <option value="future">Futuras</option>
-                </select>
+                  title="Fecha de inicio del rango"
+                />
+                <input 
+                  type="date" 
+                  value={filterOperacionFechaFin} 
+                  onChange={e=>setFilterOperacionFechaFin(e.target.value)}
+                  placeholder="Fecha fin"
+                  className="p-3 rounded-lg border border-slate-200 text-sm min-w-[180px]"
+                  title="Fecha de fin del rango"
+                />
               </div>
               <p className="text-xs text-slate-500">
                 Mostrando {filteredOperacion.length} de {operacionData.length} órdenes
                 {filterRegionOperacion && ` • Región: ${filterRegionOperacion}`}
                 {filterOperacionEstado && ` • Estado: ${filterOperacionEstado}`}
-                {filterOperacionFecha !== 'all' && ` • Fecha: ${
-                  filterOperacionFecha === 'today' ? 'Hoy' :
-                  filterOperacionFecha === 'past' ? 'Pasadas' :
-                  'Futuras'
+                {(filterOperacionFechaInicio || filterOperacionFechaFin) && ` • Rango: ${
+                  filterOperacionFechaInicio || 'Inicio'
+                } - ${
+                  filterOperacionFechaFin || 'Fin'
                 }`}
               </p>
             </div>
@@ -3402,8 +3461,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                   
                   {/* Información */}
                   <div className="grid grid-cols-2 gap-1 mb-3 text-xs text-slate-500">
-                    {o['Nº de cuenta'] && <div className="flex items-center gap-1"><Hash size={12}/> {o['Nº de cuenta']}</div>}
+                    {o['Nº de cuenta'] && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {o['Nº de cuenta']}</div>}
                     {o['Nº de orden'] && <div className="flex items-center gap-1"><FileText size={12}/> Orden: {o['Nº de orden']}</div>}
+                    {!o['Nº de cuenta'] && o.Cuenta && <div className="flex items-center gap-1 font-bold text-blue-600"><Hash size={12}/> Cuenta: {o.Cuenta}</div>}
                     {o.Hub && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Hub}</div>}
                     {o.Region && <div className="flex items-center gap-1 text-blue-600 font-bold"><MapPin size={12}/> {o.Region}</div>}
                     {o['Fecha solicitada'] && <div className="flex items-center gap-1"><Calendar size={12}/> {o['Fecha solicitada']}</div>}
@@ -4053,39 +4113,73 @@ Tu servicio de *Izzi* está listo para instalarse.
         {/* Modal para editar usuario */}
         {showEditUserModal && editingUser && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
               <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <Wrench size={20} className="text-purple-500"/> Editar Usuario
               </h3>
               <div className="mb-4 p-3 bg-slate-50 rounded-lg">
                 <p className="text-sm text-slate-600">
-                  <strong>Usuario:</strong> {editingUser.username}<br/>
-                  <strong>Nombre:</strong> {editingUser.name}<br/>
-                  <strong>Rol:</strong> {editingUser.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                  <strong>Usuario:</strong> {editingUser.username}
                 </p>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm font-bold text-slate-700 mb-2">Nueva contraseña:</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                  className="w-full p-3 border border-slate-300 rounded-lg text-sm"
-                />
+              <div className="space-y-4 mb-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Nombre completo:</label>
+                  <input
+                    type="text"
+                    value={editingUserName}
+                    onChange={(e) => setEditingUserName(e.target.value)}
+                    placeholder="Nombre completo"
+                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Rol:</label>
+                  <select
+                    value={editingUserRole}
+                    onChange={(e) => setEditingUserRole(e.target.value)}
+                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="vendor">Vendedor</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Email (opcional):</label>
+                  <input
+                    type="email"
+                    value={editingUserEmail}
+                    onChange={(e) => setEditingUserEmail(e.target.value)}
+                    placeholder="email@ejemplo.com"
+                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Nueva contraseña (dejar vacío para no cambiar):</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres (opcional)"
+                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={updateUserPassword}
+                  onClick={updateUser}
                   className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-purple-700"
                 >
-                  Actualizar Contraseña
+                  Guardar Cambios
                 </button>
                 <button
                   onClick={() => {
                     setShowEditUserModal(false);
                     setEditingUser(null);
                     setNewPassword('');
+                    setEditingUserName('');
+                    setEditingUserRole('');
+                    setEditingUserEmail('');
                   }}
                   className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
                 >
