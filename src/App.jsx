@@ -2371,6 +2371,26 @@ Tu servicio de *Izzi* está listo para instalarse.
 
   const stats = calculateStats();
   
+  // Función para eliminar un vendedor de la lista
+  const removeVendorFromList = (vendorName) => {
+    if (!confirm(`¿Estás seguro de eliminar "${vendorName}" de la lista de vendedores?\n\nEsto no eliminará las asignaciones existentes, solo lo quitará de los filtros y dropdowns.`)) {
+      return;
+    }
+    
+    const newExcluded = [...excludedVendors, vendorName];
+    setExcludedVendors(newExcluded);
+    localStorage.setItem('excludedVendors', JSON.stringify(newExcluded));
+    alert(`✅ "${vendorName}" eliminado de la lista de vendedores`);
+  };
+
+  // Función para restaurar un vendedor a la lista
+  const restoreVendorToList = (vendorName) => {
+    const newExcluded = excludedVendors.filter(v => v !== vendorName);
+    setExcludedVendors(newExcluded);
+    localStorage.setItem('excludedVendors', JSON.stringify(newExcluded));
+    alert(`✅ "${vendorName}" restaurado a la lista de vendedores`);
+  };
+
   // Función para cargar Excel de asignaciones CVVEN -> Vendedores
   const handleCvvenAssignmentsUpload = (e) => {
     const file = e.target.files[0];
@@ -3207,7 +3227,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                   className="p-3 rounded-lg border border-slate-200 text-sm min-w-[200px]"
                 >
                   <option value="">Todos los vendedores</option>
-                  {availableVendors.map(v => <option key={v} value={v}>{v}</option>)}
+                  {vendors.filter(v => !excludedVendors.includes(v)).map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
                 <button onClick={()=>setShowConfig(!showConfig)} className="p-3 bg-slate-100 rounded-lg hover:bg-slate-200">
                   <Settings size={18}/>
@@ -3414,25 +3434,32 @@ Tu servicio de *Izzi* está listo para instalarse.
               
               {/* Vendedores activos */}
               <div className="mb-3">
-                <p className="text-xs font-bold text-orange-800 mb-2">Vendedores Activos ({availableVendors.length}):</p>
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                  {availableVendors.length > 0 ? (
-                    availableVendors.map(v => (
-                      <div key={v} className="flex items-center gap-1 bg-white px-2 py-1 rounded border border-orange-200">
-                        <span className="text-xs">{v}</span>
-                        <button
-                          onClick={() => removeVendorFromList(v)}
-                          className="text-red-600 hover:text-red-800 p-0.5"
-                          title="Eliminar de la lista"
-                        >
-                          <X size={12}/>
-                        </button>
+                {(() => {
+                  const activeVendors = vendors.filter(v => !excludedVendors.includes(v));
+                  return (
+                    <>
+                      <p className="text-xs font-bold text-orange-800 mb-2">Vendedores Activos ({activeVendors.length}):</p>
+                      <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                        {activeVendors.length > 0 ? (
+                          activeVendors.map(v => (
+                            <div key={v} className="flex items-center gap-1 bg-white px-2 py-1 rounded border border-orange-200">
+                              <span className="text-xs">{v}</span>
+                              <button
+                                onClick={() => removeVendorFromList(v)}
+                                className="text-red-600 hover:text-red-800 p-0.5"
+                                title="Eliminar de la lista"
+                              >
+                                <X size={12}/>
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-orange-600">No hay vendedores activos</p>
+                        )}
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-orange-600">No hay vendedores activos</p>
-                  )}
-                </div>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Vendedores excluidos */}
