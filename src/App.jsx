@@ -2142,13 +2142,79 @@ Tu servicio de *Izzi* está listo para instalarse.
     await handleAssignVendorWithName(selectedVendor);
   };
 
+  // Función para calcular porcentajes por estatus y región
+  const calcularPorcentajesPorEstatusYRegion = (clientes, estatusFiltro) => {
+    const clientesFiltrados = clientes.filter(c => {
+      const estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
+      return estatus === estatusFiltro || estatus === `FPD Corriente` || estatus.includes(estatusFiltro);
+    });
+    
+    const total = clientesFiltrados.length;
+    if (total === 0) return { total: 0, porRegion: {} };
+    
+    // Agrupar por región
+    const porRegion = {};
+    clientesFiltrados.forEach(c => {
+      const region = cleanValue(c.Region || c.Plaza || 'Sin región') || 'Sin región';
+      if (!porRegion[region]) {
+        porRegion[region] = { total: 0, estatus: {} };
+      }
+      porRegion[region].total++;
+      
+      const estatus = (c.Estatus || c.Estado || c['Estado'] || 'Sin estatus').toString().trim();
+      if (!porRegion[region].estatus[estatus]) {
+        porRegion[region].estatus[estatus] = 0;
+      }
+      porRegion[region].estatus[estatus]++;
+    });
+    
+    // Calcular porcentajes
+    const porRegionConPorcentajes = {};
+    Object.keys(porRegion).forEach(region => {
+      const datos = porRegion[region];
+      porRegionConPorcentajes[region] = {
+        total: datos.total,
+        porcentaje: ((datos.total / total) * 100).toFixed(1),
+        estatus: {}
+      };
+      
+      Object.keys(datos.estatus).forEach(est => {
+        porRegionConPorcentajes[region].estatus[est] = {
+          cantidad: datos.estatus[est],
+          porcentaje: ((datos.estatus[est] / datos.total) * 100).toFixed(1)
+        };
+      });
+    });
+    
+    return { total, porRegion: porRegionConPorcentajes };
+  };
+
   // Filtrar clientes (sin región para cobranza, con ciudad para instalaciones)
   const filteredClients = allClients.filter(c => {
     const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
     const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor;
     // Si es módulo de instalaciones, filtrar por ciudad también
     const matchesCiudad = currentModule !== 'install' || filterCiudad === '' || c.Ciudad === filterCiudad || c.Plaza === filterCiudad || c.Region === filterCiudad;
-    return matchesSearch && matchesVendor && matchesCiudad;
+    
+    // Filtrar por estatus según la pestaña activa (solo para módulo de cobranza)
+    let matchesEstatus = true;
+    if (currentModule === 'sales') {
+      const estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
+      if (activeTab === 'm1') {
+        matchesEstatus = estatus === 'M1' || estatus === 'FPD Corriente' || estatus.includes('M1');
+      } else if (activeTab === 'm2') {
+        matchesEstatus = estatus === 'M2' || estatus === 'FPD Corriente' || estatus.includes('M2');
+      } else if (activeTab === 'm3') {
+        matchesEstatus = estatus === 'M3' || estatus === 'FPD Corriente' || estatus.includes('M3');
+      } else if (activeTab === 'm4') {
+        matchesEstatus = estatus === 'M4' || estatus === 'FPD Corriente' || estatus.includes('M4');
+      } else if (activeTab === 'clients') {
+        // En la pestaña "Clientes" del módulo de cobranza, mostrar todos
+        matchesEstatus = true;
+      }
+    }
+    
+    return matchesSearch && matchesVendor && matchesCiudad && matchesEstatus;
   });
   
   // Filtrar operación del día (con región, estado y fecha)
@@ -2391,6 +2457,68 @@ Tu servicio de *Izzi* está listo para instalarse.
     alert(`✅ "${vendorName}" restaurado a la lista de vendedores`);
   };
 
+  // Función para limpiar registros incorrectos de operacion_dia (creados por archivo de asignaciones CVVEN)
+  const limpiarRegistrosIncorrectosOperacion = async () => {
+    if (!confirm('⚠️ Esta función eliminará registros de "Operación del Día" que fueron creados incorrectamente por el archivo de asignaciones CVVEN.\n\nEstos registros solo tienen CVVEN y ASIGNACION, sin otros campos de operación.\n\n¿Continuar?')) {
+      return;
+    }
+    
+    try {
+      setProgress('Buscando registros incorrectos...');
+      const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'));
+      
+      let eliminados = 0;
+      const registrosIncorrectos = [];
+      
+      snapshot.docs.forEach(d => {
+        const data = d.data();
+        // Identificar registros que solo tienen CVVEN/ASIGNACION pero no tienen campos de operación
+        const tieneCvven = !!(data['Clave Vendedor'] || data.CVVEN);
+        const tieneAsignacion = !!(data.Vendedor || data.VendedorAsignado);
+        const tieneOrden = !!(data['Nº de orden'] || data.Orden);
+        const tieneCompania = !!(data.Compañía || data.Compania || data.Cliente);
+        const tieneEstado = !!(data.Estado || data.Estatus);
+        
+        // Si tiene CVVEN/ASIGNACION pero NO tiene orden, compañía o estado, es un registro incorrecto
+        if (tieneCvven && tieneAsignacion && !tieneOrden && !tieneCompania && !tieneEstado) {
+          registrosIncorrectos.push(d.id);
+        }
+      });
+      
+      if (registrosIncorrectos.length === 0) {
+        alert('✅ No se encontraron registros incorrectos en "Operación del Día".');
+        return;
+      }
+      
+      if (!confirm(`Se encontraron ${registrosIncorrectos.length} registros incorrectos.\n\n¿Eliminarlos permanentemente?`)) {
+        return;
+      }
+      
+      // Eliminar en lotes
+      const chunks = [];
+      for (let i = 0; i < registrosIncorrectos.length; i += 400) {
+        chunks.push(registrosIncorrectos.slice(i, i + 400));
+      }
+      
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'operacion_dia', id));
+        });
+        await batch.commit();
+        eliminados += chunk.length;
+        setProgress(`Eliminando: ${eliminados} de ${registrosIncorrectos.length}...`);
+      }
+      
+      alert(`✅ Se eliminaron ${eliminados} registros incorrectos de "Operación del Día".\n\nAhora puedes cargar el archivo de asignaciones CVVEN correctamente en la sección de arriba.`);
+      setProgress('');
+    } catch (error) {
+      console.error('Error al limpiar registros:', error);
+      alert('Error al limpiar registros: ' + error.message);
+      setProgress('');
+    }
+  };
+
   // Función para cargar Excel de asignaciones CVVEN -> Vendedores
   const handleCvvenAssignmentsUpload = (e) => {
     const file = e.target.files[0];
@@ -2448,11 +2576,11 @@ Tu servicio de *Izzi* está listo para instalarse.
           }
         }
         
-        // Guardar en estado y localStorage
+        // Guardar en estado y localStorage (NO en Firestore)
         setCvvenVendorMap(newMap);
         localStorage.setItem('cvvenVendorMap', JSON.stringify(newMap));
         
-        alert(`✅ Asignaciones CVVEN cargadas exitosamente!\n\n${processed} asignaciones procesadas\n${Object.keys(newMap).length} CVVEN únicos mapeados`);
+        alert(`✅ Asignaciones CVVEN cargadas exitosamente!\n\n${processed} asignaciones procesadas\n${Object.keys(newMap).length} CVVEN únicos mapeados\n\n⚠️ Este archivo NO crea registros en "Operación del Día". Solo se usa como referencia para asignaciones automáticas.`);
         
         // Limpiar el input
         e.target.value = '';
@@ -2987,6 +3115,22 @@ Tu servicio de *Izzi* está listo para instalarse.
                   docData.FLP = flp;
                 }
               }
+              
+              // Asignación automática de vendedor basada en CVVEN (solo si no tiene vendedor asignado)
+              if (!docData.Vendedor && !docData.VendedorAsignado) {
+                const cvven = cleanValue(docData['Clave Vendedor'] || docData.CVVEN || '');
+                if (cvven && cvvenVendorMap[cvven] && cvvenVendorMap[cvven].length > 0) {
+                  // Si hay solo un vendedor para este CVVEN, asignarlo automáticamente
+                  if (cvvenVendorMap[cvven].length === 1) {
+                    docData.Vendedor = cvvenVendorMap[cvven][0];
+                    docData.VendedorAsignado = cvvenVendorMap[cvven][0];
+                    docData.normalized_resp = cvvenVendorMap[cvven][0].toLowerCase();
+                    console.log(`✅ Vendedor asignado automáticamente: ${cvvenVendorMap[cvven][0]} para CVVEN ${cvven}`);
+                  }
+                  // Si hay múltiples vendedores, no asignar automáticamente (el usuario elegirá en el modal)
+                  // El sistema mostrará las opciones cuando se abra el modal de asignación
+                }
+              }
             }
             
             // Agregar ciudad detectada desde el nombre del archivo (solo para instalaciones)
@@ -3203,7 +3347,17 @@ Tu servicio de *Izzi* está listo para instalarse.
              </div>
           </div>
           <div className="flex bg-slate-100 p-1 rounded-lg flex-wrap">
-            <button onClick={() => setActiveTab('clients')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'clients' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Users size={16}/> Clientes</button>
+            {currentModule === 'sales' && (
+              <>
+                <button onClick={() => setActiveTab('m1')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'm1' ? 'bg-amber-100 text-amber-700' : 'text-slate-500'}`}><Users size={16}/> M1</button>
+                <button onClick={() => setActiveTab('m2')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'm2' ? 'bg-orange-100 text-orange-700' : 'text-slate-500'}`}><Users size={16}/> M2</button>
+                <button onClick={() => setActiveTab('m3')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'm3' ? 'bg-red-100 text-red-700' : 'text-slate-500'}`}><Users size={16}/> M3</button>
+                <button onClick={() => setActiveTab('m4')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'm4' ? 'bg-pink-100 text-pink-700' : 'text-slate-500'}`}><Users size={16}/> M4</button>
+              </>
+            )}
+            {currentModule === 'install' && (
+              <button onClick={() => setActiveTab('clients')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'clients' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Users size={16}/> Clientes</button>
+            )}
             <button onClick={() => setActiveTab('operacion')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'operacion' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500'}`}><PlayCircle size={16}/> Operación</button>
             <button onClick={() => setActiveTab('reports')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'reports' ? 'bg-green-100 text-green-700' : 'text-slate-500'}`}><FileSpreadsheet size={16}/> Reportes</button>
             <button onClick={() => setActiveTab('users')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'users' ? 'bg-purple-100 text-purple-700' : 'text-slate-500'}`}><Shield size={16}/> Usuarios</button>
@@ -3219,8 +3373,8 @@ Tu servicio de *Izzi* está listo para instalarse.
           </div>
         </div>
 
-        {/* VISTA DE CLIENTES PARA ADMIN */}
-        {activeTab === 'clients' && (
+        {/* VISTA DE CLIENTES PARA ADMIN - M1, M2, M3, M4 */}
+        {(activeTab === 'clients' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') && (
           <div className="space-y-4">
             {currentModule === 'install' && allClients.length === 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
@@ -3256,6 +3410,62 @@ Tu servicio de *Izzi* está listo para instalarse.
                 </div>
               </div>
             )}
+
+            {/* Visualización de porcentajes por región (solo para M1, M2, M3, M4) */}
+            {currentModule === 'sales' && (activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') && (() => {
+              const estatusFiltro = activeTab.toUpperCase();
+              const porcentajes = calcularPorcentajesPorEstatusYRegion(allClients, estatusFiltro);
+              return (
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                    <BarChart3 size={20} className="text-blue-600"/>
+                    Porcentajes por Región - {estatusFiltro}
+                  </h3>
+                  {porcentajes.total > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Object.keys(porcentajes.porRegion).sort().map(region => {
+                        const datos = porcentajes.porRegion[region];
+                        return (
+                          <div key={region} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                <MapPin size={16} className="text-blue-500"/>
+                                {region}
+                              </h4>
+                              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                {datos.porcentaje}%
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="text-sm text-slate-600">
+                                <span className="font-bold">{datos.total}</span> clientes totales
+                              </div>
+                              <div className="space-y-1">
+                                {Object.keys(datos.estatus).map(est => (
+                                  <div key={est} className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded">
+                                    <span className="text-slate-700">{est}</span>
+                                    <span className="font-bold text-slate-800">
+                                      {datos.estatus[est].cantidad} ({datos.estatus[est].porcentaje}%)
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-center text-slate-500 py-4">No hay clientes con estatus {estatusFiltro}</p>
+                  )}
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <p className="text-sm font-bold text-slate-700 text-center">
+                      Total de clientes {estatusFiltro}: <span className="text-blue-600 text-lg">{porcentajes.total}</span>
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Barra de búsqueda y filtros */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -3293,6 +3503,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                   Mostrando {filteredClients.length} de {allClients.length} {currentModule === 'install' ? 'instalaciones' : 'clientes'}
                   {filterCiudad && ` • Ciudad: ${filterCiudad}`}
                   {filterVendor && ` • Vendedor: ${filterVendor}`}
+                  {currentModule === 'sales' && (activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') && ` • Estatus: ${activeTab.toUpperCase()}`}
                 </p>
                 {currentModule === 'install' && filteredClients.length > 0 && (
                   <button 
@@ -3459,11 +3670,33 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             {/* Cargar Excel de Asignaciones CVVEN */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-              <h4 className="font-bold text-sm mb-3 text-blue-800">📋 Cargar Asignaciones CVVEN → Vendedores</h4>
+              <h4 className="font-bold text-sm mb-3 text-blue-800">📋 Cargar Asignaciones CVVEN → Vendedores (SOLO para Operación del Día)</h4>
               <p className="text-xs text-blue-700 mb-3">
-                Sube un archivo Excel con las columnas <strong>CVVEN</strong> y <strong>ASIGNACION</strong> (o variaciones como "Clave Vendedor" y "Vendedor").
-                Esto permitirá que el sistema sugiera vendedores automáticamente al asignar ventas.
+                <strong>⚠️ IMPORTANTE:</strong> Este archivo es SOLO para asignaciones automáticas en <strong>"Operación del Día"</strong>.
+                <br/><br/>
+                <strong>¿Qué hace este archivo?</strong>
+                <br/>• Cuando subas ventas en "Operación del Día" que NO traen nombre de vendedor, el sistema buscará el CVVEN y asignará automáticamente el vendedor correspondiente.
+                <br/>• Si un CVVEN es compartido (múltiples vendedores), te mostrará todas las opciones para que elijas.
+                <br/>• También puedes asignar manualmente si es necesario.
+                <br/><br/>
+                <strong>Formato del archivo:</strong> Excel con columnas <strong>CVVEN</strong> y <strong>ASIGNACION</strong> (o variaciones como "Clave Vendedor" y "Vendedor").
+                <br/><br/>
+                <strong>❌ NO se usa para:</strong> Cobranza (M1, M2, M3, M4) - esos ya vienen con vendedores asignados previamente.
               </p>
+              
+              {/* Botón para limpiar registros incorrectos */}
+              <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-xs text-yellow-800 mb-2">
+                  <strong>🔧 Limpiar registros incorrectos:</strong> Si accidentalmente subiste el archivo de asignaciones CVVEN en "Cargar" y aparecieron registros en "Operación", úsalo para eliminarlos.
+                </p>
+                <button
+                  onClick={limpiarRegistrosIncorrectosOperacion}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-2"
+                >
+                  <Trash2 size={14}/> Limpiar Registros Incorrectos de Operación
+                </button>
+              </div>
+              
               <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-sm inline-flex items-center gap-2">
                 <UploadCloud size={18}/> Cargar Excel de Asignaciones CVVEN
                 <input 
@@ -3474,8 +3707,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                 />
               </label>
               {Object.keys(cvvenVendorMap).length > 0 && (
-                <p className="text-xs text-green-700 mt-2">
+                <p className="text-xs text-green-700 mt-2 font-bold">
                   ✅ {Object.keys(cvvenVendorMap).length} CVVEN mapeados con asignaciones cargadas
+                  <br/>Estos se usarán automáticamente al subir ventas en "Operación del Día" sin vendedor asignado.
                 </p>
               )}
             </div>
