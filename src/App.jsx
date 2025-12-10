@@ -3074,19 +3074,18 @@ Tu servicio de *Izzi* está listo para instalarse.
         // Procesar nuevos registros en lotes para optimizar memoria
         const validRows = rawFileRows.slice(1); // Quitar encabezados
         console.log("Filas a procesar (sin encabezados):", validRows.length);
+        setProgress(`Procesando ${validRows.length} filas...`);
         
-        // Procesar en lotes de 1000 filas para optimizar memoria
-        const BATCH_SIZE = 1000;
         const processedRows = [];
         
-        for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
-          const batchEnd = Math.min(batchStart + BATCH_SIZE, validRows.length);
-          const batch = validRows.slice(batchStart, batchEnd);
+        // Procesar todas las filas (el procesamiento es rápido, solo la subida a Firestore necesita lotes)
+        for (let rowIndex = 0; rowIndex < validRows.length; rowIndex++) {
+          const row = validRows[rowIndex];
           
-          setProgress(`Procesando filas ${batchStart + 1} a ${batchEnd} de ${validRows.length}...`);
-          
-          batch.forEach((row, batchIndex) => {
-            const rowIndex = batchStart + batchIndex;
+          // Actualizar progreso cada 500 filas
+          if (rowIndex % 500 === 0) {
+            setProgress(`Procesando fila ${rowIndex + 1} de ${validRows.length}...`);
+          }
             const docData = {}; 
             let hasData = false;
             
@@ -3327,13 +3326,9 @@ Tu servicio de *Izzi* está listo para instalarse.
               }
             }
             
-            if (hasData) {
-              processedRows.push(docData);
-            }
-          });
-          
-          // Limpiar memoria después de procesar cada lote
-          await new Promise(r => setTimeout(r, 10));
+          if (hasData) {
+            processedRows.push(docData);
+          }
         }
 
         console.log("Total registros procesados:", processedRows.length);
