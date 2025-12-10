@@ -2707,7 +2707,10 @@ Tu servicio de *Izzi* está listo para instalarse.
     'fecha_vencimiento': 'FechaVencimiento',
     'vendedor': 'Vendedor',
     'cliente': 'Cliente',
+    'CLIENTE': 'Cliente', // Asegurar que detecte CLIENTE en mayúsculas
+    'Cliente': 'Cliente', // Asegurar que detecte Cliente con mayúscula inicial
     'titular': 'Cliente',
+    'TITULAR': 'Cliente', // Asegurar que detecte TITULAR en mayúsculas
     'nombre titular': 'Cliente',
     'nombre_titular': 'Cliente',
     'nombre del titular': 'Cliente',
@@ -3020,13 +3023,16 @@ Tu servicio de *Izzi* está listo para instalarse.
                       // Limpiar el valor (quitar comillas, espacios)
                       const cleanedValue = cleanValue(value);
                       // Solo guardar si no es "Output" o vacío después de limpiar
-                      // Para el campo Cliente, también ignorar si es solo "izzi" (probablemente es el nombre de la empresa, no del titular)
                       if (cleanedValue && cleanedValue !== 'Output') {
-                        // Si es el campo Cliente y el valor es solo "izzi" (sin más texto), no guardarlo
+                        // Para el campo Cliente, ignorar si es solo "izzi" (probablemente es el nombre de la empresa, no del titular)
                         if (fieldName === 'Cliente' && cleanedValue.toLowerCase().trim() === 'izzi') {
                           // No guardar este valor, probablemente es el nombre de la empresa, no del titular
                           console.log(`Ignorando valor "izzi" en campo Cliente (fila ${rowIndex + 1})`);
+                        } else if ((fieldName === 'Compañía' || fieldName === 'Compania') && cleanedValue.toLowerCase().trim() === 'izzi') {
+                          // Si Compañía/Compania tiene "izzi", no guardarlo (no sobrescribir Cliente con "izzi")
+                          console.log(`Ignorando valor "izzi" en campo ${fieldName} (fila ${rowIndex + 1})`);
                         } else {
+                          // Guardar el valor normalmente
                           docData[fieldName] = cleanedValue;
                           hasData = true;
                         }
@@ -3143,12 +3149,18 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             // Normalizar campos para instalaciones (asegurar que Cliente y Estatus existan)
             if (currentModule === 'install') {
-              // Si hay Compañía pero no Cliente, copiar a Cliente
+              // Si hay Compañía pero no Cliente, copiar a Cliente (solo si Compañía no es "izzi")
               if (docData.Compañía && !docData.Cliente) {
-                docData.Cliente = docData.Compañía;
+                const companiaValue = cleanValue(docData.Compañía);
+                if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
+                  docData.Cliente = companiaValue;
+                }
               }
               if (docData.Compania && !docData.Cliente) {
-                docData.Cliente = docData.Compania;
+                const companiaValue = cleanValue(docData.Compania);
+                if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
+                  docData.Cliente = companiaValue;
+                }
               }
               // Si hay Estado pero no Estatus, copiar a Estatus
               if (docData.Estado && !docData.Estatus) {
@@ -3156,6 +3168,43 @@ Tu servicio de *Izzi* está listo para instalarse.
               }
               if (docData['Estado'] && !docData.Estatus) {
                 docData.Estatus = docData['Estado'];
+              }
+            }
+            
+            // Para cobranza: asegurar que Cliente tenga el valor correcto (no "izzi")
+            // Si Cliente es "izzi" o está vacío, buscar en otras columnas
+            if (currentModule === 'sales' || targetCollection === 'sales_master') {
+              const clienteActual = cleanValue(docData.Cliente || '');
+              const clienteEsIzzi = clienteActual.toLowerCase().trim() === 'izzi';
+              
+              // Si Cliente es "izzi" o está vacío, buscar en otras columnas
+              if (!docData.Cliente || clienteEsIzzi) {
+                // Buscar en Compañía/Compania si no es "izzi"
+                if (docData.Compañía) {
+                  const companiaValue = cleanValue(docData.Compañía);
+                  if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
+                    docData.Cliente = companiaValue;
+                  }
+                } else if (docData.Compania) {
+                  const companiaValue = cleanValue(docData.Compania);
+                  if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
+                    docData.Cliente = companiaValue;
+                  }
+                }
+                // Si aún no hay Cliente válido, buscar en otras posibles columnas
+                if (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') {
+                  // Buscar en cualquier campo que pueda tener el nombre del titular
+                  const posiblesCampos = ['Titular', 'Nombre Titular', 'Nombre del Titular', 'Nombre Cliente', 'Nombre del Cliente'];
+                  for (const campo of posiblesCampos) {
+                    if (docData[campo]) {
+                      const valorCampo = cleanValue(docData[campo]);
+                      if (valorCampo && valorCampo.toLowerCase().trim() !== 'izzi') {
+                        docData.Cliente = valorCampo;
+                        break;
+                      }
+                    }
+                  }
+                }
               }
             }
             
@@ -3255,6 +3304,88 @@ Tu servicio de *Izzi* está listo para instalarse.
                   Cliente: (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') 
                     ? cleanValue(data.Cliente) 
                     : (existingData.Cliente || data.Cliente || ''),
+                  // Preservar fecha de creación original
+                  createdAt: existingData.createdAt || serverTimestamp(),
+                  // Actualizar fecha de modificación
+                  updatedAt: serverTimestamp()
+                };
+                
+                batch.update(existing.id, updateData);
+                updated++;
+              } else {
+                // Crear nuevo registro (solo si el Cliente no es "izzi")
+                if (!data.Cliente || cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                  const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                  batch.set(ref, { ...data, createdAt: serverTimestamp() });
+                  created++;
+                } else {
+                  console.log(`Ignorando registro con Cliente="izzi" (cuenta: ${nCuenta})`);
+                }
+              }
+              inserted++;
+            }
+            
+            await batch.commit();
+            setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
+            console.log(`Procesados ${inserted} de ${processedRows.length}`);
+            await new Promise(r => setTimeout(r, 100));
+          }
+        } else if (currentModule === 'sales' || targetCollection === 'sales_master') {
+          // Para cobranza: actualizar existentes por número de cuenta o crear nuevos
+          const chunks = [];
+          for (let i = 0; i < processedRows.length; i += 300) {
+            chunks.push(processedRows.slice(i, i + 300));
+          }
+          
+          for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            
+            for (const data of chunk) {
+              const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+              
+              if (nCuenta && existingSales.has(nCuenta)) {
+                // Actualizar registro existente (preservar campos importantes)
+                const existing = existingSales.get(nCuenta);
+                const existingData = existing.data;
+                
+                // Determinar el valor final de Cliente
+                const nuevoCliente = cleanValue(data.Cliente || '');
+                const clienteEsIzzi = nuevoCliente.toLowerCase().trim() === 'izzi';
+                const clienteExistente = cleanValue(existingData.Cliente || '');
+                const clienteExistenteEsIzzi = clienteExistente.toLowerCase().trim() === 'izzi';
+                
+                let clienteFinal = '';
+                if (nuevoCliente && !clienteEsIzzi) {
+                  // Si el nuevo Cliente es válido (no "izzi"), usarlo
+                  clienteFinal = nuevoCliente;
+                } else if (clienteExistente && !clienteExistenteEsIzzi) {
+                  // Si el existente es válido, preservarlo
+                  clienteFinal = clienteExistente;
+                } else if (data.Compañía) {
+                  // Intentar con Compañía si no es "izzi"
+                  const companiaValue = cleanValue(data.Compañía);
+                  if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
+                    clienteFinal = companiaValue;
+                  }
+                } else if (data.Compania) {
+                  // Intentar con Compania si no es "izzi"
+                  const companiaValue = cleanValue(data.Compania);
+                  if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
+                    clienteFinal = companiaValue;
+                  }
+                } else {
+                  // Último recurso: usar el existente si no es "izzi", sino el nuevo
+                  clienteFinal = !clienteExistenteEsIzzi ? clienteExistente : (nuevoCliente || '');
+                }
+                
+                const updateData = {
+                  ...data,
+                  // Preservar vendedor asignado si ya estaba asignado
+                  Vendedor: existingData.Vendedor || data.Vendedor || '',
+                  VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
+                  normalized_resp: existingData.normalized_resp || data.normalized_resp || '',
+                  // Usar el valor final de Cliente determinado arriba
+                  Cliente: clienteFinal,
                   // Preservar fecha de creación original
                   createdAt: existingData.createdAt || serverTimestamp(),
                   // Actualizar fecha de modificación
