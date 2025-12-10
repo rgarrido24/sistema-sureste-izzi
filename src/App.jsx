@@ -2840,18 +2840,20 @@ Tu servicio de *Izzi* está listo para instalarse.
       };
       reader.onload = (evt) => {
         try {
-          console.log("Archivo cargado, procesando Excel...");
+          setProgress('Procesando archivo Excel...');
           const data = new Uint8Array(evt.target.result);
           const rows = parseExcel(data);
           console.log("Filas encontradas:", rows.length);
-          console.log("Primera fila (encabezados):", rows[0]);
           if (rows.length > 0) {
+            setProgress(`Archivo procesado: ${rows.length} filas encontradas`);
             processFileRows(rows);
           } else {
             alert("El archivo está vacío o no se pudo leer");
+            setProgress('');
           }
         } catch (error) {
           console.error("Error parseando Excel:", error);
+          setProgress('');
           alert("Error al leer el archivo Excel: " + error.message);
         }
       };
@@ -3069,12 +3071,22 @@ Tu servicio de *Izzi* está listo para instalarse.
           console.log("Base limpiada");
         }
 
-        // Procesar nuevos registros
+        // Procesar nuevos registros en lotes para optimizar memoria
         const validRows = rawFileRows.slice(1); // Quitar encabezados
         console.log("Filas a procesar (sin encabezados):", validRows.length);
         
+        // Procesar en lotes de 1000 filas para optimizar memoria
+        const BATCH_SIZE = 1000;
         const processedRows = [];
-        validRows.forEach((row, rowIndex) => {
+        
+        for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, validRows.length);
+          const batch = validRows.slice(batchStart, batchEnd);
+          
+          setProgress(`Procesando filas ${batchStart + 1} a ${batchEnd} de ${validRows.length}...`);
+          
+          batch.forEach((row, batchIndex) => {
+            const rowIndex = batchStart + batchIndex;
             const docData = {}; 
             let hasData = false;
             
@@ -3088,7 +3100,10 @@ Tu servicio de *Izzi* está listo para instalarse.
                         if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi') {
                             docData.Cliente = cleanedValue;
                             hasData = true;
-                            console.log(`✅ Cliente encontrado en columna CLIENTE (fila ${rowIndex + 1}): ${cleanedValue}`);
+                            // Solo loguear las primeras 5 filas para no saturar la consola
+                            if (rowIndex < 5) {
+                              console.log(`✅ Cliente encontrado en columna CLIENTE (fila ${rowIndex + 1}): ${cleanedValue}`);
+                            }
                         }
                     }
                 }
@@ -3114,29 +3129,22 @@ Tu servicio de *Izzi* está listo para instalarse.
                       const cleanedValue = cleanValue(value);
                       // Solo guardar si no es "Output" o vacío después de limpiar
                       if (cleanedValue && cleanedValue !== 'Output') {
-                        // Para el campo Cliente, ignorar si es solo "izzi" (probablemente es el nombre de la empresa, no del titular)
+                        // Para el campo Cliente, ignorar si es solo "izzi"
                         if (fieldName === 'Cliente' && cleanedValue.toLowerCase().trim() === 'izzi') {
-                          // No guardar este valor, probablemente es el nombre de la empresa, no del titular
-                          console.log(`Ignorando valor "izzi" en campo Cliente (fila ${rowIndex + 1})`);
+                          // No guardar este valor
                         } else if ((fieldName === 'Compañía' || fieldName === 'Compania') && cleanedValue.toLowerCase().trim() === 'izzi') {
-                          // Si Compañía/Compania tiene "izzi", no guardarlo (no sobrescribir Cliente con "izzi")
-                          console.log(`Ignorando valor "izzi" en campo ${fieldName} (fila ${rowIndex + 1})`);
+                          // Si Compañía/Compania tiene "izzi", no guardarlo
                         } else {
                           // IMPORTANTE: Si es Cliente y ya existe un Cliente válido, no sobrescribir
-                          // Si es Compañía/Compania y ya existe un Cliente válido, no sobrescribir Cliente
                           if (fieldName === 'Cliente') {
                             // Si ya hay un Cliente válido (no "izzi"), mantenerlo
-                            if (docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
-                              console.log(`Preservando Cliente existente: ${docData.Cliente} (ignorando nuevo valor: ${cleanedValue})`);
-                            } else {
-                              // Guardar el nuevo Cliente
+                            if (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') {
+                              // Guardar el nuevo Cliente solo si no hay uno válido
                               docData[fieldName] = cleanedValue;
                               hasData = true;
                             }
                           } else if ((fieldName === 'Compañía' || fieldName === 'Compania') && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
-                            // Si ya hay un Cliente válido, no sobrescribirlo con Compañía
-                            console.log(`Preservando Cliente existente: ${docData.Cliente} (ignorando Compañía: ${cleanedValue})`);
-                            // Guardar Compañía en su propio campo, pero no sobrescribir Cliente
+                            // Si ya hay un Cliente válido, guardar Compañía en su propio campo pero no sobrescribir Cliente
                             docData[fieldName] = cleanedValue;
                             hasData = true;
                           } else {
@@ -3287,25 +3295,18 @@ Tu servicio de *Izzi* está listo para instalarse.
               const clienteEsIzzi = clienteActual.toLowerCase().trim() === 'izzi';
               
               // Si Cliente tiene un valor válido (no "izzi"), NO hacer nada más - mantenerlo
-              if (docData.Cliente && !clienteEsIzzi) {
-                // Ya tiene un valor válido, no buscar en otras columnas
-                console.log(`✅ Cliente válido encontrado en columna CLIENTE: ${docData.Cliente}`);
-              } else {
+              if (!docData.Cliente || clienteEsIzzi) {
                 // Cliente es "izzi" o está vacío, buscar en otras columnas
-                console.log(`⚠️ Cliente es "izzi" o vacío, buscando en otras columnas...`);
-                
                 // Buscar en Compañía/Compania si no es "izzi"
                 if (docData.Compañía) {
                   const companiaValue = cleanValue(docData.Compañía);
                   if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
                     docData.Cliente = companiaValue;
-                    console.log(`✅ Cliente encontrado en Compañía: ${companiaValue}`);
                   }
                 } else if (docData.Compania) {
                   const companiaValue = cleanValue(docData.Compania);
                   if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
                     docData.Cliente = companiaValue;
-                    console.log(`✅ Cliente encontrado en Compania: ${companiaValue}`);
                   }
                 }
                 
@@ -3318,7 +3319,6 @@ Tu servicio de *Izzi* está listo para instalarse.
                       const valorCampo = cleanValue(docData[campo]);
                       if (valorCampo && valorCampo.toLowerCase().trim() !== 'izzi') {
                         docData.Cliente = valorCampo;
-                        console.log(`✅ Cliente encontrado en ${campo}: ${valorCampo}`);
                         break;
                       }
                     }
@@ -3329,9 +3329,12 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             if (hasData) {
               processedRows.push(docData);
-              if (rowIndex < 3) console.log(`Fila ${rowIndex} procesada:`, docData);
             }
-        });
+          });
+          
+          // Limpiar memoria después de procesar cada lote
+          await new Promise(r => setTimeout(r, 10));
+        }
 
         console.log("Total registros procesados:", processedRows.length);
         
