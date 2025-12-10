@@ -1535,27 +1535,53 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
-      // Eliminar todos los documentos de operacion_dia
+      setProgress('Eliminando datos de Operación del Día...');
+      
+      // Eliminar todos los documentos de operacion_dia en lotes
       const operacionRef = collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia');
       const operacionSnap = await getDocs(operacionRef);
-      const batch1 = writeBatch(db);
-      operacionSnap.docs.forEach((docSnap) => {
-        batch1.delete(docSnap.ref);
-      });
-      await batch1.commit();
+      const operacionDocs = [];
+      operacionSnap.docs.forEach(d => operacionDocs.push(d));
       
-      // Eliminar todos los documentos de sales_reports
+      let deletedOperacion = 0;
+      while (operacionDocs.length > 0) {
+        const batch = writeBatch(db);
+        const chunk = operacionDocs.splice(0, 400); // Lotes de 400 para estar seguros
+        chunk.forEach(docSnap => {
+          batch.delete(docSnap.ref);
+          deletedOperacion++;
+        });
+        await batch.commit();
+        setProgress(`Eliminando Operación: ${deletedOperacion} de ${operacionSnap.size}...`);
+        await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
+      }
+      
+      setProgress('Eliminando datos de Reportes...');
+      
+      // Eliminar todos los documentos de sales_reports en lotes
       const reportsRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports');
       const reportsSnap = await getDocs(reportsRef);
-      const batch2 = writeBatch(db);
-      reportsSnap.docs.forEach((docSnap) => {
-        batch2.delete(docSnap.ref);
-      });
-      await batch2.commit();
+      const reportsDocs = [];
+      reportsSnap.docs.forEach(d => reportsDocs.push(d));
       
-      alert(`✅ Se eliminaron ${operacionSnap.size} registros de Operación del Día y ${reportsSnap.size} reportes de ventas.\n\nEl sistema está listo para empezar de cero.`);
+      let deletedReports = 0;
+      while (reportsDocs.length > 0) {
+        const batch = writeBatch(db);
+        const chunk = reportsDocs.splice(0, 400); // Lotes de 400 para estar seguros
+        chunk.forEach(docSnap => {
+          batch.delete(docSnap.ref);
+          deletedReports++;
+        });
+        await batch.commit();
+        setProgress(`Eliminando Reportes: ${deletedReports} de ${reportsSnap.size}...`);
+        await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
+      }
+      
+      setProgress('');
+      alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas.\n\nEl sistema está listo para empezar de cero.`);
     } catch (error) {
       console.error('Error al eliminar datos:', error);
+      setProgress('');
       alert('Error al eliminar los datos: ' + error.message);
     }
   };
@@ -1575,24 +1601,71 @@ Tu servicio de *Izzi* está listo para instalarse.
       const installRef = collection(db, 'artifacts', appId, 'public', 'data', 'install_master');
       const installSnap = await getDocs(installRef);
       
-      // Procesar en lotes de 500 (límite de Firestore)
-      const chunks = [];
-      installSnap.docs.forEach(d => chunks.push(d));
+      setProgress('Eliminando datos de Instalaciones...');
+      
+      // Procesar en lotes de 400 (límite seguro de Firestore)
+      const installDocs = [];
+      installSnap.docs.forEach(d => installDocs.push(d));
       
       let deleted = 0;
-      while (chunks.length) {
+      while (installDocs.length > 0) {
         const batch = writeBatch(db);
-        chunks.splice(0, 500).forEach(d => {
+        const chunk = installDocs.splice(0, 400); // Lotes de 400 para estar seguros
+        chunk.forEach(d => {
           batch.delete(d.ref);
           deleted++;
         });
         await batch.commit();
+        setProgress(`Eliminando: ${deleted} de ${installSnap.size}...`);
+        await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
       }
       
+      setProgress('');
       alert(`✅ Se eliminaron ${deleted} registros de Instalaciones.\n\nEl sistema está listo para empezar de cero.`);
     } catch (error) {
       console.error('Error al eliminar datos de instalaciones:', error);
-      alert('Error al eliminar los datos: ' + error.message);
+      setProgress('');
+      alert('Error al eliminar los datos de instalaciones: ' + error.message);
+    }
+  };
+  
+  // Función para eliminar todos los datos de cobranza (sales_master)
+  const deleteAllCobranza = async () => {
+    if (!confirm('⚠️ ADVERTENCIA: Esta acción eliminará PERMANENTEMENTE todos los datos de:\n\n- Cobranza (M1, M2, M3, M4)\n\n¿Estás completamente seguro? Esta acción NO se puede deshacer.')) {
+      return;
+    }
+    
+    if (!confirm('⚠️ ÚLTIMA CONFIRMACIÓN: ¿Realmente quieres eliminar TODOS los datos de cobranza?')) {
+      return;
+    }
+    
+    try {
+      setProgress('Eliminando datos de Cobranza...');
+      
+      const cobranzaRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
+      const cobranzaSnap = await getDocs(cobranzaRef);
+      const cobranzaDocs = [];
+      cobranzaSnap.docs.forEach(d => cobranzaDocs.push(d));
+      
+      let deleted = 0;
+      while (cobranzaDocs.length > 0) {
+        const batch = writeBatch(db);
+        const chunk = cobranzaDocs.splice(0, 400); // Lotes de 400 para estar seguros
+        chunk.forEach(d => {
+          batch.delete(d.ref);
+          deleted++;
+        });
+        await batch.commit();
+        setProgress(`Eliminando: ${deleted} de ${cobranzaSnap.size}...`);
+        await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
+      }
+      
+      setProgress('');
+      alert(`✅ Se eliminaron ${deleted} registros de Cobranza.\n\nEl sistema está listo para empezar de cero.`);
+    } catch (error) {
+      console.error('Error al eliminar datos de cobranza:', error);
+      setProgress('');
+      alert('Error al eliminar los datos de cobranza: ' + error.message);
     }
   };
 
@@ -3005,9 +3078,26 @@ Tu servicio de *Izzi* está listo para instalarse.
             const docData = {}; 
             let hasData = false;
             
+            // PRIMER PASO: Procesar primero la columna "Cliente" si existe, para darle prioridad
             row.forEach((cellVal, colIndex) => {
                 const fieldName = columnMapping[colIndex];
-                if (fieldName && fieldName !== 'Ignorar') {
+                if (fieldName === 'Cliente') {
+                    let value = String(cellVal ?? '').trim();
+                    if (value) {
+                        const cleanedValue = cleanValue(value);
+                        if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi') {
+                            docData.Cliente = cleanedValue;
+                            hasData = true;
+                            console.log(`✅ Cliente encontrado en columna CLIENTE (fila ${rowIndex + 1}): ${cleanedValue}`);
+                        }
+                    }
+                }
+            });
+            
+            // SEGUNDO PASO: Procesar el resto de las columnas
+            row.forEach((cellVal, colIndex) => {
+                const fieldName = columnMapping[colIndex];
+                if (fieldName && fieldName !== 'Ignorar' && fieldName !== 'Cliente') {
                     let value = String(cellVal ?? '').trim();
                     
                     // Convertir fechas de Excel (números) a formato legible
@@ -3032,9 +3122,28 @@ Tu servicio de *Izzi* está listo para instalarse.
                           // Si Compañía/Compania tiene "izzi", no guardarlo (no sobrescribir Cliente con "izzi")
                           console.log(`Ignorando valor "izzi" en campo ${fieldName} (fila ${rowIndex + 1})`);
                         } else {
-                          // Guardar el valor normalmente
-                          docData[fieldName] = cleanedValue;
-                          hasData = true;
+                          // IMPORTANTE: Si es Cliente y ya existe un Cliente válido, no sobrescribir
+                          // Si es Compañía/Compania y ya existe un Cliente válido, no sobrescribir Cliente
+                          if (fieldName === 'Cliente') {
+                            // Si ya hay un Cliente válido (no "izzi"), mantenerlo
+                            if (docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
+                              console.log(`Preservando Cliente existente: ${docData.Cliente} (ignorando nuevo valor: ${cleanedValue})`);
+                            } else {
+                              // Guardar el nuevo Cliente
+                              docData[fieldName] = cleanedValue;
+                              hasData = true;
+                            }
+                          } else if ((fieldName === 'Compañía' || fieldName === 'Compania') && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
+                            // Si ya hay un Cliente válido, no sobrescribirlo con Compañía
+                            console.log(`Preservando Cliente existente: ${docData.Cliente} (ignorando Compañía: ${cleanedValue})`);
+                            // Guardar Compañía en su propio campo, pero no sobrescribir Cliente
+                            docData[fieldName] = cleanedValue;
+                            hasData = true;
+                          } else {
+                            // Guardar el valor normalmente
+                            docData[fieldName] = cleanedValue;
+                            hasData = true;
+                          }
                         }
                       }
                     }
@@ -3172,25 +3281,34 @@ Tu servicio de *Izzi* está listo para instalarse.
             }
             
             // Para cobranza: asegurar que Cliente tenga el valor correcto (no "izzi")
-            // Si Cliente es "izzi" o está vacío, buscar en otras columnas
+            // PRIORIDAD: Si Cliente tiene un valor válido (no "izzi"), mantenerlo y NO buscar en otras columnas
             if (currentModule === 'sales' || targetCollection === 'sales_master') {
               const clienteActual = cleanValue(docData.Cliente || '');
               const clienteEsIzzi = clienteActual.toLowerCase().trim() === 'izzi';
               
-              // Si Cliente es "izzi" o está vacío, buscar en otras columnas
-              if (!docData.Cliente || clienteEsIzzi) {
+              // Si Cliente tiene un valor válido (no "izzi"), NO hacer nada más - mantenerlo
+              if (docData.Cliente && !clienteEsIzzi) {
+                // Ya tiene un valor válido, no buscar en otras columnas
+                console.log(`✅ Cliente válido encontrado en columna CLIENTE: ${docData.Cliente}`);
+              } else {
+                // Cliente es "izzi" o está vacío, buscar en otras columnas
+                console.log(`⚠️ Cliente es "izzi" o vacío, buscando en otras columnas...`);
+                
                 // Buscar en Compañía/Compania si no es "izzi"
                 if (docData.Compañía) {
                   const companiaValue = cleanValue(docData.Compañía);
                   if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
                     docData.Cliente = companiaValue;
+                    console.log(`✅ Cliente encontrado en Compañía: ${companiaValue}`);
                   }
                 } else if (docData.Compania) {
                   const companiaValue = cleanValue(docData.Compania);
                   if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
                     docData.Cliente = companiaValue;
+                    console.log(`✅ Cliente encontrado en Compania: ${companiaValue}`);
                   }
                 }
+                
                 // Si aún no hay Cliente válido, buscar en otras posibles columnas
                 if (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') {
                   // Buscar en cualquier campo que pueda tener el nombre del titular
@@ -3200,6 +3318,7 @@ Tu servicio de *Izzi* está listo para instalarse.
                       const valorCampo = cleanValue(docData[campo]);
                       if (valorCampo && valorCampo.toLowerCase().trim() !== 'izzi') {
                         docData.Cliente = valorCampo;
+                        console.log(`✅ Cliente encontrado en ${campo}: ${valorCampo}`);
                         break;
                       }
                     }
@@ -4028,6 +4147,12 @@ Tu servicio de *Izzi* está listo para instalarse.
                 Estas acciones NO se pueden deshacer.
               </p>
               <div className="space-y-2">
+                <button
+                  onClick={deleteAllCobranza}
+                  className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={16}/> Eliminar Todos los Datos de Cobranza (M1, M2, M3, M4)
+                </button>
                 <button
                   onClick={deleteAllOperacionAndReports}
                   className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-700 flex items-center justify-center gap-2"
