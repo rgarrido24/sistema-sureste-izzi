@@ -3078,17 +3078,16 @@ Tu servicio de *Izzi* está listo para instalarse.
         
         const processedRows = [];
         
-        // Procesar en chunks pequeños para no bloquear la UI
-        const CHUNK_SIZE = 100; // Procesar 100 filas a la vez
-        let currentIndex = 0;
-        
-        const processChunk = async () => {
-          const endIndex = Math.min(currentIndex + CHUNK_SIZE, validRows.length);
+        // Procesar todas las filas de forma directa (es rápido, el cuello de botella es la subida a Firestore)
+        for (let rowIndex = 0; rowIndex < validRows.length; rowIndex++) {
+          const row = validRows[rowIndex];
+          const docData = {}; 
+          let hasData = false;
           
-          for (let rowIndex = currentIndex; rowIndex < endIndex; rowIndex++) {
-            const row = validRows[rowIndex];
-            const docData = {}; 
-            let hasData = false;
+          // Actualizar progreso cada 500 filas para no saturar la UI
+          if (rowIndex % 500 === 0 && rowIndex > 0) {
+            setProgress(`Procesando fila ${rowIndex} de ${validRows.length}...`);
+          }
             
             // PRIMER PASO: Procesar primero la columna "Cliente" si existe, para darle prioridad
             row.forEach((cellVal, colIndex) => {
@@ -3327,24 +3326,10 @@ Tu servicio de *Izzi* está listo para instalarse.
               }
             }
             
-            if (hasData) {
-              processedRows.push(docData);
-            }
+          if (hasData) {
+            processedRows.push(docData);
           }
-          
-          currentIndex = endIndex;
-          setProgress(`Procesando fila ${currentIndex} de ${validRows.length}...`);
-          
-          // Si aún hay más filas, procesar el siguiente chunk después de una pausa
-          if (currentIndex < validRows.length) {
-            // Usar setTimeout para permitir que la UI se actualice
-            await new Promise(resolve => setTimeout(resolve, 0));
-            await processChunk();
-          }
-        };
-        
-        // Iniciar el procesamiento asíncrono
-        await processChunk();
+        }
 
         console.log("Total registros procesados:", processedRows.length);
         
