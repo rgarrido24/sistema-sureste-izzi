@@ -3078,110 +3078,153 @@ Tu servicio de *Izzi* está listo para instalarse.
         
         const processedRows = [];
         
-        // Procesar todas las filas de forma directa (es rápido, el cuello de botella es la subida a Firestore)
-        for (let rowIndex = 0; rowIndex < validRows.length; rowIndex++) {
-          const row = validRows[rowIndex];
-          const docData = {}; 
-          let hasData = false;
+        // Función auxiliar para limpiar valores
+        const cleanValue = (val) => {
+          if (!val) return '';
+          let str = String(val).trim();
+          // Quitar comillas dobles y simples al inicio y final
+          str = str.replace(/^["']+|["']+$/g, '');
+          // Quitar espacios extra
+          str = str.replace(/\s+/g, ' ').trim();
+          return str;
+        };
+        
+        // Procesar todas las filas en lotes pequeños para evitar bloqueos
+        const BATCH_SIZE = 50; // Procesar 50 filas a la vez (reducido para mejor rendimiento)
+        for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(batchStart + BATCH_SIZE, validRows.length);
+          setProgress(`Procesando filas ${batchStart + 1} a ${batchEnd} de ${validRows.length}...`);
           
-          // Actualizar progreso cada 500 filas para no saturar la UI
-          if (rowIndex % 500 === 0 && rowIndex > 0) {
-            setProgress(`Procesando fila ${rowIndex} de ${validRows.length}...`);
-          }
+          // Procesar lote actual
+          for (let rowIndex = batchStart; rowIndex < batchEnd; rowIndex++) {
+            const row = validRows[rowIndex];
+            const docData = {}; 
+            let hasData = false;
             
-            // PRIMER PASO: Procesar primero la columna "Cliente" si existe, para darle prioridad
+            // PASO 1: Buscar TODAS las posibles columnas de Cliente primero (prioridad MÁXIMA)
+            const posiblesClientes = [];
             row.forEach((cellVal, colIndex) => {
-                const fieldName = columnMapping[colIndex];
-                if (fieldName === 'Cliente') {
-                    let value = String(cellVal ?? '').trim();
-                    if (value) {
-                        const cleanedValue = cleanValue(value);
-                        if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi') {
-                            docData.Cliente = cleanedValue;
-                            hasData = true;
-                            // Solo loguear las primeras 5 filas para no saturar la consola
-                            if (rowIndex < 5) {
-                              console.log(`✅ Cliente encontrado en columna CLIENTE (fila ${rowIndex + 1}): ${cleanedValue}`);
-                            }
-                        }
-                    }
+              const fieldName = columnMapping[colIndex];
+              // Priorizar columnas que claramente son de Cliente
+              if (fieldName === 'Cliente' || fieldName === 'Titular' || fieldName === 'Nombre Titular' || fieldName === 'Nombre del Titular') {
+                let value = String(cellVal ?? '').trim();
+                if (value) {
+                  const cleanedValue = cleanValue(value);
+                  // Aceptar cualquier valor que NO sea "izzi" y tenga al menos 2 caracteres
+                  if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
+                    // Máxima prioridad para la columna "Cliente"
+                    const priority = fieldName === 'Cliente' ? 1 : (fieldName === 'Titular' ? 2 : 3);
+                    posiblesClientes.push({ value: cleanedValue, priority, fieldName });
+                  }
                 }
+              }
             });
             
-            // SEGUNDO PASO: Procesar el resto de las columnas
+            // Si encontramos un Cliente válido, usarlo y MARCAR como protegido
+            let clienteProtegido = false;
+            if (posiblesClientes.length > 0) {
+              // Ordenar por prioridad (Cliente primero)
+              posiblesClientes.sort((a, b) => a.priority - b.priority);
+              docData.Cliente = posiblesClientes[0].value;
+              clienteProtegido = true; // Marcar como protegido para que no se sobrescriba
+              hasData = true;
+            }
+            
+            // PASO 2: Procesar el resto de las columnas (RESPETANDO el Cliente protegido)
             row.forEach((cellVal, colIndex) => {
-                const fieldName = columnMapping[colIndex];
-                if (fieldName && fieldName !== 'Ignorar' && fieldName !== 'Cliente') {
-                    let value = String(cellVal ?? '').trim();
-                    
-                    // Convertir fechas de Excel (números) a formato legible
-                    if (fieldName.toLowerCase().includes('fecha') && value) {
-                      value = excelDateToString(value);
-                      // Formatear fecha para quitar hora si la tiene
-                      if (typeof value === 'string' && value.includes(' ')) {
-                        value = value.split(' ')[0]; // Solo tomar la parte de la fecha
-                      }
-                    }
-                    
-                    if (value) {
-                      // Limpiar el valor (quitar comillas, espacios)
-                      const cleanedValue = cleanValue(value);
-                      // Solo guardar si no es "Output" o vacío después de limpiar
-                      if (cleanedValue && cleanedValue !== 'Output') {
-                        // Para el campo Cliente, ignorar si es solo "izzi"
-                        if (fieldName === 'Cliente' && cleanedValue.toLowerCase().trim() === 'izzi') {
-                          // No guardar este valor
-                        } else if ((fieldName === 'Compañía' || fieldName === 'Compania') && cleanedValue.toLowerCase().trim() === 'izzi') {
-                          // Si Compañía/Compania tiene "izzi", no guardarlo
-                        } else {
-                          // IMPORTANTE: Si es Cliente y ya existe un Cliente válido, no sobrescribir
-                          if (fieldName === 'Cliente') {
-                            // Si ya hay un Cliente válido (no "izzi"), mantenerlo
-                            if (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') {
-                              // Guardar el nuevo Cliente solo si no hay uno válido
-                              docData[fieldName] = cleanedValue;
-                              hasData = true;
-                            }
-                          } else if ((fieldName === 'Compañía' || fieldName === 'Compania') && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
-                            // Si ya hay un Cliente válido, guardar Compañía en su propio campo pero no sobrescribir Cliente
-                            docData[fieldName] = cleanedValue;
-                            hasData = true;
-                          } else {
-                            // Guardar el valor normalmente
-                            docData[fieldName] = cleanedValue;
-                            hasData = true;
-                          }
-                        }
-                      }
-                    }
-                    if (fieldName === 'Vendedor' && value) {
-                      const cleanedValue = cleanValue(value);
-                      if (cleanedValue && cleanedValue !== 'Output') {
-                        docData['normalized_resp'] = cleanedValue.toLowerCase();
-                      }
-                    }
-                    // Normalizar región
-                    if (fieldName === 'Region' && value) {
-                      const cleanedValue = cleanValue(value);
-                      if (!cleanedValue || cleanedValue === 'Output') return;
-                      const regionLower = cleanedValue.toLowerCase().trim();
-                      // Normalizar nombres de regiones
-                      if (regionLower.includes('noreste') || regionLower === 'ne') {
-                        docData['Region'] = 'Noreste';
-                      } else if (regionLower.includes('pacifico') || regionLower.includes('pacífico') || regionLower === 'pac') {
-                        docData['Region'] = 'Pacífico';
-                      } else if (regionLower.includes('metropolitana') || regionLower.includes('metro') || regionLower === 'met') {
-                        docData['Region'] = 'Metropolitana';
-                      } else if (regionLower.includes('occidente') || regionLower === 'occ') {
-                        docData['Region'] = 'Occidente';
-                      } else if (regionLower.includes('sureste') || regionLower === 'se') {
-                        docData['Region'] = 'Sureste';
-                      } else {
-                        // Capitalizar primera letra
-                        docData['Region'] = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-                      }
-                    }
+              const fieldName = columnMapping[colIndex];
+              if (fieldName && fieldName !== 'Ignorar') {
+                let value = String(cellVal ?? '').trim();
+                
+                // Convertir fechas de Excel (números) a formato legible
+                if (fieldName.toLowerCase().includes('fecha') && value) {
+                  value = excelDateToString(value);
+                  // Formatear fecha para quitar hora si la tiene
+                  if (typeof value === 'string' && value.includes(' ')) {
+                    value = value.split(' ')[0]; // Solo tomar la parte de la fecha
+                  }
                 }
+                
+                if (value) {
+                  // Limpiar el valor (quitar comillas, espacios)
+                  const cleanedValue = cleanValue(value);
+                  // Solo guardar si no es "Output" o vacío después de limpiar
+                  if (cleanedValue && cleanedValue !== 'Output') {
+                    const isIzzi = cleanedValue.toLowerCase().trim() === 'izzi';
+                    
+                    // NUNCA guardar "izzi" como Cliente - REGLA ABSOLUTA
+                    if (fieldName === 'Cliente') {
+                      // Si ya hay un Cliente válido protegido, NUNCA sobrescribirlo
+                      if (clienteProtegido && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
+                        // Ya tenemos un Cliente válido protegido, NO sobrescribir
+                        return; // Saltar este campo
+                      }
+                      // Si no hay Cliente protegido, solo guardar si NO es "izzi"
+                      if (!isIzzi && cleanedValue.length >= 2) {
+                        docData.Cliente = cleanedValue;
+                        clienteProtegido = true; // Ahora está protegido
+                        hasData = true;
+                      }
+                    } else if ((fieldName === 'Compañía' || fieldName === 'Compania')) {
+                      // REGLA CRÍTICA: Si Cliente ya está protegido y es válido, NUNCA sobrescribirlo con Compañía
+                      if (clienteProtegido && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
+                        // Cliente válido protegido - NO tocar, solo guardar Compañía en su propio campo
+                        docData[fieldName] = cleanedValue;
+                        hasData = true;
+                      } else if (isIzzi) {
+                        // Si Compañía es "izzi", guardar en su propio campo pero NUNCA usarlo para Cliente
+                        docData[fieldName] = cleanedValue;
+                        hasData = true;
+                      } else {
+                        // Solo usar Compañía para Cliente si:
+                        // 1. No hay Cliente protegido O el Cliente actual es "izzi" o vacío
+                        // 2. Y Compañía tiene un valor válido (no "izzi", al menos 2 caracteres)
+                        if ((!clienteProtegido || !docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') 
+                            && !isIzzi && cleanedValue.length >= 2) {
+                          docData.Cliente = cleanedValue;
+                          clienteProtegido = true; // Ahora está protegido
+                          hasData = true;
+                        }
+                        // También guardar en su propio campo
+                        docData[fieldName] = cleanedValue;
+                        hasData = true;
+                      }
+                    } else {
+                      // Guardar el valor normalmente (otros campos)
+                      docData[fieldName] = cleanedValue;
+                      hasData = true;
+                    }
+                  }
+                }
+                
+                if (fieldName === 'Vendedor' && value) {
+                  const cleanedValue = cleanValue(value);
+                  if (cleanedValue && cleanedValue !== 'Output') {
+                    docData['normalized_resp'] = cleanedValue.toLowerCase();
+                  }
+                }
+                // Normalizar región
+                if (fieldName === 'Region' && value) {
+                  const cleanedValue = cleanValue(value);
+                  if (!cleanedValue || cleanedValue === 'Output') return;
+                  const regionLower = cleanedValue.toLowerCase().trim();
+                  // Normalizar nombres de regiones
+                  if (regionLower.includes('noreste') || regionLower === 'ne') {
+                    docData['Region'] = 'Noreste';
+                  } else if (regionLower.includes('pacifico') || regionLower.includes('pacífico') || regionLower === 'pac') {
+                    docData['Region'] = 'Pacífico';
+                  } else if (regionLower.includes('metropolitana') || regionLower.includes('metro') || regionLower === 'met') {
+                    docData['Region'] = 'Metropolitana';
+                  } else if (regionLower.includes('occidente') || regionLower === 'occ') {
+                    docData['Region'] = 'Occidente';
+                  } else if (regionLower.includes('sureste') || regionLower === 'se') {
+                    docData['Region'] = 'Sureste';
+                  } else {
+                    // Capitalizar primera letra
+                    docData['Region'] = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+                  }
+                }
+              }
             });
             
             // Solo calcular saldos si NO es operación del día
@@ -3288,46 +3331,78 @@ Tu servicio de *Izzi* está listo para instalarse.
             }
             
             // Para cobranza: asegurar que Cliente tenga el valor correcto (no "izzi")
-            // PRIORIDAD: Si Cliente tiene un valor válido (no "izzi"), mantenerlo y NO buscar en otras columnas
+            // IMPORTANTE: Solo buscar en otras columnas si el Cliente NO está protegido o es "izzi"
             if (currentModule === 'sales' || targetCollection === 'sales_master') {
               const clienteActual = cleanValue(docData.Cliente || '');
               const clienteEsIzzi = clienteActual.toLowerCase().trim() === 'izzi';
               
-              // Si Cliente tiene un valor válido (no "izzi"), NO hacer nada más - mantenerlo
-              if (!docData.Cliente || clienteEsIzzi) {
-                // Cliente es "izzi" o está vacío, buscar en otras columnas
-                // Buscar en Compañía/Compania si no es "izzi"
-                if (docData.Compañía) {
-                  const companiaValue = cleanValue(docData.Compañía);
-                  if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
-                    docData.Cliente = companiaValue;
-                  }
-                } else if (docData.Compania) {
-                  const companiaValue = cleanValue(docData.Compania);
-                  if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
-                    docData.Cliente = companiaValue;
+              // Solo buscar en otras columnas si:
+              // 1. El Cliente NO está protegido (no se encontró en PASO 1) O
+              // 2. El Cliente actual es "izzi" o está vacío
+              if ((!clienteProtegido || !docData.Cliente || clienteEsIzzi) && clienteActual.length < 2) {
+                // Buscar en Compañía/Compania si no es "izzi" (solo si Cliente no está protegido)
+                if (!clienteProtegido) {
+                  if (docData.Compañía) {
+                    const companiaValue = cleanValue(docData.Compañía);
+                    if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi' && companiaValue.length >= 2) {
+                      docData.Cliente = companiaValue;
+                      clienteProtegido = true; // Ahora está protegido
+                    }
+                  } else if (docData.Compania) {
+                    const companiaValue = cleanValue(docData.Compania);
+                    if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi' && companiaValue.length >= 2) {
+                      docData.Cliente = companiaValue;
+                      clienteProtegido = true; // Ahora está protegido
+                    }
                   }
                 }
                 
-                // Si aún no hay Cliente válido, buscar en otras posibles columnas
-                if (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') {
+                // Si aún no hay Cliente válido protegido, buscar en otras posibles columnas
+                if (!clienteProtegido && (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi')) {
                   // Buscar en cualquier campo que pueda tener el nombre del titular
                   const posiblesCampos = ['Titular', 'Nombre Titular', 'Nombre del Titular', 'Nombre Cliente', 'Nombre del Cliente'];
                   for (const campo of posiblesCampos) {
                     if (docData[campo]) {
                       const valorCampo = cleanValue(docData[campo]);
-                      if (valorCampo && valorCampo.toLowerCase().trim() !== 'izzi') {
+                      if (valorCampo && valorCampo.toLowerCase().trim() !== 'izzi' && valorCampo.length >= 2) {
                         docData.Cliente = valorCampo;
+                        clienteProtegido = true; // Ahora está protegido
                         break;
                       }
                     }
                   }
                 }
               }
+              
+              // FINAL: Si después de todo el Cliente sigue siendo "izzi" o vacío Y NO está protegido, buscar en TODAS las columnas de la fila
+              if (!clienteProtegido && (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi' || cleanValue(docData.Cliente).length < 2)) {
+                row.forEach((cellVal, colIndex) => {
+                  const fieldName = columnMapping[colIndex];
+                  // Solo buscar en columnas que NO sean Compañía/Compania (ya las revisamos)
+                  if (fieldName && fieldName !== 'Ignorar' && fieldName !== 'Compañía' && fieldName !== 'Compania' && fieldName !== 'Cliente') {
+                    let value = String(cellVal ?? '').trim();
+                    if (value) {
+                      const cleanedValue = cleanValue(value);
+                      if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
+                        // Si parece un nombre (al menos 2 caracteres y no es "izzi"), usarlo
+                        docData.Cliente = cleanedValue;
+                        clienteProtegido = true; // Ahora está protegido
+                        return; // Salir del forEach
+                      }
+                    }
+                  }
+                });
+              }
             }
             
-          if (hasData) {
-            processedRows.push(docData);
+            if (hasData) {
+              processedRows.push(docData);
+            }
+          }
+          
+          // Pausa entre lotes para permitir que la UI se actualice (aumentada para mejor rendimiento)
+          if (batchEnd < validRows.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
 
@@ -3347,12 +3422,14 @@ Tu servicio de *Izzi* está listo para instalarse.
         
         if (isOperacionDia) {
           // Para operación del día: actualizar existentes o crear nuevos
+          // Usar lotes más pequeños para evitar bloqueos (reducido para mejor rendimiento)
           const chunks = [];
-          for (let i = 0; i < processedRows.length; i += 300) {
-            chunks.push(processedRows.slice(i, i + 300));
+          for (let i = 0; i < processedRows.length; i += 100) {
+            chunks.push(processedRows.slice(i, i + 100));
           }
           
-          for (const chunk of chunks) {
+          for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+            const chunk = chunks[chunkIndex];
             const batch = writeBatch(db);
             
             for (const data of chunk) {
@@ -3389,17 +3466,22 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             await batch.commit();
             setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
-            console.log(`Procesados ${inserted} de ${processedRows.length}`);
-            await new Promise(r => setTimeout(r, 100));
+            console.log(`Procesados ${inserted} de ${processedRows.length} (lote ${chunkIndex + 1} de ${chunks.length})`);
+            // Pausa entre lotes para evitar bloqueos (aumentada para mejor rendimiento)
+            if (chunkIndex < chunks.length - 1) {
+              await new Promise(r => setTimeout(r, 300));
+            }
           }
         } else if (currentModule === 'install' || targetCollection === 'install_master') {
           // Para instalaciones: actualizar existentes por número de cuenta o crear nuevos
+          // Usar lotes más pequeños para evitar bloqueos (reducido para mejor rendimiento)
           const chunks = [];
-          for (let i = 0; i < processedRows.length; i += 300) {
-            chunks.push(processedRows.slice(i, i + 300));
+          for (let i = 0; i < processedRows.length; i += 150) {
+            chunks.push(processedRows.slice(i, i + 150));
           }
           
-          for (const chunk of chunks) {
+          for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+            const chunk = chunks[chunkIndex];
             const batch = writeBatch(db);
             
             for (const data of chunk) {
@@ -3444,17 +3526,22 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             await batch.commit();
             setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
-            console.log(`Procesados ${inserted} de ${processedRows.length}`);
-            await new Promise(r => setTimeout(r, 100));
+            console.log(`Procesados ${inserted} de ${processedRows.length} (lote ${chunkIndex + 1} de ${chunks.length})`);
+            // Pausa entre lotes para evitar bloqueos (aumentada para mejor rendimiento)
+            if (chunkIndex < chunks.length - 1) {
+              await new Promise(r => setTimeout(r, 300));
+            }
           }
         } else if (currentModule === 'sales' || targetCollection === 'sales_master') {
           // Para cobranza: actualizar existentes por número de cuenta o crear nuevos
+          // Usar lotes más pequeños para evitar bloqueos (reducido para mejor rendimiento)
           const chunks = [];
-          for (let i = 0; i < processedRows.length; i += 300) {
-            chunks.push(processedRows.slice(i, i + 300));
+          for (let i = 0; i < processedRows.length; i += 100) {
+            chunks.push(processedRows.slice(i, i + 100));
           }
           
-          for (const chunk of chunks) {
+          for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+            const chunk = chunks[chunkIndex];
             const batch = writeBatch(db);
             
             for (const data of chunk) {
@@ -3465,34 +3552,45 @@ Tu servicio de *Izzi* está listo para instalarse.
                 const existing = existingSales.get(nCuenta);
                 const existingData = existing.data;
                 
-                // Determinar el valor final de Cliente
+                // Determinar el valor final de Cliente - NUNCA usar "izzi" si hay otra opción
                 const nuevoCliente = cleanValue(data.Cliente || '');
                 const clienteEsIzzi = nuevoCliente.toLowerCase().trim() === 'izzi';
                 const clienteExistente = cleanValue(existingData.Cliente || '');
                 const clienteExistenteEsIzzi = clienteExistente.toLowerCase().trim() === 'izzi';
                 
                 let clienteFinal = '';
+                // PRIORIDAD 1: Nuevo Cliente válido (no "izzi")
                 if (nuevoCliente && !clienteEsIzzi) {
-                  // Si el nuevo Cliente es válido (no "izzi"), usarlo
                   clienteFinal = nuevoCliente;
-                } else if (clienteExistente && !clienteExistenteEsIzzi) {
-                  // Si el existente es válido, preservarlo
+                }
+                // PRIORIDAD 2: Cliente existente válido (no "izzi")
+                else if (clienteExistente && !clienteExistenteEsIzzi) {
                   clienteFinal = clienteExistente;
-                } else if (data.Compañía) {
-                  // Intentar con Compañía si no es "izzi"
+                }
+                // PRIORIDAD 3: Compañía si no es "izzi"
+                else if (data.Compañía) {
                   const companiaValue = cleanValue(data.Compañía);
                   if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
                     clienteFinal = companiaValue;
                   }
-                } else if (data.Compania) {
-                  // Intentar con Compania si no es "izzi"
+                }
+                // PRIORIDAD 4: Compania si no es "izzi"
+                else if (data.Compania) {
                   const companiaValue = cleanValue(data.Compania);
                   if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi') {
                     clienteFinal = companiaValue;
                   }
-                } else {
-                  // Último recurso: usar el existente si no es "izzi", sino el nuevo
-                  clienteFinal = !clienteExistenteEsIzzi ? clienteExistente : (nuevoCliente || '');
+                }
+                // PRIORIDAD 5: Compañía existente si no es "izzi"
+                else if (existingData.Compañía) {
+                  const companiaExistente = cleanValue(existingData.Compañía);
+                  if (companiaExistente && companiaExistente.toLowerCase().trim() !== 'izzi') {
+                    clienteFinal = companiaExistente;
+                  }
+                }
+                // Último recurso: usar el existente solo si no es "izzi"
+                else if (!clienteExistenteEsIzzi && clienteExistente) {
+                  clienteFinal = clienteExistente;
                 }
                 
                 const updateData = {
@@ -3501,8 +3599,8 @@ Tu servicio de *Izzi* está listo para instalarse.
                   Vendedor: existingData.Vendedor || data.Vendedor || '',
                   VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
                   normalized_resp: existingData.normalized_resp || data.normalized_resp || '',
-                  // Usar el valor final de Cliente determinado arriba
-                  Cliente: clienteFinal,
+                  // Usar el valor final de Cliente determinado arriba (NUNCA "izzi" si hay otra opción)
+                  Cliente: clienteFinal || nuevoCliente || clienteExistente || '',
                   // Preservar fecha de creación original
                   createdAt: existingData.createdAt || serverTimestamp(),
                   // Actualizar fecha de modificación
@@ -3513,12 +3611,12 @@ Tu servicio de *Izzi* está listo para instalarse.
                 updated++;
               } else {
                 // Crear nuevo registro (solo si el Cliente no es "izzi")
-                if (!data.Cliente || cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                if (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
                   const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
                   batch.set(ref, { ...data, createdAt: serverTimestamp() });
                   created++;
                 } else {
-                  console.log(`Ignorando registro con Cliente="izzi" (cuenta: ${nCuenta})`);
+                  console.log(`Ignorando registro con Cliente="izzi" o vacío (cuenta: ${nCuenta})`);
                 }
               }
               inserted++;
@@ -3526,17 +3624,22 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             await batch.commit();
             setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
-            console.log(`Procesados ${inserted} de ${processedRows.length}`);
-            await new Promise(r => setTimeout(r, 100));
+            console.log(`Procesados ${inserted} de ${processedRows.length} (lote ${chunkIndex + 1} de ${chunks.length})`);
+            // Pausa más larga entre lotes para evitar bloqueos (aumentada para mejor rendimiento)
+            if (chunkIndex < chunks.length - 1) {
+              await new Promise(r => setTimeout(r, 300));
+            }
           }
         } else {
           // Para otras colecciones: crear nuevos (ya se limpió la base)
+          // Usar lotes más pequeños para evitar bloqueos (reducido para mejor rendimiento)
           const insertChunks = [];
-          for (let i = 0; i < processedRows.length; i += 300) {
-            insertChunks.push(processedRows.slice(i, i + 300));
+          for (let i = 0; i < processedRows.length; i += 150) {
+            insertChunks.push(processedRows.slice(i, i + 150));
           }
           
-          for (const chunk of insertChunks) {
+          for (let chunkIndex = 0; chunkIndex < insertChunks.length; chunkIndex++) {
+            const chunk = insertChunks[chunkIndex];
             const batch = writeBatch(db);
             chunk.forEach(data => { 
               // No crear registros si el Cliente es solo "izzi"
@@ -3549,7 +3652,10 @@ Tu servicio de *Izzi* está listo para instalarse.
             inserted += chunk.length; 
             setProgress(`Subiendo: ${inserted} de ${processedRows.length}...`);
             console.log(`Subidos ${inserted} de ${processedRows.length}`);
-            await new Promise(r => setTimeout(r, 100));
+            // Pausa entre lotes para evitar bloqueos (aumentada para mejor rendimiento)
+            if (chunkIndex < insertChunks.length - 1) {
+              await new Promise(r => setTimeout(r, 300));
+            }
           }
         }
         
