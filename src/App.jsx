@@ -2798,8 +2798,12 @@ Tu servicio de *Izzi* está listo para instalarse.
     'nombre del cliente': 'Cliente',
     'nombre_cliente': 'Cliente',
     'telefono1': 'Telefono',
+    'telefono2': 'Telefono',
     'telefono': 'Telefono',
     'tel': 'Telefono',
+    'teléfono': 'Telefono',
+    'teléfono1': 'Telefono',
+    'teléfono2': 'Telefono',
     // Columnas de operación del día
     'fecha solicitada': 'Fecha solicitada',
     'fecha_solicitada': 'Fecha solicitada',
@@ -2828,13 +2832,17 @@ Tu servicio de *Izzi* está listo para instalarse.
     'metropolitana': 'Region',
     'occidente': 'Region',
     'sureste': 'Region',
-    // Columnas para M2, M3, M4
+    // Columnas para M1, M2, M3, M4
     'm': 'M',
+    'm1': 'M1',
     'm2': 'M2',
     'm3': 'M3',
     'm4': 'M4',
     'estatus cobranza': 'Estatus Cobranza',
-    'estatus_cobranza': 'Estatus Cobranza'
+    'estatus_cobranza': 'Estatus Cobranza',
+    'estatus fpd': 'Estatus FPD',
+    'estatus_fpd': 'Estatus FPD',
+    'fpd': 'FPD'
   };
 
   // Función mejorada para manejar CSV y Excel
@@ -2971,8 +2979,12 @@ Tu servicio de *Izzi* está listo para instalarse.
     console.log("columnMapping:", columnMapping);
     
     // Detectar si es operación del día (tiene columnas específicas)
-    const isOperacionDia = Object.values(columnMapping).some(v => 
+    // IMPORTANTE: Si estamos en módulo de cobranza (sales), NUNCA es operación del día
+    // Los archivos de cobranza (M1, M2, M3, M4) siempre van a sales_master
+    const isOperacionDia = currentModule !== 'sales' && Object.values(columnMapping).some(v => 
       ['Nº de orden', 'Compañía', 'Estado', 'Hub', 'Fecha solicitada'].includes(v)
+    ) && !Object.values(columnMapping).some(v => 
+      ['Estatus Cobranza', 'Estatus FPD', 'FPD', 'Saldo', 'SaldoPorVencer', 'SaldoVencido'].includes(v)
     );
     
     // Detectar ciudad desde el nombre del archivo (solo para instalaciones)
@@ -3015,7 +3027,11 @@ Tu servicio de *Izzi* está listo para instalarse.
       console.log('Ciudad detectada desde archivo:', ciudadDetectada);
     }
     
-    const targetCollection = isOperacionDia ? 'operacion_dia' : collectionName;
+    // IMPORTANTE: Si estamos en módulo de cobranza (sales), SIEMPRE usar sales_master
+    // Los archivos de FPD Cosecha (M1, M2, M3, M4) NO deben ir a operacion_dia
+    const targetCollection = currentModule === 'sales' 
+      ? 'sales_master' 
+      : (isOperacionDia ? 'operacion_dia' : collectionName);
     const collectionLabel = isOperacionDia ? 'Operación del Día' : currentModule;
     
     const confirmMsg = isOperacionDia 
@@ -3215,6 +3231,19 @@ Tu servicio de *Izzi* está listo para instalarse.
                       if (!isIzzi && cleanedValue.length >= 2) {
                         docData.Cliente = cleanedValue;
                         clienteProtegido = true; // Ahora está protegido
+                        hasData = true;
+                      }
+                    } else if (fieldName === 'Telefono' || fieldName === 'Teléfono') {
+                      // Para teléfonos, usar Telefono1 si está disponible, sino Telefono2, sino el valor actual
+                      if (!docData.Telefono) {
+                        docData.Telefono = cleanedValue;
+                        hasData = true;
+                      } else if (fieldName === 'Telefono' && columnMapping[colIndex] === 'Telefono') {
+                        // Si ya hay un teléfono, verificar si este es mejor (más largo, no es "0")
+                        const telefonoActual = String(docData.Telefono || '').trim();
+                        if ((telefonoActual === '0' || telefonoActual.length < 10) && cleanedValue.length >= 10 && cleanedValue !== '0') {
+                          docData.Telefono = cleanedValue;
+                        }
                         hasData = true;
                       }
                     } else if ((fieldName === 'Compañía' || fieldName === 'Compania')) {
@@ -3470,12 +3499,55 @@ Tu servicio de *Izzi* está listo para instalarse.
                 }
               }
               
-              // Lógica para determinar M2, M3, M4 basado en columna M y valores 1/0
-              // Si hay columna M con valores MS_2, MS_3, MS_4, y columnas M2, M3, M4 con 1/0
-              if (docData.M) {
+              // Lógica para determinar M1, M2, M3, M4 basado en columna M y valores 1/0
+              // Si hay columna M con valores MS_1, MS_2, MS_3, MS_4, y columnas M1, M2, M3, M4 con 1/0
+              // También verificar "Estatus Cobranza" o "Estatus FPD" directamente
+              const estatusCobranza = cleanValue(docData['Estatus Cobranza'] || docData.EstatusCobranza || '');
+              const estatusFPD = cleanValue(docData['Estatus FPD'] || docData.EstatusFPD || docData.FPD || '');
+              
+              // Si hay Estatus Cobranza o Estatus FPD, usarlo directamente
+              if (estatusCobranza) {
+                const estatusUpper = estatusCobranza.toUpperCase();
+                if (estatusUpper.includes('M1') || estatusUpper === 'M1') {
+                  docData.Estatus = 'M1';
+                } else if (estatusUpper.includes('M2') || estatusUpper === 'M2') {
+                  docData.Estatus = 'M2';
+                } else if (estatusUpper.includes('M3') || estatusUpper === 'M3') {
+                  docData.Estatus = 'M3';
+                } else if (estatusUpper.includes('M4') || estatusUpper === 'M4') {
+                  docData.Estatus = 'M4';
+                } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+                  docData.Estatus = 'FPD Corriente';
+                } else {
+                  docData.Estatus = estatusCobranza;
+                }
+              } else if (estatusFPD) {
+                const estatusUpper = estatusFPD.toUpperCase();
+                if (estatusUpper.includes('M1') || estatusUpper === 'M1') {
+                  docData.Estatus = 'M1';
+                } else if (estatusUpper.includes('M2') || estatusUpper === 'M2') {
+                  docData.Estatus = 'M2';
+                } else if (estatusUpper.includes('M3') || estatusUpper === 'M3') {
+                  docData.Estatus = 'M3';
+                } else if (estatusUpper.includes('M4') || estatusUpper === 'M4') {
+                  docData.Estatus = 'M4';
+                } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+                  docData.Estatus = 'FPD Corriente';
+                } else {
+                  docData.Estatus = estatusFPD;
+                }
+              } else if (docData.M) {
                 const mValue = String(docData.M || '').trim().toUpperCase();
-                // Si M contiene MS_2, MS_3 o MS_4, determinar el estatus
-                if (mValue.includes('MS_2') || mValue.includes('MS2')) {
+                // Si M contiene MS_1, MS_2, MS_3 o MS_4, determinar el estatus
+                if (mValue.includes('MS_1') || mValue.includes('MS1')) {
+                  // Verificar columna M1: 1 = debe M1, 0 = FPD Corriente
+                  const m1Value = String(docData.M1 || '0').trim();
+                  if (m1Value === '1') {
+                    docData.Estatus = 'M1';
+                  } else {
+                    docData.Estatus = 'FPD Corriente';
+                  }
+                } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
                   // Verificar columna M2: 1 = debe M2, 0 = FPD Corriente
                   const m2Value = String(docData.M2 || '0').trim();
                   if (m2Value === '1') {
@@ -3501,7 +3573,8 @@ Tu servicio de *Izzi* está listo para instalarse.
                   }
                 }
               } else {
-                // Si no hay columna M, verificar directamente M2, M3, M4
+                // Si no hay columna M, verificar directamente M1, M2, M3, M4
+                const m1Value = String(docData.M1 || '0').trim();
                 const m2Value = String(docData.M2 || '0').trim();
                 const m3Value = String(docData.M3 || '0').trim();
                 const m4Value = String(docData.M4 || '0').trim();
@@ -3512,9 +3585,19 @@ Tu servicio de *Izzi* está listo para instalarse.
                   docData.Estatus = 'M3';
                 } else if (m2Value === '1') {
                   docData.Estatus = 'M2';
-                } else if (m2Value === '0' && m3Value === '0' && m4Value === '0') {
+                } else if (m1Value === '1') {
+                  docData.Estatus = 'M1';
+                } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
                   // Si todos son 0, es FPD Corriente
                   docData.Estatus = 'FPD Corriente';
+                }
+              }
+              
+              // Si aún no hay estatus y hay un estatus genérico, usarlo
+              if (!docData.Estatus && docData.Estado) {
+                const estadoValue = cleanValue(docData.Estado);
+                if (estadoValue) {
+                  docData.Estatus = estadoValue;
                 }
               }
             }
