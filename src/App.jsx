@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc, getDoc, setDoc, where } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
-import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building, BarChart3 } from 'lucide-react';
+import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building, BarChart3, CheckCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // --- PANTALLA DE ERROR (DIAGNÓSTICO) ---
@@ -766,6 +766,9 @@ function LoginScreen({ onLogin }) {
 function AdminDashboard({ user, currentModule, setModule }) {
   const [activeTab, setActiveTab] = useState('clients');
   const [dbCount, setDbCount] = useState(0);
+  const [instalacionesCount, setInstalacionesCount] = useState(0);
+  const [showInstalacionesModal, setShowInstalacionesModal] = useState(false);
+  const [instalacionesList, setInstalacionesList] = useState([]);
   const [previewData, setPreviewData] = useState([]);
   const [reportsData, setReportsData] = useState([]);
   const [allReportsData, setAllReportsData] = useState([]); // Reportes + órdenes completadas 
@@ -1045,6 +1048,11 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     // Combinar reportes con órdenes completadas e instalaciones
     const allReports = [...reportsData, ...operacionCompletadas, ...instalacionesCompletadas];
     setAllReportsData(allReports);
+    
+    // Calcular total de instalaciones
+    const totalInstalaciones = instalacionesCompletadas.length;
+    setInstalacionesCount(totalInstalaciones);
+    setInstalacionesList(instalacionesCompletadas);
     
     // Actualizar plazas y vendedores únicos
     const uniquePlazas = [...new Set(allReports.map(r => r.plaza).filter(p => p))];
@@ -2819,7 +2827,14 @@ Tu servicio de *Izzi* está listo para instalarse.
     'pacífico': 'Region',
     'metropolitana': 'Region',
     'occidente': 'Region',
-    'sureste': 'Region'
+    'sureste': 'Region',
+    // Columnas para M2, M3, M4
+    'm': 'M',
+    'm2': 'M2',
+    'm3': 'M3',
+    'm4': 'M4',
+    'estatus cobranza': 'Estatus Cobranza',
+    'estatus_cobranza': 'Estatus Cobranza'
   };
 
   // Función mejorada para manejar CSV y Excel
@@ -3101,29 +3116,66 @@ Tu servicio de *Izzi* está listo para instalarse.
             const docData = {}; 
             let hasData = false;
             
-            // PASO 1: Buscar TODAS las posibles columnas de Cliente primero (prioridad MÁXIMA)
+            // PASO 1: Para OPERACIÓN DEL DÍA, COMPAÑÍA tiene MÁXIMA PRIORIDAD como nombre del cliente
+            // Para otros módulos, CLIENTE tiene máxima prioridad
             const posiblesClientes = [];
-            row.forEach((cellVal, colIndex) => {
-              const fieldName = columnMapping[colIndex];
-              // Priorizar columnas que claramente son de Cliente
-              if (fieldName === 'Cliente' || fieldName === 'Titular' || fieldName === 'Nombre Titular' || fieldName === 'Nombre del Titular') {
-                let value = String(cellVal ?? '').trim();
-                if (value) {
-                  const cleanedValue = cleanValue(value);
-                  // Aceptar cualquier valor que NO sea "izzi" y tenga al menos 2 caracteres
-                  if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
-                    // Máxima prioridad para la columna "Cliente"
-                    const priority = fieldName === 'Cliente' ? 1 : (fieldName === 'Titular' ? 2 : 3);
-                    posiblesClientes.push({ value: cleanedValue, priority, fieldName });
+            let clienteProtegido = false;
+            
+            // REGLA ESPECIAL PARA OPERACIÓN DEL DÍA: COMPAÑÍA es el nombre del titular/cliente
+            if (isOperacionDia) {
+              // Buscar primero en COMPAÑÍA (máxima prioridad para operación del día)
+              row.forEach((cellVal, colIndex) => {
+                const fieldName = columnMapping[colIndex];
+                if (fieldName === 'Compañía' || fieldName === 'Compania') {
+                  let value = String(cellVal ?? '').trim();
+                  if (value) {
+                    const cleanedValue = cleanValue(value);
+                    // Si COMPAÑÍA tiene un valor válido (no "izzi" y al menos 2 caracteres), usarlo
+                    if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
+                      posiblesClientes.push({ value: cleanedValue, priority: 1, fieldName: 'Compañía' });
+                    }
                   }
                 }
+              });
+              
+              // Si COMPAÑÍA no tiene valor válido o es "izzi", buscar en CLIENTE como respaldo
+              if (posiblesClientes.length === 0) {
+                row.forEach((cellVal, colIndex) => {
+                  const fieldName = columnMapping[colIndex];
+                  if (fieldName === 'Cliente') {
+                    let value = String(cellVal ?? '').trim();
+                    if (value) {
+                      const cleanedValue = cleanValue(value);
+                      if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
+                        posiblesClientes.push({ value: cleanedValue, priority: 2, fieldName: 'Cliente' });
+                      }
+                    }
+                  }
+                });
               }
-            });
+            } else {
+              // Para otros módulos (cobranza, instalaciones): CLIENTE tiene máxima prioridad
+              row.forEach((cellVal, colIndex) => {
+                const fieldName = columnMapping[colIndex];
+                // Priorizar columnas que claramente son de Cliente
+                if (fieldName === 'Cliente' || fieldName === 'Titular' || fieldName === 'Nombre Titular' || fieldName === 'Nombre del Titular') {
+                  let value = String(cellVal ?? '').trim();
+                  if (value) {
+                    const cleanedValue = cleanValue(value);
+                    // Aceptar cualquier valor que NO sea "izzi" y tenga al menos 2 caracteres
+                    if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
+                      // Máxima prioridad para la columna "Cliente"
+                      const priority = fieldName === 'Cliente' ? 1 : (fieldName === 'Titular' ? 2 : 3);
+                      posiblesClientes.push({ value: cleanedValue, priority, fieldName });
+                    }
+                  }
+                }
+              });
+            }
             
             // Si encontramos un Cliente válido, usarlo y MARCAR como protegido
-            let clienteProtegido = false;
             if (posiblesClientes.length > 0) {
-              // Ordenar por prioridad (Cliente primero)
+              // Ordenar por prioridad
               posiblesClientes.sort((a, b) => a.priority - b.priority);
               docData.Cliente = posiblesClientes[0].value;
               clienteProtegido = true; // Marcar como protegido para que no se sobrescriba
@@ -3166,28 +3218,55 @@ Tu servicio de *Izzi* está listo para instalarse.
                         hasData = true;
                       }
                     } else if ((fieldName === 'Compañía' || fieldName === 'Compania')) {
-                      // REGLA CRÍTICA: Si Cliente ya está protegido y es válido, NUNCA sobrescribirlo con Compañía
-                      if (clienteProtegido && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
-                        // Cliente válido protegido - NO tocar, solo guardar Compañía en su propio campo
-                        docData[fieldName] = cleanedValue;
-                        hasData = true;
-                      } else if (isIzzi) {
-                        // Si Compañía es "izzi", guardar en su propio campo pero NUNCA usarlo para Cliente
-                        docData[fieldName] = cleanedValue;
-                        hasData = true;
-                      } else {
-                        // Solo usar Compañía para Cliente si:
-                        // 1. No hay Cliente protegido O el Cliente actual es "izzi" o vacío
-                        // 2. Y Compañía tiene un valor válido (no "izzi", al menos 2 caracteres)
-                        if ((!clienteProtegido || !docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') 
-                            && !isIzzi && cleanedValue.length >= 2) {
-                          docData.Cliente = cleanedValue;
-                          clienteProtegido = true; // Ahora está protegido
+                      // REGLA ESPECIAL PARA OPERACIÓN DEL DÍA: COMPAÑÍA es el nombre del cliente/titular
+                      if (isOperacionDia) {
+                        // Para operación del día, COMPAÑÍA tiene máxima prioridad
+                        if (isIzzi) {
+                          // Si Compañía es "izzi", buscar en CLIENTE como respaldo (solo si no hay Cliente protegido)
+                          if (!clienteProtegido) {
+                            // Ya se buscó en CLIENTE en el PASO 1, así que solo guardar Compañía en su campo
+                            docData[fieldName] = cleanedValue;
+                            hasData = true;
+                          } else {
+                            // Ya hay un Cliente válido (probablemente de la columna CLIENTE), mantenerlo
+                            docData[fieldName] = cleanedValue;
+                            hasData = true;
+                          }
+                        } else {
+                          // Si Compañía NO es "izzi" y tiene valor válido, usarlo como Cliente (máxima prioridad)
+                          if (!clienteProtegido || cleanValue(docData.Cliente || '').toLowerCase().trim() === 'izzi') {
+                            docData.Cliente = cleanedValue;
+                            clienteProtegido = true; // Ahora está protegido
+                            hasData = true;
+                          }
+                          // También guardar en su propio campo
+                          docData[fieldName] = cleanedValue;
                           hasData = true;
                         }
-                        // También guardar en su propio campo
-                        docData[fieldName] = cleanedValue;
-                        hasData = true;
+                      } else {
+                        // Para otros módulos: REGLA CRÍTICA - Si Cliente ya está protegido y es válido, NUNCA sobrescribirlo con Compañía
+                        if (clienteProtegido && docData.Cliente && cleanValue(docData.Cliente).toLowerCase().trim() !== 'izzi') {
+                          // Cliente válido protegido - NO tocar, solo guardar Compañía en su propio campo
+                          docData[fieldName] = cleanedValue;
+                          hasData = true;
+                        } else if (isIzzi) {
+                          // Si Compañía es "izzi", guardar en su propio campo pero NUNCA usarlo para Cliente
+                          docData[fieldName] = cleanedValue;
+                          hasData = true;
+                        } else {
+                          // Solo usar Compañía para Cliente si:
+                          // 1. No hay Cliente protegido O el Cliente actual es "izzi" o vacío
+                          // 2. Y Compañía tiene un valor válido (no "izzi", al menos 2 caracteres)
+                          if ((!clienteProtegido || !docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi') 
+                              && !isIzzi && cleanedValue.length >= 2) {
+                            docData.Cliente = cleanedValue;
+                            clienteProtegido = true; // Ahora está protegido
+                            hasData = true;
+                          }
+                          // También guardar en su propio campo
+                          docData[fieldName] = cleanedValue;
+                          hasData = true;
+                        }
                       }
                     } else {
                       // Guardar el valor normalmente (otros campos)
@@ -3330,36 +3409,26 @@ Tu servicio de *Izzi* está listo para instalarse.
               }
             }
             
-            // Para cobranza: asegurar que Cliente tenga el valor correcto (no "izzi")
-            // IMPORTANTE: Solo buscar en otras columnas si el Cliente NO está protegido o es "izzi"
+            // Para cobranza (M1, M2, M3, M4): CLIENTE tiene MÁXIMA PRIORIDAD
+            // REGLA ABSOLUTA: NUNCA mostrar "izzi" como nombre del cliente
+            // Solo buscar en otras columnas si CLIENTE está vacío o es "izzi"
             if (currentModule === 'sales' || targetCollection === 'sales_master') {
               const clienteActual = cleanValue(docData.Cliente || '');
               const clienteEsIzzi = clienteActual.toLowerCase().trim() === 'izzi';
+              const clienteTieneValorValido = clienteActual && clienteActual.length >= 2 && !clienteEsIzzi;
               
-              // Solo buscar en otras columnas si:
-              // 1. El Cliente NO está protegido (no se encontró en PASO 1) O
-              // 2. El Cliente actual es "izzi" o está vacío
-              if ((!clienteProtegido || !docData.Cliente || clienteEsIzzi) && clienteActual.length < 2) {
-                // Buscar en Compañía/Compania si no es "izzi" (solo si Cliente no está protegido)
-                if (!clienteProtegido) {
-                  if (docData.Compañía) {
-                    const companiaValue = cleanValue(docData.Compañía);
-                    if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi' && companiaValue.length >= 2) {
-                      docData.Cliente = companiaValue;
-                      clienteProtegido = true; // Ahora está protegido
-                    }
-                  } else if (docData.Compania) {
-                    const companiaValue = cleanValue(docData.Compania);
-                    if (companiaValue && companiaValue.toLowerCase().trim() !== 'izzi' && companiaValue.length >= 2) {
-                      docData.Cliente = companiaValue;
-                      clienteProtegido = true; // Ahora está protegido
-                    }
-                  }
-                }
+              // Si CLIENTE ya está protegido y tiene un valor válido, NO hacer nada más
+              // El valor de CLIENTE ya se estableció en el PASO 1 y tiene máxima prioridad
+              if (clienteProtegido && clienteTieneValorValido) {
+                // CLIENTE ya tiene un valor válido, NO buscar en otras columnas
+                // Esta es la regla para M1, M2, M3, M4: el nombre del titular viene en CLIENTE
+              } else if (!clienteProtegido || !clienteTieneValorValido) {
+                // Solo buscar en otras columnas si CLIENTE no tiene valor válido
+                // Esto es un respaldo, pero CLIENTE siempre tiene prioridad
                 
-                // Si aún no hay Cliente válido protegido, buscar en otras posibles columnas
-                if (!clienteProtegido && (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi')) {
-                  // Buscar en cualquier campo que pueda tener el nombre del titular
+                // Si aún no hay Cliente válido, buscar en otras posibles columnas como último recurso
+                if (!docData.Cliente || clienteEsIzzi || clienteActual.length < 2) {
+                  // Buscar en cualquier campo que pueda tener el nombre del titular (solo como respaldo)
                   const posiblesCampos = ['Titular', 'Nombre Titular', 'Nombre del Titular', 'Nombre Cliente', 'Nombre del Cliente'];
                   for (const campo of posiblesCampos) {
                     if (docData[campo]) {
@@ -3374,24 +3443,79 @@ Tu servicio de *Izzi* está listo para instalarse.
                 }
               }
               
-              // FINAL: Si después de todo el Cliente sigue siendo "izzi" o vacío Y NO está protegido, buscar en TODAS las columnas de la fila
-              if (!clienteProtegido && (!docData.Cliente || cleanValue(docData.Cliente).toLowerCase().trim() === 'izzi' || cleanValue(docData.Cliente).length < 2)) {
+              // VALIDACIÓN FINAL ABSOLUTA: Si después de todo el procesamiento, Cliente es "izzi", limpiarlo
+              const clienteFinal = cleanValue(docData.Cliente || '');
+              if (clienteFinal.toLowerCase().trim() === 'izzi') {
+                // Buscar en TODAS las columnas de la fila para encontrar un nombre válido
+                let nombreEncontrado = false;
                 row.forEach((cellVal, colIndex) => {
+                  if (nombreEncontrado) return;
                   const fieldName = columnMapping[colIndex];
-                  // Solo buscar en columnas que NO sean Compañía/Compania (ya las revisamos)
+                  // Buscar en cualquier columna que no sea "Compañía", "Compania" o "Ignorar"
                   if (fieldName && fieldName !== 'Ignorar' && fieldName !== 'Compañía' && fieldName !== 'Compania' && fieldName !== 'Cliente') {
                     let value = String(cellVal ?? '').trim();
                     if (value) {
                       const cleanedValue = cleanValue(value);
+                      // Si parece un nombre (más de 2 caracteres, no es "izzi", no es "Output")
                       if (cleanedValue && cleanedValue !== 'Output' && cleanedValue.toLowerCase().trim() !== 'izzi' && cleanedValue.length >= 2) {
-                        // Si parece un nombre (al menos 2 caracteres y no es "izzi"), usarlo
                         docData.Cliente = cleanedValue;
-                        clienteProtegido = true; // Ahora está protegido
-                        return; // Salir del forEach
+                        nombreEncontrado = true;
                       }
                     }
                   }
                 });
+                // Si aún no se encontró un nombre válido, dejar Cliente vacío en lugar de "izzi"
+                if (!nombreEncontrado) {
+                  docData.Cliente = '';
+                }
+              }
+              
+              // Lógica para determinar M2, M3, M4 basado en columna M y valores 1/0
+              // Si hay columna M con valores MS_2, MS_3, MS_4, y columnas M2, M3, M4 con 1/0
+              if (docData.M) {
+                const mValue = String(docData.M || '').trim().toUpperCase();
+                // Si M contiene MS_2, MS_3 o MS_4, determinar el estatus
+                if (mValue.includes('MS_2') || mValue.includes('MS2')) {
+                  // Verificar columna M2: 1 = debe M2, 0 = FPD Corriente
+                  const m2Value = String(docData.M2 || '0').trim();
+                  if (m2Value === '1') {
+                    docData.Estatus = 'M2';
+                  } else {
+                    docData.Estatus = 'FPD Corriente';
+                  }
+                } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
+                  // Verificar columna M3: 1 = debe M3, 0 = FPD Corriente
+                  const m3Value = String(docData.M3 || '0').trim();
+                  if (m3Value === '1') {
+                    docData.Estatus = 'M3';
+                  } else {
+                    docData.Estatus = 'FPD Corriente';
+                  }
+                } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
+                  // Verificar columna M4: 1 = debe M4, 0 = FPD Corriente
+                  const m4Value = String(docData.M4 || '0').trim();
+                  if (m4Value === '1') {
+                    docData.Estatus = 'M4';
+                  } else {
+                    docData.Estatus = 'FPD Corriente';
+                  }
+                }
+              } else {
+                // Si no hay columna M, verificar directamente M2, M3, M4
+                const m2Value = String(docData.M2 || '0').trim();
+                const m3Value = String(docData.M3 || '0').trim();
+                const m4Value = String(docData.M4 || '0').trim();
+                
+                if (m4Value === '1') {
+                  docData.Estatus = 'M4';
+                } else if (m3Value === '1') {
+                  docData.Estatus = 'M3';
+                } else if (m2Value === '1') {
+                  docData.Estatus = 'M2';
+                } else if (m2Value === '0' && m3Value === '0' && m4Value === '0') {
+                  // Si todos son 0, es FPD Corriente
+                  docData.Estatus = 'FPD Corriente';
+                }
               }
             }
             
@@ -3723,6 +3847,15 @@ Tu servicio de *Izzi* está listo para instalarse.
           </div>
           <div className="flex items-center gap-4 text-xs">
              <span className="bg-slate-100 px-3 py-1 rounded-full">BD: <b>{collectionName}</b> ({dbCount})</span>
+             {currentModule === 'install' && instalacionesCount > 0 && (
+               <button 
+                 onClick={() => setShowInstalacionesModal(true)}
+                 className="bg-green-100 hover:bg-green-200 px-3 py-1 rounded-full text-green-700 text-xs font-bold flex items-center gap-2"
+                 title="Ver clientes instalados al último corte"
+               >
+                 <CheckCircle size={16}/> {instalacionesCount} Instalados
+               </button>
+             )}
              <button onClick={() => window.location.reload()} className="text-red-500 hover:bg-red-50 p-2 rounded-full"><LogOut size={18}/></button>
           </div>
         </div>
@@ -6654,6 +6787,82 @@ RESPUESTA:`;
                  className="flex-1 bg-slate-200 text-slate-700 px-4 py-3 rounded-lg font-bold hover:bg-slate-300"
                >
                  Cancelar
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Modal de Instalaciones al Último Corte */}
+       {showInstalacionesModal && (
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+           <div className="bg-white rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+             <div className="bg-gradient-to-r from-green-500 to-green-600 p-6 text-white">
+               <div className="flex items-center justify-between">
+                 <div>
+                   <h2 className="text-2xl font-bold flex items-center gap-3">
+                     <CheckCircle size={28}/>
+                     {instalacionesCount} Clientes Instalados al Último Corte
+                   </h2>
+                   <p className="text-green-100 mt-1 text-sm">Total de instalaciones completadas con vendedor asignado</p>
+                 </div>
+                 <button 
+                   onClick={() => setShowInstalacionesModal(false)}
+                   className="text-white hover:bg-green-700 p-2 rounded-full transition-colors"
+                 >
+                   <X size={24}/>
+                 </button>
+               </div>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto p-6">
+               {instalacionesList.length > 0 ? (
+                 <div className="space-y-3">
+                   {instalacionesList.map((inst, idx) => (
+                     <div key={inst.id || idx} className="bg-slate-50 border border-slate-200 rounded-lg p-4 hover:bg-slate-100 transition-colors">
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                         <div>
+                           <p className="text-xs text-slate-500 font-bold mb-1">CLIENTE</p>
+                           <p className="text-slate-800 font-semibold">{inst.client || inst.nombreCompleto || 'Sin nombre'}</p>
+                         </div>
+                         <div>
+                           <p className="text-xs text-slate-500 font-bold mb-1">VENDEDOR</p>
+                           <p className="text-slate-700">{inst.vendor || inst.vendedor || 'Sin asignar'}</p>
+                         </div>
+                         <div>
+                           <p className="text-xs text-slate-500 font-bold mb-1">CUENTA / ORDEN</p>
+                           <p className="text-slate-700">{inst.cuenta || 'N/A'} {inst.orden ? `• ${inst.orden}` : ''}</p>
+                         </div>
+                         <div>
+                           <p className="text-xs text-slate-500 font-bold mb-1">PLAZA</p>
+                           <p className="text-slate-700">{inst.plaza || 'N/A'}</p>
+                         </div>
+                         <div>
+                           <p className="text-xs text-slate-500 font-bold mb-1">TELÉFONO</p>
+                           <p className="text-slate-700">{inst.telefono || 'N/A'}</p>
+                         </div>
+                         <div>
+                           <p className="text-xs text-slate-500 font-bold mb-1">FECHA INSTALACIÓN</p>
+                           <p className="text-slate-700">{inst.fechaInstalacion || inst.createdAt || 'N/A'}</p>
+                         </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               ) : (
+                 <div className="text-center py-12">
+                   <CheckCircle size={48} className="mx-auto mb-4 text-green-500 opacity-50"/>
+                   <p className="text-slate-500 font-semibold">No hay instalaciones registradas</p>
+                 </div>
+               )}
+             </div>
+             
+             <div className="border-t border-slate-200 p-4 bg-slate-50">
+               <button
+                 onClick={() => setShowInstalacionesModal(false)}
+                 className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold transition-colors"
+               >
+                 Cerrar
                </button>
              </div>
            </div>
