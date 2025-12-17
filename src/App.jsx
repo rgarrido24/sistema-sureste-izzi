@@ -3716,7 +3716,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                   updatedAt: serverTimestamp()
                 };
                 
-                batch.update(existing.id, updateData);
+                // Crear referencia de documento correcta usando el ID
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
+                batch.update(docRef, updateData);
                 updated++;
               } else {
                 // Crear nuevo registro (solo si el Cliente no es "izzi")
@@ -3814,7 +3816,9 @@ Tu servicio de *Izzi* está listo para instalarse.
                   updatedAt: serverTimestamp()
                 };
                 
-                batch.update(existing.id, updateData);
+                // Crear referencia de documento correcta usando el ID
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
+                batch.update(docRef, updateData);
                 updated++;
               } else {
                 // Crear nuevo registro (solo si el Cliente no es "izzi")
