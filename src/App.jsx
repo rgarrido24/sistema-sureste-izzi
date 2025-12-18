@@ -789,6 +789,10 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [globalTemplate, setGlobalTemplate] = useState('');
   const [globalVideoLink, setGlobalVideoLink] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
+  
+  // Estado para conocimiento escrito de promociones
+  const [promocionesKnowledge, setPromocionesKnowledge] = useState('');
+  const [savingPromocionesKnowledge, setSavingPromocionesKnowledge] = useState(false);
   const [rawFileRows, setRawFileRows] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
   const [progress, setProgress] = useState('');
@@ -1123,8 +1127,21 @@ Tu servicio de *Izzi* está listo para instalarse.
       setInstallImageLink(installData.imageLink || '');
     };
     
+    // Cargar conocimiento escrito de promociones
+    const loadPromocionesKnowledge = async () => {
+      try {
+        const knowledgeDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'promociones_knowledge'));
+        if (knowledgeDoc.exists()) {
+          setPromocionesKnowledge(knowledgeDoc.data().knowledge || '');
+        }
+      } catch (error) {
+        console.error('Error al cargar conocimiento de promociones:', error);
+      }
+    };
+    
     loadGlobalTemplate();
     loadInstallTemplate();
+    loadPromocionesKnowledge();
   }, [user, currentModule]);
 
   const addPackage = async () => {
@@ -1233,6 +1250,29 @@ Tu servicio de *Izzi* está listo para instalarse.
   const deletePromocion = async (id) => {
     if (confirm('¿Eliminar esta promoción/servicio?')) {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'izzi_promociones', id));
+    }
+  };
+  
+  // Función para guardar conocimiento escrito de promociones
+  const savePromocionesKnowledge = async () => {
+    if (!promocionesKnowledge.trim()) {
+      alert('Por favor ingresa el conocimiento de promociones');
+      return;
+    }
+    
+    try {
+      setSavingPromocionesKnowledge(true);
+      const knowledgeRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_settings', 'promociones_knowledge');
+      await setDoc(knowledgeRef, {
+        knowledge: promocionesKnowledge.trim(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      alert('✅ Conocimiento de promociones guardado correctamente');
+    } catch (error) {
+      console.error('Error al guardar conocimiento:', error);
+      alert('Error al guardar: ' + error.message);
+    } finally {
+      setSavingPromocionesKnowledge(false);
     }
   };
 
@@ -3121,7 +3161,8 @@ Tu servicio de *Izzi* está listo para instalarse.
         };
         
         // Procesar todas las filas en lotes pequeños para evitar bloqueos
-        const BATCH_SIZE = 50; // Procesar 50 filas a la vez (reducido para mejor rendimiento)
+        // Para archivos grandes (>10000 filas), usar lotes más pequeños para mejor rendimiento
+        const BATCH_SIZE = validRows.length > 10000 ? 50 : 100;
         for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
           const batchEnd = Math.min(batchStart + BATCH_SIZE, validRows.length);
           setProgress(`Procesando filas ${batchStart + 1} a ${batchEnd} de ${validRows.length}...`);
@@ -3607,9 +3648,16 @@ Tu servicio de *Izzi* está listo para instalarse.
             }
           }
           
-          // Pausa entre lotes para permitir que la UI se actualice (aumentada para mejor rendimiento)
+          // Pausa entre lotes para permitir que la UI se actualice y evitar bloqueos
+          // Usar requestAnimationFrame para mejor rendimiento en navegadores
           if (batchEnd < validRows.length) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => {
+              // Usar setTimeout con 0 para permitir que el navegador actualice la UI
+              setTimeout(() => {
+                // Usar requestAnimationFrame para asegurar que la UI se actualice
+                requestAnimationFrame(resolve);
+              }, 0);
+            });
           }
         }
 
@@ -3929,6 +3977,7 @@ Tu servicio de *Izzi* está listo para instalarse.
             <button onClick={() => setActiveTab('template')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'template' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-500'}`}><FileText size={16}/> Plantilla</button>
             <button onClick={() => setActiveTab('packages')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'packages' ? 'bg-orange-100 text-orange-700' : 'text-slate-500'}`}><Wifi size={16}/> Paquetes</button>
             <button onClick={() => setActiveTab('promociones')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'promociones' ? 'bg-pink-100 text-pink-700' : 'text-slate-500'}`}><Sparkles size={16}/> Promociones</button>
+            <button onClick={() => setActiveTab('dashboard')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg' : 'text-slate-500'}`}><BarChart3 size={16}/> Dashboard</button>
             <button onClick={() => setActiveTab('view')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'view' ? 'bg-white shadow' : 'text-slate-500'}`}><List size={16}/> Ver BD</button>
             <button onClick={() => setActiveTab('upload')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 ${activeTab === 'upload' ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}><Cloud size={16}/> Cargar</button>
           </div>
@@ -3946,6 +3995,376 @@ Tu servicio de *Izzi* está listo para instalarse.
              <button onClick={() => window.location.reload()} className="text-red-500 hover:bg-red-50 p-2 rounded-full"><LogOut size={18}/></button>
           </div>
         </div>
+
+        {/* DASHBOARD PRINCIPAL */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            {/* Tarjetas de Métricas Principales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Total de Clientes Cobranza */}
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl shadow-lg text-white">
+                <div className="flex items-center justify-between mb-4">
+                  <Users size={32} className="opacity-80"/>
+                  <span className="text-blue-100 text-xs font-bold">COBRANZA</span>
+                </div>
+                <h3 className="text-3xl font-bold mb-1">{allClients.filter(c => currentModule === 'sales' || c.Estatus).length}</h3>
+                <p className="text-blue-100 text-sm">Clientes en Sistema</p>
+                <div className="mt-3 pt-3 border-t border-blue-400/30">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-blue-100">M1: {allClients.filter(c => (c.Estatus || '').includes('M1') || (c.Estatus || '') === 'FPD Corriente').length}</span>
+                    <span className="text-blue-100">M2: {allClients.filter(c => (c.Estatus || '').includes('M2')).length}</span>
+                    <span className="text-blue-100">M3: {allClients.filter(c => (c.Estatus || '').includes('M3')).length}</span>
+                    <span className="text-blue-100">M4: {allClients.filter(c => (c.Estatus || '').includes('M4')).length}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instalaciones */}
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-6 rounded-2xl shadow-lg text-white">
+                <div className="flex items-center justify-between mb-4">
+                  <CheckCircle size={32} className="opacity-80"/>
+                  <span className="text-purple-100 text-xs font-bold">INSTALACIONES</span>
+                </div>
+                <h3 className="text-3xl font-bold mb-1">{instalacionesCount}</h3>
+                <p className="text-purple-100 text-sm">Instalaciones Completadas</p>
+                <div className="mt-3 pt-3 border-t border-purple-400/30">
+                  <p className="text-purple-100 text-xs">Total en sistema: {allClients.filter(c => currentModule === 'install').length}</p>
+                </div>
+              </div>
+
+              {/* Operación del Día */}
+              <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl shadow-lg text-white">
+                <div className="flex items-center justify-between mb-4">
+                  <PlayCircle size={32} className="opacity-80"/>
+                  <span className="text-indigo-100 text-xs font-bold">OPERACIÓN</span>
+                </div>
+                <h3 className="text-3xl font-bold mb-1">{operacionData.length}</h3>
+                <p className="text-indigo-100 text-sm">Órdenes Activas</p>
+                <div className="mt-3 pt-3 border-t border-indigo-400/30">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-indigo-100">Abiertas: {operacionData.filter(o => (o.Estado || '').includes('Abierta')).length}</span>
+                    <span className="text-indigo-100">Instaladas: {operacionData.filter(o => (o.Estado || '').includes('Instalado')).length}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reportes de Ventas */}
+              <div className="bg-gradient-to-br from-green-500 to-green-600 p-6 rounded-2xl shadow-lg text-white">
+                <div className="flex items-center justify-between mb-4">
+                  <FileSpreadsheet size={32} className="opacity-80"/>
+                  <span className="text-green-100 text-xs font-bold">REPORTES</span>
+                </div>
+                <h3 className="text-3xl font-bold mb-1">{allReportsData.length}</h3>
+                <p className="text-green-100 text-sm">Reportes Totales</p>
+                <div className="mt-3 pt-3 border-t border-green-400/30">
+                  <p className="text-green-100 text-xs">Últimos 30 días: {allReportsData.filter(r => {
+                    const fecha = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt);
+                    const hace30Dias = new Date();
+                    hace30Dias.setDate(hace30Dias.getDate() - 30);
+                    return fecha >= hace30Dias;
+                  }).length}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Panel de Uso de Recursos */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Database size={20} className="text-blue-600"/>
+                Uso de Recursos (Estimado)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Firestore */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <Database size={18} className="text-blue-600"/>
+                    <span className="text-xs font-bold text-slate-600">Firestore</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-600">Documentos</span>
+                        <span className="font-bold">{dbCount + operacionData.length + allReportsData.length}</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min((dbCount + operacionData.length + allReportsData.length) / 10000 * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">Límite: 1M documentos (plan gratuito)</p>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-600">Lecturas/día (est.)</span>
+                        <span className="font-bold">~{Math.round((dbCount + operacionData.length) * 0.1)}</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-600 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min((dbCount + operacionData.length) * 0.1 / 50000 * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">Límite: 50,000/día (plan gratuito)</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Storage */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <Cloud size={18} className="text-purple-600"/>
+                    <span className="text-xs font-bold text-slate-600">Storage</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-600">PDFs Cargados</span>
+                        <span className="font-bold">{knowledgePDFs.length}</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-purple-600 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min(knowledgePDFs.length / 10 * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">Límite: 5 GB (plan gratuito)</p>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-600">Tamaño total (est.)</span>
+                        <span className="font-bold">~{((knowledgePDFs.reduce((acc, pdf) => acc + (pdf.tamaño || 0), 0) / 1024 / 1024).toFixed(2))} MB</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gemini API */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <Sparkles size={18} className="text-pink-600"/>
+                    <span className="text-xs font-bold text-slate-600">Gemini API</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-600">Estado</span>
+                        <span className="font-bold text-green-600">Activo</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">Plan: Free Tier</p>
+                      <p className="text-xs text-slate-500">Límite: 15 req/min (Flash)</p>
+                    </div>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-2">
+                      <p className="text-xs text-yellow-800 mb-1">
+                        💡 Monitorea el uso en <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="underline">Google AI Studio</a>
+                      </p>
+                      <p className="text-xs text-yellow-700">
+                        📋 Configura alertas en <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Console</a>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Enlaces Rápidos a Configuración */}
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-200">
+                <h4 className="font-bold text-sm mb-3 text-blue-800 flex items-center gap-2">
+                  <Settings size={18}/> Configurar Alertas de Presupuesto
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <a 
+                    href="https://console.firebase.google.com/project/_/usage" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-white hover:bg-blue-50 p-3 rounded-lg border border-blue-200 text-xs font-semibold text-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <Database size={16}/> Firebase Console
+                  </a>
+                  <a 
+                    href="https://console.cloud.google.com/billing" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-white hover:bg-purple-50 p-3 rounded-lg border border-purple-200 text-xs font-semibold text-purple-700 transition-colors flex items-center gap-2"
+                  >
+                    <DollarSign size={16}/> Google Cloud Billing
+                  </a>
+                  <a 
+                    href="https://aistudio.google.com/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-white hover:bg-pink-50 p-3 rounded-lg border border-pink-200 text-xs font-semibold text-pink-700 transition-colors flex items-center gap-2"
+                  >
+                    <Sparkles size={16}/> AI Studio
+                  </a>
+                </div>
+                <p className="text-xs text-blue-600 mt-3">
+                  💡 Revisa el archivo <code className="bg-white px-1 rounded">ALERTAS_PRESUPUESTO.md</code> para instrucciones detalladas
+                </p>
+              </div>
+            </div>
+
+            {/* Estadísticas por Región */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Cobranza por Región */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <MapPin size={20} className="text-blue-600"/>
+                  Cobranza por Región
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const porRegion = {};
+                    allClients.filter(c => currentModule === 'sales' || c.Estatus).forEach(c => {
+                      const region = c.Region || c.Plaza || 'Sin región';
+                      if (!porRegion[region]) porRegion[region] = 0;
+                      porRegion[region]++;
+                    });
+                    return Object.entries(porRegion).sort((a, b) => b[1] - a[1]).map(([region, count]) => (
+                      <div key={region} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                          <span className="font-semibold text-slate-700">{region}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-32 bg-slate-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all"
+                              style={{ width: `${(count / Math.max(...Object.values(porRegion))) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span className="font-bold text-slate-800 min-w-[3rem] text-right">{count}</span>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              {/* Top Vendedores */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <Users size={20} className="text-green-600"/>
+                  Top Vendedores
+                </h3>
+                <div className="space-y-3">
+                  {(() => {
+                    const porVendedor = {};
+                    allReportsData.forEach(r => {
+                      const vendor = r.vendor || r.vendedor || 'Sin asignar';
+                      if (!porVendedor[vendor]) porVendedor[vendor] = 0;
+                      porVendedor[vendor]++;
+                    });
+                    return Object.entries(porVendedor).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([vendor, count]) => (
+                      <div key={vendor} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-xs">
+                            {vendor.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-slate-700">{vendor}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-32 bg-slate-200 rounded-full h-2">
+                            <div 
+                              className="bg-green-600 h-2 rounded-full transition-all"
+                              style={{ width: `${(count / Math.max(...Object.values(porVendedor), 1)) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span className="font-bold text-slate-800 min-w-[3rem] text-right">{count}</span>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Estadísticas de Estatus */}
+            {currentModule === 'sales' && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <BarChart3 size={20} className="text-amber-600"/>
+                  Distribución por Estatus (Cobranza)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {['M1', 'M2', 'M3', 'M4'].map(estatus => {
+                    const count = allClients.filter(c => (c.Estatus || '').includes(estatus) || (estatus === 'M1' && (c.Estatus || '') === 'FPD Corriente')).length;
+                    const total = allClients.filter(c => currentModule === 'sales' || c.Estatus).length;
+                    const porcentaje = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+                    return (
+                      <div key={estatus} className={`p-4 rounded-xl border-2 ${
+                        estatus === 'M1' ? 'bg-amber-50 border-amber-200' :
+                        estatus === 'M2' ? 'bg-orange-50 border-orange-200' :
+                        estatus === 'M3' ? 'bg-red-50 border-red-200' :
+                        'bg-pink-50 border-pink-200'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`font-bold text-sm ${
+                            estatus === 'M1' ? 'text-amber-700' :
+                            estatus === 'M2' ? 'text-orange-700' :
+                            estatus === 'M3' ? 'text-red-700' :
+                            'text-pink-700'
+                          }`}>{estatus}</span>
+                          <span className={`text-xs font-bold ${
+                            estatus === 'M1' ? 'text-amber-600' :
+                            estatus === 'M2' ? 'text-orange-600' :
+                            estatus === 'M3' ? 'text-red-600' :
+                            'text-pink-600'
+                          }`}>{porcentaje}%</span>
+                        </div>
+                        <h4 className="text-2xl font-bold mb-1">{count}</h4>
+                        <p className="text-xs opacity-70">Clientes</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Resumen de Actividad Reciente */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <RefreshCw size={20} className="text-indigo-600"/>
+                Actividad Reciente
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <FileSpreadsheet size={18} className="text-blue-600"/>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-800">Reportes de Ventas</p>
+                    <p className="text-xs text-slate-500">{allReportsData.length} reportes totales</p>
+                  </div>
+                  <span className="text-xs font-bold text-blue-600">{allReportsData.filter(r => {
+                    const fecha = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt);
+                    const hoy = new Date();
+                    return fecha.toDateString() === hoy.toDateString();
+                  }).length} hoy</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Users size={18} className="text-purple-600"/>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-800">Usuarios Activos</p>
+                    <p className="text-xs text-slate-500">{users.length} usuarios registrados</p>
+                  </div>
+                  <span className="text-xs font-bold text-purple-600">{vendors.filter(v => !excludedVendors.includes(v)).length} vendedores</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                    <Wifi size={18} className="text-green-600"/>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-800">Paquetes y Promociones</p>
+                    <p className="text-xs text-slate-500">{packages.length} paquetes • {promociones.filter(p => p.activa).length} promociones activas</p>
+                  </div>
+                  <span className="text-xs font-bold text-green-600">Activo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* VISTA DE CLIENTES PARA ADMIN - M1, M2, M3, M4 */}
         {(activeTab === 'clients' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') && (
@@ -4752,6 +5171,34 @@ Tu servicio de *Izzi* está listo para instalarse.
                                 </div>
                             ))}
                         </div>
+                    )}
+                </div>
+                
+                {/* Campo para conocimiento escrito de promociones */}
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4 mb-6">
+                    <h4 className="font-bold text-sm mb-3 text-purple-800 flex items-center gap-2">
+                        <FileText size={18}/> Conocimiento Escrito de Promociones
+                    </h4>
+                    <p className="text-xs text-purple-700 mb-3">
+                        Escribe aquí toda la información sobre promociones, ofertas y servicios. Este conocimiento será usado automáticamente por el asistente AI para responder preguntas de los vendedores.
+                    </p>
+                    <textarea 
+                        className="w-full p-4 border border-purple-200 rounded-lg text-sm h-64 font-mono text-xs bg-white"
+                        placeholder="Escribe aquí toda la información sobre promociones, ofertas, servicios, políticas, beneficios, etc. El asistente AI usará esta información automáticamente para responder preguntas..."
+                        value={promocionesKnowledge}
+                        onChange={e => setPromocionesKnowledge(e.target.value)}
+                    />
+                    <button 
+                        onClick={savePromocionesKnowledge}
+                        disabled={savingPromocionesKnowledge}
+                        className="mt-3 w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors"
+                    >
+                        {savingPromocionesKnowledge ? 'Guardando...' : '💾 Guardar Conocimiento'}
+                    </button>
+                    {promocionesKnowledge && (
+                        <p className="text-xs text-purple-600 mt-2">
+                            ✅ Conocimiento guardado. El asistente AI usará esta información automáticamente.
+                        </p>
                     )}
                 </div>
                 
@@ -6132,7 +6579,12 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
     // Prompt mejorado con toda la base de conocimiento
     const prompt = `Eres un experto asistente de ventas de Izzi Sureste. Tu trabajo es ayudar a los vendedores con información sobre paquetes, promociones y servicios.
 
-PAQUETES DISPONIBLES:
+${promocionesKnowledge ? `📚 CONOCIMIENTO BASE DE PROMOCIONES (INFORMACIÓN PRINCIPAL):
+${promocionesKnowledge}
+
+IMPORTANTE: Esta es la información principal y más completa sobre promociones. Úsala como tu fuente principal de información. Si hay información contradictoria, prioriza esta información.
+
+` : ''}PAQUETES DISPONIBLES:
 ${packagesContext || 'No hay paquetes registrados aún.'}
 
 PROMOCIONES Y SERVICIOS ACTIVOS:
