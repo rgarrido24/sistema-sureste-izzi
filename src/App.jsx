@@ -3105,13 +3105,24 @@ Tu servicio de *Izzi* está listo para instalarse.
           // Para cobranza: cargar existentes para actualizar sin duplicar por número de cuenta
           setProgress('Cargando registros existentes de cobranza...');
           const snapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
-          snapshot.docs.forEach(d => {
-            const data = d.data();
-            const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
-            if (nCuenta) {
-              existingSales.set(nCuenta, { id: d.id, data: data });
+          
+          // Procesar en lotes para evitar bloqueos al cargar muchos registros
+          const loadBatchSize = 1000;
+          const allDocs = snapshot.docs;
+          for (let i = 0; i < allDocs.length; i += loadBatchSize) {
+            const batch = allDocs.slice(i, Math.min(i + loadBatchSize, allDocs.length));
+            batch.forEach(d => {
+              const data = d.data();
+              const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+              if (nCuenta) {
+                existingSales.set(nCuenta, { id: d.id, data: data });
+              }
+            });
+            // Pausa cada lote para no bloquear
+            if (i + loadBatchSize < allDocs.length) {
+              await new Promise(resolve => setTimeout(resolve, 10));
             }
-          });
+          }
           console.log(`Registros existentes de cobranza encontrados: ${existingSales.size}`);
         } else if (currentModule === 'install' || targetCollection === 'install_master') {
           // Para instalaciones, cargar existentes para evitar duplicados por número de cuenta
@@ -3160,14 +3171,16 @@ Tu servicio de *Izzi* está listo para instalarse.
           return str;
         };
         
-        // Procesar todas las filas en lotes pequeños para evitar bloqueos
-        // Para archivos grandes (>10000 filas), usar lotes más pequeños para mejor rendimiento
-        const BATCH_SIZE = validRows.length > 10000 ? 50 : 100;
+        // Procesar todas las filas en lotes MUY pequeños para evitar bloqueos
+        // Para archivos grandes (>10000 filas), usar lotes muy pequeños
+        const BATCH_SIZE = validRows.length > 10000 ? 10 : (validRows.length > 5000 ? 25 : 50);
+        const ROWS_PER_PAUSE = 5; // Pausar cada 5 filas dentro del lote
+        
         for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
           const batchEnd = Math.min(batchStart + BATCH_SIZE, validRows.length);
           setProgress(`Procesando filas ${batchStart + 1} a ${batchEnd} de ${validRows.length}...`);
           
-          // Procesar lote actual
+          // Procesar lote actual con pausas frecuentes
           for (let rowIndex = batchStart; rowIndex < batchEnd; rowIndex++) {
             const row = validRows[rowIndex];
             const docData = {}; 
@@ -3646,17 +3659,21 @@ Tu servicio de *Izzi* está listo para instalarse.
             if (hasData) {
               processedRows.push(docData);
             }
+            
+            // Pausa cada ROWS_PER_PAUSE filas dentro del lote para evitar bloqueos
+            if ((rowIndex - batchStart + 1) % ROWS_PER_PAUSE === 0) {
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
           }
           
-          // Pausa entre lotes para permitir que la UI se actualice y evitar bloqueos
-          // Usar requestAnimationFrame para mejor rendimiento en navegadores
+          // Pausa más larga entre lotes para permitir que la UI se actualice completamente
           if (batchEnd < validRows.length) {
             await new Promise(resolve => {
-              // Usar setTimeout con 0 para permitir que el navegador actualice la UI
               setTimeout(() => {
-                // Usar requestAnimationFrame para asegurar que la UI se actualice
-                requestAnimationFrame(resolve);
-              }, 0);
+                requestAnimationFrame(() => {
+                  setTimeout(resolve, 50); // Pausa adicional para asegurar actualización
+                });
+              }, 50);
             });
           }
         }
