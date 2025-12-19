@@ -3164,21 +3164,46 @@ Tu servicio de *Izzi* está listo para instalarse.
     console.log("Encabezados detectados:", headers);
     
     headers.forEach((header, index) => {
-      const h = String(header || '').toLowerCase().trim().replace(/_/g, ' ');
+      const h = String(header || '').toLowerCase().trim().replace(/_/g, ' ').replace(/\./g, '').replace(/\s+/g, ' ');
       
       // Buscar en nuestro diccionario de columnas importantes
       let encontrado = false;
-      for (const [patron, campo] of Object.entries(COLUMNAS_IMPORTANTES)) {
-        if (h === patron || h.includes(patron)) {
-          // Verificar que no sea una asignación duplicada incorrecta
-          // Por ejemplo, "fecha perdida" debe ser FechaPerdida, no FechaInstalacion
-          if (patron === 'fecha' && h.includes('perdida')) continue;
-          if (patron === 'fecha' && h.includes('vencimiento')) continue;
-          
-          initialMap[index] = campo;
-          columnasDetectadas.push(`${header} → ${campo}`);
-          encontrado = true;
-          break;
+      
+      // PRIORIDAD ESPECIAL: Detectar columnas M, M1, M2, M3, M4 con mayor precisión
+      if (h === 'm' || h === ' m' || h === 'm ' || h.trim() === 'm') {
+        initialMap[index] = 'M';
+        columnasDetectadas.push(`${header} → M`);
+        encontrado = true;
+      } else if (h === 'm1' || h === ' m1' || h === 'm1 ' || h.trim() === 'm1') {
+        initialMap[index] = 'M1';
+        columnasDetectadas.push(`${header} → M1`);
+        encontrado = true;
+      } else if (h === 'm2' || h === ' m2' || h === 'm2 ' || h.trim() === 'm2') {
+        initialMap[index] = 'M2';
+        columnasDetectadas.push(`${header} → M2`);
+        encontrado = true;
+      } else if (h === 'm3' || h === ' m3' || h === 'm3 ' || h.trim() === 'm3') {
+        initialMap[index] = 'M3';
+        columnasDetectadas.push(`${header} → M3`);
+        encontrado = true;
+      } else if (h === 'm4' || h === ' m4' || h === 'm4 ' || h.trim() === 'm4') {
+        initialMap[index] = 'M4';
+        columnasDetectadas.push(`${header} → M4`);
+        encontrado = true;
+      } else {
+        // Buscar en el diccionario normal
+        for (const [patron, campo] of Object.entries(COLUMNAS_IMPORTANTES)) {
+          if (h === patron || h.includes(patron)) {
+            // Verificar que no sea una asignación duplicada incorrecta
+            // Por ejemplo, "fecha perdida" debe ser FechaPerdida, no FechaInstalacion
+            if (patron === 'fecha' && h.includes('perdida')) continue;
+            if (patron === 'fecha' && h.includes('vencimiento')) continue;
+            
+            initialMap[index] = campo;
+            columnasDetectadas.push(`${header} → ${campo}`);
+            encontrado = true;
+            break;
+          }
         }
       }
       
@@ -3186,6 +3211,20 @@ Tu servicio de *Izzi* está listo para instalarse.
         initialMap[index] = 'Ignorar';
       }
     });
+    
+    // Log especial para columnas M, M1, M2, M3, M4
+    const columnasM = [];
+    Object.keys(initialMap).forEach(k => {
+      const campo = initialMap[k];
+      if (campo === 'M' || campo === 'M1' || campo === 'M2' || campo === 'M3' || campo === 'M4') {
+        columnasM.push(`Columna ${k} (${headers[k]}): ${campo}`);
+      }
+    });
+    if (columnasM.length > 0) {
+      console.log('✅ Columnas M detectadas:', columnasM);
+    } else {
+      console.warn('⚠️ NO se detectaron columnas M, M1, M2, M3, M4. Encabezados:', headers);
+    }
     
     console.log("Columnas detectadas:", columnasDetectadas);
     console.log("Mapeo automático:", initialMap);
@@ -3540,8 +3579,18 @@ Tu servicio de *Izzi* está listo para instalarse.
                       }
                     } else {
                       // Guardar el valor normalmente (otros campos)
-                      docData[fieldName] = cleanedValue;
-                      hasData = true;
+                      // ESPECIAL: Asegurar que M, M1, M2, M3, M4 se guarden correctamente (preservar números)
+                      if (fieldName === 'M' || fieldName === 'M1' || fieldName === 'M2' || fieldName === 'M3' || fieldName === 'M4') {
+                        // Guardar el valor tal cual (puede ser número o texto como "MS_2")
+                        docData[fieldName] = value; // Usar value original, no cleanedValue, para preservar números y formato
+                        hasData = true;
+                        if (rowIndex < 5) {
+                          console.log(`💾 Guardando ${fieldName} = ${value} (tipo: ${typeof value})`);
+                        }
+                      } else {
+                        docData[fieldName] = cleanedValue;
+                        hasData = true;
+                      }
                     }
                   }
                 }
@@ -3743,6 +3792,21 @@ Tu servicio de *Izzi* está listo para instalarse.
               // Lógica para determinar M1, M2, M3, M4 basado en columna M y valores 1/0
               // Si hay columna M con valores MS_1, MS_2, MS_3, MS_4, y columnas M1, M2, M3, M4 con 1/0
               // También verificar "Estatus Cobranza" o "Estatus FPD" directamente
+              
+              // DEBUG: Log de valores de M, M1, M2, M3, M4 para los primeros registros
+              if (rowIndex < 5) {
+                console.log(`🔍 DEBUG Registro ${rowIndex + 1}:`, {
+                  M: docData.M || 'NO ENCONTRADO',
+                  M1: docData.M1 || 'NO ENCONTRADO',
+                  M2: docData.M2 || 'NO ENCONTRADO',
+                  M3: docData.M3 || 'NO ENCONTRADO',
+                  M4: docData.M4 || 'NO ENCONTRADO',
+                  'Estatus Cobranza': docData['Estatus Cobranza'] || docData.EstatusCobranza || 'NO ENCONTRADO',
+                  'Estatus FPD': docData['Estatus FPD'] || docData.EstatusFPD || docData.FPD || 'NO ENCONTRADO',
+                  'ColumnMapping completo': Object.keys(columnMapping).map(k => `${k}:${columnMapping[k]}`).join(', ')
+                });
+              }
+              
               const estatusCobranza = cleanValue(docData['Estatus Cobranza'] || docData.EstatusCobranza || '');
               const estatusFPD = cleanValue(docData['Estatus FPD'] || docData.EstatusFPD || docData.FPD || '');
               
@@ -3782,68 +3846,82 @@ Tu servicio de *Izzi* está listo para instalarse.
                 // Si M contiene MS_1, MS_2, MS_3 o MS_4, determinar el estatus
                 if (mValue.includes('MS_1') || mValue.includes('MS1')) {
                   // Verificar columna M1: 1 = debe M1, 0 = FPD Corriente
-                  const m1Value = String(docData.M1 || '0').trim();
-                  if (m1Value === '1') {
+                  // Aceptar tanto número como string
+                  const m1Value = docData.M1;
+                  const m1IsOne = m1Value === 1 || m1Value === '1' || String(m1Value).trim() === '1';
+                  if (m1IsOne) {
                     docData.Estatus = 'M1';
-                    console.log(`✅ Detectado M1: M=${mValue}, M1=${m1Value} → Estatus=M1`);
+                    if (rowIndex < 5) console.log(`✅ Detectado M1: M=${mValue}, M1=${m1Value} (tipo: ${typeof m1Value}) → Estatus=M1`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
-                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M1=${m1Value} → Estatus=FPD Corriente`);
+                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M=${mValue}, M1=${m1Value} (tipo: ${typeof m1Value}) → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
                   // Verificar columna M2: 1 = debe M2, 0 = FPD Corriente
-                  const m2Value = String(docData.M2 || '0').trim();
-                  if (m2Value === '1') {
+                  const m2Value = docData.M2;
+                  const m2IsOne = m2Value === 1 || m2Value === '1' || String(m2Value).trim() === '1';
+                  if (m2IsOne) {
                     docData.Estatus = 'M2';
-                    console.log(`✅ Detectado M2: M=${mValue}, M2=${m2Value} → Estatus=M2`);
+                    if (rowIndex < 5) console.log(`✅ Detectado M2: M=${mValue}, M2=${m2Value} (tipo: ${typeof m2Value}) → Estatus=M2`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
-                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M2=${m2Value} → Estatus=FPD Corriente`);
+                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M=${mValue}, M2=${m2Value} (tipo: ${typeof m2Value}) → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
                   // Verificar columna M3: 1 = debe M3, 0 = FPD Corriente
-                  const m3Value = String(docData.M3 || '0').trim();
-                  if (m3Value === '1') {
+                  const m3Value = docData.M3;
+                  const m3IsOne = m3Value === 1 || m3Value === '1' || String(m3Value).trim() === '1';
+                  if (m3IsOne) {
                     docData.Estatus = 'M3';
-                    console.log(`✅ Detectado M3: M=${mValue}, M3=${m3Value} → Estatus=M3`);
+                    if (rowIndex < 5) console.log(`✅ Detectado M3: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=M3`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
-                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M3=${m3Value} → Estatus=FPD Corriente`);
+                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
                   // Verificar columna M4: 1 = debe M4, 0 = FPD Corriente
-                  const m4Value = String(docData.M4 || '0').trim();
-                  if (m4Value === '1') {
+                  const m4Value = docData.M4;
+                  const m4IsOne = m4Value === 1 || m4Value === '1' || String(m4Value).trim() === '1';
+                  if (m4IsOne) {
                     docData.Estatus = 'M4';
-                    console.log(`✅ Detectado M4: M=${mValue}, M4=${m4Value} → Estatus=M4`);
+                    if (rowIndex < 5) console.log(`✅ Detectado M4: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=M4`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
-                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M4=${m4Value} → Estatus=FPD Corriente`);
+                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=FPD Corriente`);
                   }
                 }
               } else {
                 // Si no hay columna M, verificar directamente M1, M2, M3, M4
-                const m1Value = String(docData.M1 || '0').trim();
-                const m2Value = String(docData.M2 || '0').trim();
-                const m3Value = String(docData.M3 || '0').trim();
-                const m4Value = String(docData.M4 || '0').trim();
+                // Aceptar tanto números como strings
+                const m1Value = docData.M1;
+                const m2Value = docData.M2;
+                const m3Value = docData.M3;
+                const m4Value = docData.M4;
                 
-                if (m4Value === '1') {
+                const m1IsOne = m1Value === 1 || m1Value === '1' || String(m1Value || '0').trim() === '1';
+                const m2IsOne = m2Value === 1 || m2Value === '1' || String(m2Value || '0').trim() === '1';
+                const m3IsOne = m3Value === 1 || m3Value === '1' || String(m3Value || '0').trim() === '1';
+                const m4IsOne = m4Value === 1 || m4Value === '1' || String(m4Value || '0').trim() === '1';
+                
+                if (m4IsOne) {
                   docData.Estatus = 'M4';
-                  console.log(`✅ Detectado M4 directo: M4=${m4Value} → Estatus=M4`);
-                } else if (m3Value === '1') {
+                  if (rowIndex < 5) console.log(`✅ Detectado M4 directo: M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=M4`);
+                } else if (m3IsOne) {
                   docData.Estatus = 'M3';
-                  console.log(`✅ Detectado M3 directo: M3=${m3Value} → Estatus=M3`);
-                } else if (m2Value === '1') {
+                  if (rowIndex < 5) console.log(`✅ Detectado M3 directo: M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=M3`);
+                } else if (m2IsOne) {
                   docData.Estatus = 'M2';
-                  console.log(`✅ Detectado M2 directo: M2=${m2Value} → Estatus=M2`);
-                } else if (m1Value === '1') {
+                  if (rowIndex < 5) console.log(`✅ Detectado M2 directo: M2=${m2Value} (tipo: ${typeof m2Value}) → Estatus=M2`);
+                } else if (m1IsOne) {
                   docData.Estatus = 'M1';
-                  console.log(`✅ Detectado M1 directo: M1=${m1Value} → Estatus=M1`);
-                } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
-                  // Si todos son 0, es FPD Corriente
-                  docData.Estatus = 'FPD Corriente';
-                  console.log(`✅ Detectado FPD Corriente: M1=${m1Value}, M2=${m2Value}, M3=${m3Value}, M4=${m4Value} → Estatus=FPD Corriente`);
+                  if (rowIndex < 5) console.log(`✅ Detectado M1 directo: M1=${m1Value} (tipo: ${typeof m1Value}) → Estatus=M1`);
+                } else {
+                  // Si todos son 0 o no existen, es FPD Corriente
+                  const allZero = (!m1IsOne && !m2IsOne && !m3IsOne && !m4IsOne);
+                  if (allZero) {
+                    docData.Estatus = 'FPD Corriente';
+                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M1=${m1Value}, M2=${m2Value}, M3=${m3Value}, M4=${m4Value} → Estatus=FPD Corriente`);
+                  }
                 }
               }
               
