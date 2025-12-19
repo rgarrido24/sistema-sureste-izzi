@@ -937,8 +937,88 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
             data.Estatus = data['Estado'];
           }
         }
+        // Normalizar campos para cobranza (sales_master) - asegurar que Estatus exista
+        if (currentModule === 'sales' || collectionName === 'sales_master') {
+          // Si hay Estado pero no Estatus, copiar a Estatus
+          if (data.Estado && !data.Estatus) {
+            data.Estatus = cleanValue(data.Estado);
+          }
+          if (data['Estado'] && !data.Estatus) {
+            data.Estatus = cleanValue(data['Estado']);
+          }
+          // Normalizar el valor de Estatus (quitar espacios, convertir a string)
+          if (data.Estatus) {
+            data.Estatus = String(data.Estatus).trim();
+            // Normalizar valores comunes de estatus
+            const estatusUpper = data.Estatus.toUpperCase();
+            if (estatusUpper === 'M1' || estatusUpper.includes('M1')) {
+              data.Estatus = 'M1';
+            } else if (estatusUpper === 'M2' || estatusUpper.includes('M2')) {
+              data.Estatus = 'M2';
+            } else if (estatusUpper === 'M3' || estatusUpper.includes('M3')) {
+              data.Estatus = 'M3';
+            } else if (estatusUpper === 'M4' || estatusUpper.includes('M4')) {
+              data.Estatus = 'M4';
+            } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+              data.Estatus = 'FPD Corriente';
+            }
+          } else {
+            // Si no hay Estatus, intentar detectarlo de otros campos
+            if (data.M) {
+              const mValue = String(data.M || '').trim().toUpperCase();
+              if (mValue.includes('MS_1') || mValue.includes('MS1')) {
+                const m1Value = String(data.M1 || '0').trim();
+                data.Estatus = m1Value === '1' ? 'M1' : 'FPD Corriente';
+              } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
+                const m2Value = String(data.M2 || '0').trim();
+                data.Estatus = m2Value === '1' ? 'M2' : 'FPD Corriente';
+              } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
+                const m3Value = String(data.M3 || '0').trim();
+                data.Estatus = m3Value === '1' ? 'M3' : 'FPD Corriente';
+              } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
+                const m4Value = String(data.M4 || '0').trim();
+                data.Estatus = m4Value === '1' ? 'M4' : 'FPD Corriente';
+              }
+            } else if (data.M1 || data.M2 || data.M3 || data.M4) {
+              const m4Value = String(data.M4 || '0').trim();
+              const m3Value = String(data.M3 || '0').trim();
+              const m2Value = String(data.M2 || '0').trim();
+              const m1Value = String(data.M1 || '0').trim();
+              if (m4Value === '1') {
+                data.Estatus = 'M4';
+              } else if (m3Value === '1') {
+                data.Estatus = 'M3';
+              } else if (m2Value === '1') {
+                data.Estatus = 'M2';
+              } else if (m1Value === '1') {
+                data.Estatus = 'M1';
+              } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
+                data.Estatus = 'FPD Corriente';
+              }
+            }
+          }
+        }
         return { id: d.id, ...data };
       });
+      
+      // Log de depuración: contar estatus por tipo
+      if (currentModule === 'sales' || collectionName === 'sales_master') {
+        const estatusCounts = {};
+        const sinEstatus = [];
+        clients.forEach(c => {
+          const estatus = (c.Estatus || '').toString().trim();
+          if (estatus) {
+            estatusCounts[estatus] = (estatusCounts[estatus] || 0) + 1;
+          } else {
+            sinEstatus.push({ cuenta: c.Cuenta || 'N/A', cliente: c.Cliente || 'N/A' });
+          }
+        });
+        console.log('📊 Resumen de Estatus en BD:', estatusCounts);
+        if (sinEstatus.length > 0) {
+          console.warn(`⚠️ ${sinEstatus.length} registros sin Estatus:`, sinEstatus.slice(0, 10));
+        }
+      }
+      
       setAllClients(clients);
       // Extraer vendedores únicos
       const uniqueVendors = [...new Set(clients.map(c => c.Vendedor).filter(v => v))];
@@ -2322,7 +2402,23 @@ Tu servicio de *Izzi* está listo para instalarse.
     // Filtrar por estatus según la pestaña activa (solo para módulo de cobranza)
     let matchesEstatus = true;
     if (currentModule === 'sales') {
-      const estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
+      // Normalizar el estatus antes de comparar
+      let estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
+      
+      // Normalizar valores comunes
+      const estatusUpper = estatus.toUpperCase();
+      if (estatusUpper === 'M1' || (estatusUpper.includes('M1') && !estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4'))) {
+        estatus = 'M1';
+      } else if (estatusUpper === 'M2' || (estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4'))) {
+        estatus = 'M2';
+      } else if (estatusUpper === 'M3' || (estatusUpper.includes('M3') && !estatusUpper.includes('M4'))) {
+        estatus = 'M3';
+      } else if (estatusUpper === 'M4' || estatusUpper.includes('M4')) {
+        estatus = 'M4';
+      } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+        estatus = 'FPD Corriente';
+      }
+      
       if (activeTab === 'm1') {
         // M1 incluye M1 y FPD Corriente
         matchesEstatus = estatus === 'M1' || estatus === 'FPD Corriente';
@@ -3678,6 +3774,15 @@ Tu servicio de *Izzi* está listo para instalarse.
                   docData.Estatus = estadoValue;
                 }
               }
+              
+              // Asegurar que el Estatus siempre esté normalizado (trim y string)
+              if (docData.Estatus) {
+                docData.Estatus = String(docData.Estatus).trim();
+              } else {
+                // Si después de todo no hay estatus, dejarlo vacío pero loguear para debug
+                console.warn(`⚠️ Registro sin Estatus detectado - Cuenta: ${docData.Cuenta || 'N/A'}, Cliente: ${docData.Cliente || 'N/A'}`);
+                docData.Estatus = '';
+              }
             }
             
             if (hasData) {
@@ -3703,6 +3808,36 @@ Tu servicio de *Izzi* está listo para instalarse.
         }
 
         console.log("Total registros procesados:", processedRows.length);
+        
+        // Verificar que todos los registros tienen Estatus (solo para sales_master)
+        if (currentModule === 'sales' || targetCollection === 'sales_master') {
+          const sinEstatus = processedRows.filter(r => !r.Estatus || r.Estatus.trim() === '');
+          const conEstatus = processedRows.filter(r => r.Estatus && r.Estatus.trim() !== '');
+          console.log(`📊 Resumen de Estatus - Con estatus: ${conEstatus.length}, Sin estatus: ${sinEstatus.length}`);
+          
+          // Contar por estatus
+          const porEstatus = {};
+          conEstatus.forEach(r => {
+            const est = r.Estatus.trim();
+            porEstatus[est] = (porEstatus[est] || 0) + 1;
+          });
+          console.log('📊 Distribución de Estatus:', porEstatus);
+          
+          if (sinEstatus.length > 0) {
+            console.warn(`⚠️ ${sinEstatus.length} registros sin Estatus detectados. Revisar lógica de detección.`);
+            console.warn('⚠️ Registros sin Estatus (primeros 5):', sinEstatus.slice(0, 5).map(r => ({
+              Cuenta: r.Cuenta || 'N/A',
+              Cliente: r.Cliente || 'N/A',
+              M: r.M || 'N/A',
+              M1: r.M1 || 'N/A',
+              M2: r.M2 || 'N/A',
+              M3: r.M3 || 'N/A',
+              M4: r.M4 || 'N/A',
+              'Estatus Cobranza': r['Estatus Cobranza'] || 'N/A',
+              'Estatus FPD': r['Estatus FPD'] || r.FPD || 'N/A'
+            })));
+          }
+        }
         
         if (processedRows.length === 0) {
           alert("No se encontraron datos válidos para subir. Verifica el mapeo de columnas.");
@@ -3897,8 +4032,17 @@ Tu servicio de *Izzi* está listo para instalarse.
                   clienteFinal = clienteExistente;
                 }
                 
+                // Asegurar que el Estatus se guarde correctamente (prioridad al nuevo calculado)
+                const estatusFinal = data.Estatus && String(data.Estatus).trim() 
+                  ? String(data.Estatus).trim() 
+                  : (existingData.Estatus && String(existingData.Estatus).trim() 
+                    ? String(existingData.Estatus).trim() 
+                    : '');
+                
                 const updateData = {
                   ...data,
+                  // Asegurar que Estatus siempre esté presente y normalizado
+                  Estatus: estatusFinal,
                   // Preservar vendedor asignado si ya estaba asignado
                   Vendedor: existingData.Vendedor || data.Vendedor || '',
                   VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
@@ -3911,6 +4055,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                   updatedAt: serverTimestamp()
                 };
                 
+                // Log para debug (solo algunos registros para no saturar)
+                if (chunkIndex === 0 && Math.random() < 0.1) {
+                  console.log(`📝 Actualizando registro - Cuenta: ${nCuenta}, Estatus: ${estatusFinal}`);
+                }
+                
                 // Crear referencia de documento correcta usando el ID
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
                 batch.update(docRef, updateData);
@@ -3918,9 +4067,19 @@ Tu servicio de *Izzi* está listo para instalarse.
               } else {
                 // Crear nuevo registro (solo si el Cliente no es "izzi")
                 if (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                  // Asegurar que el Estatus esté presente y normalizado
+                  const nuevoData = {
+                    ...data,
+                    Estatus: data.Estatus ? String(data.Estatus).trim() : '',
+                    createdAt: serverTimestamp()
+                  };
                   const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
-                  batch.set(ref, { ...data, createdAt: serverTimestamp() });
+                  batch.set(ref, nuevoData);
                   created++;
+                  // Log para debug (solo algunos registros para no saturar)
+                  if (chunkIndex === 0 && Math.random() < 0.1) {
+                    console.log(`✨ Creando nuevo registro - Cuenta: ${nCuenta}, Estatus: ${nuevoData.Estatus}`);
+                  }
                 } else {
                   console.log(`Ignorando registro con Cliente="izzi" o vacío (cuenta: ${nCuenta})`);
                 }
