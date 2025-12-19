@@ -996,6 +996,42 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
                 data.Estatus = 'FPD Corriente';
               }
             }
+            // Si aún no hay estatus, verificar "Estatus Cobranza" o "Estatus FPD"
+            if (!data.Estatus) {
+              const estatusCobranza = cleanValue(data['Estatus Cobranza'] || data.EstatusCobranza || '');
+              const estatusFPD = cleanValue(data['Estatus FPD'] || data.EstatusFPD || data.FPD || '');
+              if (estatusCobranza) {
+                const estatusUpper = estatusCobranza.toUpperCase();
+                if (estatusUpper.includes('M1') && !estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+                  data.Estatus = 'M1';
+                } else if (estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+                  data.Estatus = 'M2';
+                } else if (estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+                  data.Estatus = 'M3';
+                } else if (estatusUpper.includes('M4')) {
+                  data.Estatus = 'M4';
+                } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+                  data.Estatus = 'FPD Corriente';
+                } else {
+                  data.Estatus = estatusCobranza;
+                }
+              } else if (estatusFPD) {
+                const estatusUpper = estatusFPD.toUpperCase();
+                if (estatusUpper.includes('M1') && !estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+                  data.Estatus = 'M1';
+                } else if (estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+                  data.Estatus = 'M2';
+                } else if (estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+                  data.Estatus = 'M3';
+                } else if (estatusUpper.includes('M4')) {
+                  data.Estatus = 'M4';
+                } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+                  data.Estatus = 'FPD Corriente';
+                } else {
+                  data.Estatus = estatusFPD;
+                }
+              }
+            }
           }
         }
         return { id: d.id, ...data };
@@ -2902,9 +2938,53 @@ Tu servicio de *Izzi* está listo para instalarse.
   };
 
   const fetchPreview = async () => {
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), limit(50));
-    const snap = await getDocs(q);
-    setPreviewData(snap.docs.map(d => d.data()));
+    try {
+      const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), limit(50));
+      const snap = await getDocs(q);
+      const data = snap.docs.map(d => {
+        const docData = d.data();
+        // Aplicar la misma normalización de estatus que en la carga principal
+        if (currentModule === 'sales' || collectionName === 'sales_master') {
+          if (!docData.Estatus && docData.M) {
+            const mValue = String(docData.M || '').trim().toUpperCase();
+            if (mValue.includes('MS_1') || mValue.includes('MS1')) {
+              const m1Value = String(docData.M1 || '0').trim();
+              docData.Estatus = m1Value === '1' ? 'M1' : 'FPD Corriente';
+            } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
+              const m2Value = String(docData.M2 || '0').trim();
+              docData.Estatus = m2Value === '1' ? 'M2' : 'FPD Corriente';
+            } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
+              const m3Value = String(docData.M3 || '0').trim();
+              docData.Estatus = m3Value === '1' ? 'M3' : 'FPD Corriente';
+            } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
+              const m4Value = String(docData.M4 || '0').trim();
+              docData.Estatus = m4Value === '1' ? 'M4' : 'FPD Corriente';
+            }
+          } else if (!docData.Estatus && (docData.M1 || docData.M2 || docData.M3 || docData.M4)) {
+            const m4Value = String(docData.M4 || '0').trim();
+            const m3Value = String(docData.M3 || '0').trim();
+            const m2Value = String(docData.M2 || '0').trim();
+            const m1Value = String(docData.M1 || '0').trim();
+            if (m4Value === '1') {
+              docData.Estatus = 'M4';
+            } else if (m3Value === '1') {
+              docData.Estatus = 'M3';
+            } else if (m2Value === '1') {
+              docData.Estatus = 'M2';
+            } else if (m1Value === '1') {
+              docData.Estatus = 'M1';
+            } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
+              docData.Estatus = 'FPD Corriente';
+            }
+          }
+        }
+        return docData;
+      });
+      setPreviewData(data);
+    } catch (error) {
+      console.error('Error al cargar vista previa:', error);
+      setPreviewData([]);
+    }
   };
 
   useEffect(() => { if (activeTab === 'view') fetchPreview(); }, [activeTab, currentModule]);
@@ -6105,7 +6185,9 @@ Tu servicio de *Izzi* está listo para instalarse.
         {activeTab === 'view' && (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                <h3 className="font-bold text-slate-800 mb-4">Vista Previa ({collectionName}) - {previewData.length} registros</h3>
-               {previewData.length === 0 ? <div className="text-center py-10 text-slate-400">Vacío. (Sube datos desde la pestaña Cargar)</div> : 
+               {previewData.length === 0 ? (
+                 <div className="text-center py-10 text-slate-400">Vacío. (Sube datos desde la pestaña Cargar)</div>
+               ) : previewData[0] && Object.keys(previewData[0]).length > 0 ? (
                    <div className="overflow-x-auto">
                      <table className="w-full text-sm text-left">
                        <thead className="bg-slate-50 font-bold text-xs uppercase">
@@ -6114,15 +6196,17 @@ Tu servicio de *Izzi* está listo para instalarse.
                        <tbody className="divide-y divide-slate-100">
                          {previewData.map((r,i) => (
                            <tr key={i}>
-                             {Object.keys(r).filter(k=>k!=='normalized_resp').map(k=>(
-                               <td key={k} className="p-3 text-xs max-w-[200px] truncate">{r[k]}</td>
+                             {Object.keys(r || {}).filter(k=>k!=='normalized_resp').map(k=>(
+                               <td key={k} className="p-3 text-xs max-w-[200px] truncate">{String(r[k] || '')}</td>
                              ))}
                            </tr>
                          ))}
                        </tbody>
                      </table>
                    </div>
-               }
+               ) : (
+                 <div className="text-center py-10 text-slate-400">Error al cargar datos. Intenta recargar la página.</div>
+               )}
             </div>
         )}
 
