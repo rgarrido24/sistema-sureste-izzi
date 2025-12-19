@@ -3808,17 +3808,23 @@ Tu servicio de *Izzi* está listo para instalarse.
           }
         } else if (currentModule === 'sales' || targetCollection === 'sales_master') {
           // Para cobranza: actualizar existentes por número de cuenta o crear nuevos
-          // Usar lotes más pequeños para evitar bloqueos (reducido para mejor rendimiento)
+          // Usar lotes MUY pequeños para evitar bloqueos, especialmente para archivos grandes
           const chunks = [];
-          for (let i = 0; i < processedRows.length; i += 100) {
-            chunks.push(processedRows.slice(i, i + 100));
+          const chunkSize = processedRows.length > 10000 ? 25 : 50; // Lotes más pequeños para archivos grandes
+          for (let i = 0; i < processedRows.length; i += chunkSize) {
+            chunks.push(processedRows.slice(i, i + chunkSize));
           }
+          
+          console.log(`Total de lotes a subir: ${chunks.length} (tamaño de lote: ${chunkSize})`);
           
           for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
             const chunk = chunks[chunkIndex];
-            const batch = writeBatch(db);
+            setProgress(`Subiendo lote ${chunkIndex + 1} de ${chunks.length} (${chunkIndex * chunkSize + 1} a ${Math.min((chunkIndex + 1) * chunkSize, processedRows.length)} de ${processedRows.length})...`);
             
-            for (const data of chunk) {
+            try {
+              const batch = writeBatch(db);
+              
+              for (const data of chunk) {
               const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
               
               if (nCuenta && existingSales.has(nCuenta)) {
@@ -3899,11 +3905,21 @@ Tu servicio de *Izzi* está listo para instalarse.
             }
             
             await batch.commit();
-            setProgress(`Procesando: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
-            console.log(`Procesados ${inserted} de ${processedRows.length} (lote ${chunkIndex + 1} de ${chunks.length})`);
-            // Pausa más larga entre lotes para evitar bloqueos (aumentada para mejor rendimiento)
+            setProgress(`Subido: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
+            console.log(`✅ Lote ${chunkIndex + 1}/${chunks.length} subido: ${inserted}/${processedRows.length} (${updated} actualizados, ${created} nuevos)`);
+            
+            // Pausa más larga entre lotes para evitar bloqueos y dar tiempo a Firestore
             if (chunkIndex < chunks.length - 1) {
-              await new Promise(r => setTimeout(r, 300));
+              // Pausa progresiva: más tiempo entre lotes al final
+              const pauseTime = chunkIndex > chunks.length * 0.8 ? 500 : 200;
+              await new Promise(r => setTimeout(r, pauseTime));
+            }
+            } catch (error) {
+              console.error(`Error en lote ${chunkIndex + 1}:`, error);
+              setProgress(`Error en lote ${chunkIndex + 1}: ${error.message}. Reintentando...`);
+              // Reintentar el lote una vez
+              await new Promise(r => setTimeout(r, 1000));
+              chunkIndex--; // Volver a intentar este lote
             }
           }
         } else {
