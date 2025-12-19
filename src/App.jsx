@@ -814,6 +814,8 @@ function AdminDashboard({ user, currentModule, setModule }) {
   // Estados para filtros de instalaciones (por ciudad/estado)
   const [filterCiudad, setFilterCiudad] = useState('');
   const [ciudades, setCiudades] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(100);
   
   // Estados para filtros de reportes
   const [filterReportVendor, setFilterReportVendor] = useState('');
@@ -2322,13 +2324,17 @@ Tu servicio de *Izzi* está listo para instalarse.
     if (currentModule === 'sales') {
       const estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
       if (activeTab === 'm1') {
-        matchesEstatus = estatus === 'M1' || estatus === 'FPD Corriente' || estatus.includes('M1');
+        // M1 incluye M1 y FPD Corriente
+        matchesEstatus = estatus === 'M1' || estatus === 'FPD Corriente';
       } else if (activeTab === 'm2') {
-        matchesEstatus = estatus === 'M2' || estatus === 'FPD Corriente' || estatus.includes('M2');
+        // M2 solo muestra M2 (sin FPD Corriente)
+        matchesEstatus = estatus === 'M2';
       } else if (activeTab === 'm3') {
-        matchesEstatus = estatus === 'M3' || estatus === 'FPD Corriente' || estatus.includes('M3');
+        // M3 solo muestra M3 (sin FPD Corriente)
+        matchesEstatus = estatus === 'M3';
       } else if (activeTab === 'm4') {
-        matchesEstatus = estatus === 'M4' || estatus === 'FPD Corriente' || estatus.includes('M4');
+        // M4 solo muestra M4 (sin FPD Corriente)
+        matchesEstatus = estatus === 'M4';
       } else if (activeTab === 'clients') {
         // En la pestaña "Clientes" del módulo de cobranza, mostrar todos
         matchesEstatus = true;
@@ -2806,6 +2812,11 @@ Tu servicio de *Izzi* está listo para instalarse.
   };
 
   useEffect(() => { if (activeTab === 'view') fetchPreview(); }, [activeTab, currentModule]);
+  
+  // Resetear página cuando cambie la pestaña activa o los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchTerm, filterVendor, filterCiudad, currentModule]);
 
   // COLUMNAS QUE NOS INTERESAN (el resto se ignora automáticamente)
   const COLUMNAS_IMPORTANTES = {
@@ -3598,32 +3609,40 @@ Tu servicio de *Izzi* está listo para instalarse.
                   const m1Value = String(docData.M1 || '0').trim();
                   if (m1Value === '1') {
                     docData.Estatus = 'M1';
+                    console.log(`✅ Detectado M1: M=${mValue}, M1=${m1Value} → Estatus=M1`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
+                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M1=${m1Value} → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
                   // Verificar columna M2: 1 = debe M2, 0 = FPD Corriente
                   const m2Value = String(docData.M2 || '0').trim();
                   if (m2Value === '1') {
                     docData.Estatus = 'M2';
+                    console.log(`✅ Detectado M2: M=${mValue}, M2=${m2Value} → Estatus=M2`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
+                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M2=${m2Value} → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
                   // Verificar columna M3: 1 = debe M3, 0 = FPD Corriente
                   const m3Value = String(docData.M3 || '0').trim();
                   if (m3Value === '1') {
                     docData.Estatus = 'M3';
+                    console.log(`✅ Detectado M3: M=${mValue}, M3=${m3Value} → Estatus=M3`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
+                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M3=${m3Value} → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
                   // Verificar columna M4: 1 = debe M4, 0 = FPD Corriente
                   const m4Value = String(docData.M4 || '0').trim();
                   if (m4Value === '1') {
                     docData.Estatus = 'M4';
+                    console.log(`✅ Detectado M4: M=${mValue}, M4=${m4Value} → Estatus=M4`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
+                    console.log(`✅ Detectado FPD Corriente: M=${mValue}, M4=${m4Value} → Estatus=FPD Corriente`);
                   }
                 }
               } else {
@@ -3635,15 +3654,20 @@ Tu servicio de *Izzi* está listo para instalarse.
                 
                 if (m4Value === '1') {
                   docData.Estatus = 'M4';
+                  console.log(`✅ Detectado M4 directo: M4=${m4Value} → Estatus=M4`);
                 } else if (m3Value === '1') {
                   docData.Estatus = 'M3';
+                  console.log(`✅ Detectado M3 directo: M3=${m3Value} → Estatus=M3`);
                 } else if (m2Value === '1') {
                   docData.Estatus = 'M2';
+                  console.log(`✅ Detectado M2 directo: M2=${m2Value} → Estatus=M2`);
                 } else if (m1Value === '1') {
                   docData.Estatus = 'M1';
+                  console.log(`✅ Detectado M1 directo: M1=${m1Value} → Estatus=M1`);
                 } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
                   // Si todos son 0, es FPD Corriente
                   docData.Estatus = 'FPD Corriente';
+                  console.log(`✅ Detectado FPD Corriente: M1=${m1Value}, M2=${m2Value}, M3=${m3Value}, M4=${m4Value} → Estatus=FPD Corriente`);
                 }
               }
               
@@ -4044,10 +4068,13 @@ Tu servicio de *Izzi* está listo para instalarse.
                 <p className="text-blue-100 text-sm">Clientes en Sistema</p>
                 <div className="mt-3 pt-3 border-t border-blue-400/30">
                   <div className="flex justify-between text-xs">
-                    <span className="text-blue-100">M1: {allClients.filter(c => (c.Estatus || '').includes('M1') || (c.Estatus || '') === 'FPD Corriente').length}</span>
-                    <span className="text-blue-100">M2: {allClients.filter(c => (c.Estatus || '').includes('M2')).length}</span>
-                    <span className="text-blue-100">M3: {allClients.filter(c => (c.Estatus || '').includes('M3')).length}</span>
-                    <span className="text-blue-100">M4: {allClients.filter(c => (c.Estatus || '').includes('M4')).length}</span>
+                    <span className="text-blue-100">M1: {allClients.filter(c => {
+                      const estatus = (c.Estatus || '').toString().trim();
+                      return estatus === 'M1' || estatus === 'FPD Corriente';
+                    }).length}</span>
+                    <span className="text-blue-100">M2: {allClients.filter(c => (c.Estatus || '').toString().trim() === 'M2').length}</span>
+                    <span className="text-blue-100">M3: {allClients.filter(c => (c.Estatus || '').toString().trim() === 'M3').length}</span>
+                    <span className="text-blue-100">M4: {allClients.filter(c => (c.Estatus || '').toString().trim() === 'M4').length}</span>
                   </div>
                 </div>
               </div>
@@ -4320,7 +4347,14 @@ Tu servicio de *Izzi* está listo para instalarse.
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {['M1', 'M2', 'M3', 'M4'].map(estatus => {
-                    const count = allClients.filter(c => (c.Estatus || '').includes(estatus) || (estatus === 'M1' && (c.Estatus || '') === 'FPD Corriente')).length;
+                    const count = allClients.filter(c => {
+                      const estatusValue = (c.Estatus || '').toString().trim();
+                      if (estatus === 'M1') {
+                        return estatusValue === 'M1' || estatusValue === 'FPD Corriente';
+                      } else {
+                        return estatusValue === estatus;
+                      }
+                    }).length;
                     const total = allClients.filter(c => currentModule === 'sales' || c.Estatus).length;
                     const porcentaje = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
                     return (
@@ -4542,9 +4576,68 @@ Tu servicio de *Izzi* está listo para instalarse.
               </div>
             </div>
 
+            {/* Controles de paginación - Superior */}
+            {filteredClients.length > itemsPerPage && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 mb-4 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">Mostrando:</span>
+                  <select 
+                    value={itemsPerPage} 
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold"
+                  >
+                    <option value={50}>50 por página</option>
+                    <option value={100}>100 por página</option>
+                    <option value={200}>200 por página</option>
+                    <option value={500}>500 por página</option>
+                    <option value={1000}>1000 por página</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">
+                    Página {currentPage} de {Math.ceil(filteredClients.length / itemsPerPage)} 
+                    ({filteredClients.length} total)
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      ««
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      «
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredClients.length / itemsPerPage), p + 1))}
+                      disabled={currentPage === Math.ceil(filteredClients.length / itemsPerPage)}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      »
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(Math.ceil(filteredClients.length / itemsPerPage))}
+                      disabled={currentPage === Math.ceil(filteredClients.length / itemsPerPage)}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      »»
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Lista de clientes */}
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {filteredClients.slice(0, 100).map((c, i) => (
+              {filteredClients.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((c, i) => (
                 <div key={c.id || i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
                   {/* Encabezado */}
                   <div className="flex justify-between mb-2">
@@ -4620,9 +4713,12 @@ Tu servicio de *Izzi* está listo para instalarse.
                       (c.Estatus || c.Estado || c['Estado'])?.toLowerCase() === 'instalado' ? 'bg-green-100 text-green-700' :
                       (c.Estatus || c.Estado || c['Estado']) === 'M1' ? 'bg-amber-100 text-amber-700' : 
                       (c.Estatus || c.Estado || c['Estado']) === 'M2' ? 'bg-orange-100 text-orange-700' :
+                      (c.Estatus || c.Estado || c['Estado']) === 'M3' ? 'bg-red-100 text-red-700' :
+                      (c.Estatus || c.Estado || c['Estado']) === 'M4' ? 'bg-pink-100 text-pink-700' :
+                      (c.Estatus || c.Estado || c['Estado']) === 'FPD Corriente' ? 'bg-blue-100 text-blue-700' :
                       'bg-slate-100 text-slate-500'
                     }`}>{c.Estatus || c.Estado || c['Estado'] || 'Sin estatus'}</span>
-                    {((c.Estatus || c.Estado || c['Estado']) === 'M1' || (c.Estatus || c.Estado || c['Estado']) === 'M2') && (
+                    {((c.Estatus || c.Estado || c['Estado']) === 'M1' || (c.Estatus || c.Estado || c['Estado']) === 'M2' || (c.Estatus || c.Estado || c['Estado']) === 'M3' || (c.Estatus || c.Estado || c['Estado']) === 'M4') && (
                       <button
                         onClick={() => {
                           setEditingPhoneClient(c);
@@ -4667,8 +4763,63 @@ Tu servicio de *Izzi* está listo para instalarse.
               ))}
             </div>
 
-            {filteredClients.length > 100 && (
-              <p className="text-center text-slate-400 text-sm">Mostrando primeros 100 de {filteredClients.length} resultados. Usa los filtros para ver más específicos.</p>
+            {/* Controles de paginación - Inferior */}
+            {filteredClients.length > itemsPerPage && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">Mostrando:</span>
+                  <select 
+                    value={itemsPerPage} 
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold"
+                  >
+                    <option value={50}>50 por página</option>
+                    <option value={100}>100 por página</option>
+                    <option value={200}>200 por página</option>
+                    <option value={500}>500 por página</option>
+                    <option value={1000}>1000 por página</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">
+                    Página {currentPage} de {Math.ceil(filteredClients.length / itemsPerPage)} 
+                    ({filteredClients.length} total)
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      ««
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      «
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredClients.length / itemsPerPage), p + 1))}
+                      disabled={currentPage === Math.ceil(filteredClients.length / itemsPerPage)}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      »
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(Math.ceil(filteredClients.length / itemsPerPage))}
+                      disabled={currentPage === Math.ceil(filteredClients.length / itemsPerPage)}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-200"
+                    >
+                      »»
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {filteredClients.length === 0 && (
