@@ -172,7 +172,9 @@ async function loginUser(username, password) {
   try {
     const appId = 'sales-master-production';
     const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
-    const q = query(usersRef, where('username', '==', username.toLowerCase()));
+    // Limpiar username: quitar espacios y convertir a minúsculas
+    const cleanUsername = username.trim().toLowerCase();
+    const q = query(usersRef, where('username', '==', cleanUsername));
     const snapshot = await getDocs(q);
     
     if (snapshot.empty) {
@@ -181,6 +183,11 @@ async function loginUser(username, password) {
     
     const userDoc = snapshot.docs[0];
     const userData = userDoc.data();
+    
+    // Verificar contraseña - si no hay passwordHash, puede ser un usuario antiguo
+    if (!userData.passwordHash) {
+      return { success: false, error: 'Usuario sin contraseña configurada. Contacta al administrador.' };
+    }
     
     if (!verifyPassword(password, userData.passwordHash)) {
       return { success: false, error: 'Contraseña incorrecta' };
@@ -197,6 +204,7 @@ async function loginUser(username, password) {
       }
     };
   } catch (error) {
+    console.error('Error en login:', error);
     return { success: false, error: error.message };
   }
 }
@@ -207,8 +215,11 @@ async function createUser(username, password, name, role, email = '') {
     const appId = 'sales-master-production';
     const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
     
+    // Limpiar username: quitar espacios y convertir a minúsculas
+    const cleanUsername = username.trim().toLowerCase();
+    
     // Verificar si el usuario ya existe
-    const q = query(usersRef, where('username', '==', username.toLowerCase()));
+    const q = query(usersRef, where('username', '==', cleanUsername));
     const snapshot = await getDocs(q);
     
     if (!snapshot.empty) {
@@ -216,17 +227,43 @@ async function createUser(username, password, name, role, email = '') {
     }
     
     const passwordHash = hashPassword(password);
-    await addDoc(usersRef, {
-      username: username.toLowerCase(),
+    const userData = {
+      username: cleanUsername,
       passwordHash,
-      name,
+      name: name.trim(),
       role,
-      email,
+      email: email.trim(),
       createdAt: serverTimestamp()
-    });
+    };
     
-    return { success: true };
+    const docRef = await addDoc(usersRef, userData);
+    
+    // Si es un usuario vendedor, auto-asignar cuentas con ese nombre
+    if (role === 'vendor' || role === 'vendedor') {
+      try {
+        const salesRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
+        const salesQuery = query(salesRef, where('Vendedor', '==', name.trim()));
+        const salesSnapshot = await getDocs(salesQuery);
+        
+        if (!salesSnapshot.empty) {
+          const batch = writeBatch(db);
+          let count = 0;
+          salesSnapshot.docs.forEach(doc => {
+            batch.update(doc.ref, { VendedorAsignado: name.trim() });
+            count++;
+          });
+          await batch.commit();
+          console.log(`✅ Auto-asignadas ${count} cuentas al vendedor ${name.trim()}`);
+        }
+      } catch (error) {
+        console.error('Error al auto-asignar cuentas:', error);
+        // No fallar la creación del usuario si esto falla
+      }
+    }
+    
+    return { success: true, userId: docRef.id };
   } catch (error) {
+    console.error('Error al crear usuario:', error);
     return { success: false, error: error.message };
   }
 }
@@ -1639,11 +1676,137 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'users', userId));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId));
       alert('✅ Usuario eliminado permanentemente');
     } catch (error) {
       console.error('Error al eliminar usuario:', error);
       alert('Error al eliminar el usuario: ' + error.message);
+    }
+  };
+
+  // Función para actualizar estatus de todos los clientes basándose en M, M1, M2, M3, M4
+  const actualizarEstatusClientes = async () => {
+    if (!confirm('¿Actualizar los estatus de todos los clientes basándose en las columnas M, M1, M2, M3, M4?\n\nEsto puede tomar varios minutos...')) {
+      return;
+    }
+    
+    try {
+      setProgress('Cargando clientes...');
+      const salesRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
+      const snapshot = await getDocs(salesRef);
+      const clients = snapshot.docs;
+      
+      setProgress(`Procesando ${clients.length} clientes...`);
+      let updated = 0;
+      let batch = writeBatch(db);
+      let batchCount = 0;
+      const BATCH_SIZE = 500;
+      
+      for (let i = 0; i < clients.length; i++) {
+        const clientDoc = clients[i];
+        const clientData = clientDoc.data();
+        
+        // Determinar estatus basándose en M, M1, M2, M3, M4
+        let nuevoEstatus = clientData.Estatus || '';
+        
+        // Si ya tiene un estatus válido, mantenerlo
+        const estatusActual = (clientData.Estatus || '').toString().trim().toUpperCase();
+        if (estatusActual === 'M1' || estatusActual === 'M2' || estatusActual === 'M3' || estatusActual === 'M4' || estatusActual.includes('FPD')) {
+          continue; // Ya tiene estatus válido, saltar
+        }
+        
+        // Intentar detectar desde Estatus Cobranza o Estatus FPD
+        const estatusCobranza = cleanValue(clientData['Estatus Cobranza'] || clientData.EstatusCobranza || '');
+        const estatusFPD = cleanValue(clientData['Estatus FPD'] || clientData.EstatusFPD || clientData.FPD || '');
+        
+        if (estatusCobranza) {
+          const estatusUpper = estatusCobranza.toUpperCase();
+          if (estatusUpper.includes('M1') && !estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M1';
+          } else if (estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M2';
+          } else if (estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M3';
+          } else if (estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M4';
+          } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+            nuevoEstatus = 'FPD Corriente';
+          }
+        } else if (estatusFPD) {
+          const estatusUpper = estatusFPD.toUpperCase();
+          if (estatusUpper.includes('M1') && !estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M1';
+          } else if (estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M2';
+          } else if (estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M3';
+          } else if (estatusUpper.includes('M4')) {
+            nuevoEstatus = 'M4';
+          } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
+            nuevoEstatus = 'FPD Corriente';
+          }
+        } else if (clientData.M) {
+          const mValue = String(clientData.M || '').trim().toUpperCase();
+          const m1Value = String(clientData.M1 || '0').trim();
+          const m2Value = String(clientData.M2 || '0').trim();
+          const m3Value = String(clientData.M3 || '0').trim();
+          const m4Value = String(clientData.M4 || '0').trim();
+          
+          if (mValue.includes('MS_1') || mValue.includes('MS1')) {
+            nuevoEstatus = (m1Value === '1' || m1Value === 1) ? 'M1' : 'FPD Corriente';
+          } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
+            nuevoEstatus = (m2Value === '1' || m2Value === 1) ? 'M2' : 'FPD Corriente';
+          } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
+            nuevoEstatus = (m3Value === '1' || m3Value === 1) ? 'M3' : 'FPD Corriente';
+          } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
+            nuevoEstatus = (m4Value === '1' || m4Value === 1) ? 'M4' : 'FPD Corriente';
+          }
+        } else if (clientData.M1 || clientData.M2 || clientData.M3 || clientData.M4) {
+          const m4Value = String(clientData.M4 || '0').trim();
+          const m3Value = String(clientData.M3 || '0').trim();
+          const m2Value = String(clientData.M2 || '0').trim();
+          const m1Value = String(clientData.M1 || '0').trim();
+          
+          if (m4Value === '1' || m4Value === 1) {
+            nuevoEstatus = 'M4';
+          } else if (m3Value === '1' || m3Value === 1) {
+            nuevoEstatus = 'M3';
+          } else if (m2Value === '1' || m2Value === 1) {
+            nuevoEstatus = 'M2';
+          } else if (m1Value === '1' || m1Value === 1) {
+            nuevoEstatus = 'M1';
+          } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
+            nuevoEstatus = 'FPD Corriente';
+          }
+        }
+        
+        // Si se detectó un nuevo estatus, actualizar
+        if (nuevoEstatus && nuevoEstatus !== clientData.Estatus) {
+          batch.update(clientDoc.ref, { Estatus: nuevoEstatus });
+          updated++;
+          batchCount++;
+          
+          if (batchCount >= BATCH_SIZE) {
+            await batch.commit();
+            setProgress(`Actualizados ${updated} de ${clients.length} clientes...`);
+            batch = writeBatch(db);
+            batchCount = 0;
+            await new Promise(r => setTimeout(r, 100));
+          }
+        }
+      }
+      
+      // Commit del último batch
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+      
+      setProgress('');
+      alert(`✅ Actualización completada:\n${updated} clientes actualizados\n${clients.length - updated} clientes sin cambios`);
+    } catch (error) {
+      console.error('Error al actualizar estatus:', error);
+      alert('Error al actualizar estatus: ' + error.message);
+      setProgress('');
     }
   };
 
@@ -2508,8 +2671,17 @@ Tu servicio de *Izzi* está listo para instalarse.
 
   // Filtrar clientes (sin región para cobranza, con ciudad para instalaciones)
   const filteredClients = allClients.filter(c => {
+    // Si el usuario es vendedor, solo mostrar sus cuentas asignadas
+    if ((user?.role === 'vendor' || user?.role === 'vendedor') && vendorName) {
+      const vendedorMatch = (c.Vendedor || '').trim() === vendorName.trim() || 
+                           (c.VendedorAsignado || '').trim() === vendorName.trim() ||
+                           (c.Vendedor || '').trim() === user.name.trim() ||
+                           (c.VendedorAsignado || '').trim() === user.name.trim();
+      if (!vendedorMatch) return false;
+    }
+    
     const matchesSearch = searchTerm === '' || JSON.stringify(c).toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor;
+    const matchesVendor = filterVendor === '' || c.Vendedor === filterVendor || c.VendedorAsignado === filterVendor;
     // Si es módulo de instalaciones, filtrar por ciudad también
     const matchesCiudad = currentModule !== 'install' || filterCiudad === '' || c.Ciudad === filterCiudad || c.Plaza === filterCiudad || c.Region === filterCiudad;
     
@@ -2518,6 +2690,35 @@ Tu servicio de *Izzi* está listo para instalarse.
     if (currentModule === 'sales') {
       // Normalizar el estatus antes de comparar
       let estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
+      
+      // Si no hay estatus, intentar detectarlo de los campos M, M1, M2, M3, M4
+      if (!estatus || estatus === '' || estatus === 'Sin estatus') {
+        const mValue = String(c.M || '').trim().toUpperCase();
+        const m1Value = String(c.M1 || '0').trim();
+        const m2Value = String(c.M2 || '0').trim();
+        const m3Value = String(c.M3 || '0').trim();
+        const m4Value = String(c.M4 || '0').trim();
+        
+        if (mValue.includes('MS_1') || mValue.includes('MS1')) {
+          estatus = (m1Value === '1' || m1Value === 1) ? 'M1' : 'FPD Corriente';
+        } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
+          estatus = (m2Value === '1' || m2Value === 1) ? 'M2' : 'FPD Corriente';
+        } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
+          estatus = (m3Value === '1' || m3Value === 1) ? 'M3' : 'FPD Corriente';
+        } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
+          estatus = (m4Value === '1' || m4Value === 1) ? 'M4' : 'FPD Corriente';
+        } else if (m4Value === '1' || m4Value === 1) {
+          estatus = 'M4';
+        } else if (m3Value === '1' || m3Value === 1) {
+          estatus = 'M3';
+        } else if (m2Value === '1' || m2Value === 1) {
+          estatus = 'M2';
+        } else if (m1Value === '1' || m1Value === 1) {
+          estatus = 'M1';
+        } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
+          estatus = 'FPD Corriente';
+        }
+      }
       
       // Normalizar valores comunes
       const estatusUpper = estatus.toUpperCase();
@@ -4521,6 +4722,32 @@ Tu servicio de *Izzi* está listo para instalarse.
                 </div>
               </div>
             </div>
+
+            {/* Herramientas Administrativas */}
+            {user?.role === 'admin' || user?.role === 'admin_general' ? (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <Settings size={20} className="text-blue-600"/>
+                  Herramientas Administrativas
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={actualizarEstatusClientes}
+                    disabled={!!progress}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <RefreshCw size={20} className={progress ? 'animate-spin' : ''}/>
+                    {progress || 'Actualizar Estatus de Clientes'}
+                  </button>
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-800 font-semibold mb-1">Actualizar Estatus</p>
+                    <p className="text-xs text-blue-600">
+                      Actualiza los estatus (M1, M2, M3, M4, FPD Corriente) de todos los clientes basándose en las columnas M, M1, M2, M3, M4 del archivo cargado.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Panel de Uso de Recursos */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
