@@ -174,25 +174,51 @@ async function loginUser(username, password) {
     const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
     // Limpiar username: quitar espacios y convertir a minúsculas
     const cleanUsername = username.trim().toLowerCase();
+    console.log('🔐 Intentando login:', { cleanUsername, passwordLength: password.length });
+    
     const q = query(usersRef, where('username', '==', cleanUsername));
     const snapshot = await getDocs(q);
     
+    console.log('📊 Usuarios encontrados:', snapshot.size);
+    
     if (snapshot.empty) {
-      return { success: false, error: 'Usuario no encontrado' };
+      // Intentar buscar sin normalizar para debug
+      const allUsers = await getDocs(usersRef);
+      const allUsernames = allUsers.docs.map(d => d.data().username);
+      console.log('👥 Todos los usuarios en BD:', allUsernames);
+      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsernames.join(', ')}` };
     }
     
     const userDoc = snapshot.docs[0];
     const userData = userDoc.data();
     
+    console.log('👤 Datos del usuario:', {
+      id: userDoc.id,
+      username: userData.username,
+      hasPasswordHash: !!userData.passwordHash,
+      passwordHashLength: userData.passwordHash?.length
+    });
+    
     // Verificar contraseña - si no hay passwordHash, puede ser un usuario antiguo
     if (!userData.passwordHash) {
+      console.error('❌ Usuario sin passwordHash');
       return { success: false, error: 'Usuario sin contraseña configurada. Contacta al administrador.' };
     }
     
-    if (!verifyPassword(password, userData.passwordHash)) {
+    const passwordHashCalculado = hashPassword(password);
+    const passwordMatch = passwordHashCalculado === userData.passwordHash;
+    
+    console.log('🔑 Verificación de contraseña:', {
+      passwordHashCalculado: passwordHashCalculado.substring(0, 10) + '...',
+      passwordHashGuardado: userData.passwordHash.substring(0, 10) + '...',
+      match: passwordMatch
+    });
+    
+    if (!passwordMatch) {
       return { success: false, error: 'Contraseña incorrecta' };
     }
     
+    console.log('✅ Login exitoso');
     return { 
       success: true, 
       user: {
@@ -204,7 +230,7 @@ async function loginUser(username, password) {
       }
     };
   } catch (error) {
-    console.error('Error en login:', error);
+    console.error('❌ Error en login:', error);
     return { success: false, error: error.message };
   }
 }
@@ -218,15 +244,20 @@ async function createUser(username, password, name, role, email = '') {
     // Limpiar username: quitar espacios y convertir a minúsculas
     const cleanUsername = username.trim().toLowerCase();
     
+    console.log('➕ Creando usuario:', { cleanUsername, name, role, passwordLength: password.length });
+    
     // Verificar si el usuario ya existe
     const q = query(usersRef, where('username', '==', cleanUsername));
     const snapshot = await getDocs(q);
     
     if (!snapshot.empty) {
+      console.log('⚠️ Usuario ya existe');
       return { success: false, error: 'El usuario ya existe' };
     }
     
     const passwordHash = hashPassword(password);
+    console.log('🔑 Hash generado:', passwordHash.substring(0, 10) + '...');
+    
     const userData = {
       username: cleanUsername,
       passwordHash,
@@ -236,7 +267,9 @@ async function createUser(username, password, name, role, email = '') {
       createdAt: serverTimestamp()
     };
     
+    console.log('💾 Guardando usuario:', { ...userData, passwordHash: '***' });
     const docRef = await addDoc(usersRef, userData);
+    console.log('✅ Usuario creado con ID:', docRef.id);
     
     // Si es un usuario vendedor, auto-asignar cuentas con ese nombre
     if (role === 'vendor' || role === 'vendedor') {
@@ -1676,10 +1709,22 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', userId));
+      console.log('🗑️ Eliminando usuario con ID:', userId);
+      const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userId);
+      
+      // Verificar que existe antes de eliminar
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        alert('⚠️ El usuario no existe en la base de datos');
+        return;
+      }
+      
+      console.log('📋 Datos del usuario a eliminar:', userSnap.data());
+      await deleteDoc(userRef);
+      console.log('✅ Usuario eliminado');
       alert('✅ Usuario eliminado permanentemente');
     } catch (error) {
-      console.error('Error al eliminar usuario:', error);
+      console.error('❌ Error al eliminar usuario:', error);
       alert('Error al eliminar el usuario: ' + error.message);
     }
   };
