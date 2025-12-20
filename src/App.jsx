@@ -1706,11 +1706,11 @@ Tu servicio de *Izzi* está listo para instalarse.
         const clientDoc = clients[i];
         const clientData = clientDoc.data();
         
-        // Determinar estatus basándose en M, M1, M2, M3, M4
+        // Determinar estatus basándose en M, M1, M2, M3, M4 (SIEMPRE recalcular desde cero)
         let nuevoEstatus = null;
         const estatusActual = (clientData.Estatus || '').toString().trim();
         
-        // Intentar detectar desde Estatus Cobranza o Estatus FPD
+        // PRIORIDAD 1: Intentar detectar desde Estatus Cobranza o Estatus FPD
         const estatusCobranza = cleanValue(clientData['Estatus Cobranza'] || clientData.EstatusCobranza || '');
         const estatusFPD = cleanValue(clientData['Estatus FPD'] || clientData.EstatusFPD || clientData.FPD || '');
         
@@ -1727,7 +1727,9 @@ Tu servicio de *Izzi* está listo para instalarse.
           } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
             nuevoEstatus = 'FPD Corriente';
           }
-        } else if (estatusFPD) {
+        }
+        
+        if (!nuevoEstatus && estatusFPD) {
           const estatusUpper = estatusFPD.toUpperCase();
           if (estatusUpper.includes('M1') && !estatusUpper.includes('M2') && !estatusUpper.includes('M3') && !estatusUpper.includes('M4')) {
             nuevoEstatus = 'M1';
@@ -1740,7 +1742,9 @@ Tu servicio de *Izzi* está listo para instalarse.
           } else if (estatusUpper.includes('FPD') || estatusUpper.includes('CORRIENTE')) {
             nuevoEstatus = 'FPD Corriente';
           }
-        } else if (clientData.M) {
+        } 
+        // PRIORIDAD 2: Si hay columna M con valores MS_1, MS_2, MS_3, MS_4
+        if (!nuevoEstatus && clientData.M) {
           const mValue = String(clientData.M || '').trim().toUpperCase();
           const m1Value = String(clientData.M1 || '0').trim();
           const m2Value = String(clientData.M2 || '0').trim();
@@ -1748,36 +1752,53 @@ Tu servicio de *Izzi* está listo para instalarse.
           const m4Value = String(clientData.M4 || '0').trim();
           
           if (mValue.includes('MS_1') || mValue.includes('MS1')) {
-            nuevoEstatus = (m1Value === '1' || m1Value === 1) ? 'M1' : 'FPD Corriente';
+            nuevoEstatus = (m1Value === '1' || m1Value === 1 || m1Value === '1.0' || m1Value === 1.0) ? 'M1' : 'FPD Corriente';
           } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
-            nuevoEstatus = (m2Value === '1' || m2Value === 1) ? 'M2' : 'FPD Corriente';
+            nuevoEstatus = (m2Value === '1' || m2Value === 1 || m2Value === '1.0' || m2Value === 1.0) ? 'M2' : 'FPD Corriente';
           } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
-            nuevoEstatus = (m3Value === '1' || m3Value === 1) ? 'M3' : 'FPD Corriente';
+            nuevoEstatus = (m3Value === '1' || m3Value === 1 || m3Value === '1.0' || m3Value === 1.0) ? 'M3' : 'FPD Corriente';
           } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
-            nuevoEstatus = (m4Value === '1' || m4Value === 1) ? 'M4' : 'FPD Corriente';
+            nuevoEstatus = (m4Value === '1' || m4Value === 1 || m4Value === '1.0' || m4Value === 1.0) ? 'M4' : 'FPD Corriente';
           }
-        } else if (clientData.M1 || clientData.M2 || clientData.M3 || clientData.M4) {
+        } 
+        // PRIORIDAD 3: Si no hay M, verificar directamente M1, M2, M3, M4
+        if (!nuevoEstatus && (clientData.M1 !== undefined || clientData.M2 !== undefined || clientData.M3 !== undefined || clientData.M4 !== undefined)) {
           const m4Value = String(clientData.M4 || '0').trim();
           const m3Value = String(clientData.M3 || '0').trim();
           const m2Value = String(clientData.M2 || '0').trim();
           const m1Value = String(clientData.M1 || '0').trim();
           
-          if (m4Value === '1' || m4Value === 1) {
+          // Verificar en orden de prioridad: M4 > M3 > M2 > M1
+          if (m4Value === '1' || m4Value === 1 || m4Value === '1.0' || m4Value === 1.0) {
             nuevoEstatus = 'M4';
-          } else if (m3Value === '1' || m3Value === 1) {
+          } else if (m3Value === '1' || m3Value === 1 || m3Value === '1.0' || m3Value === 1.0) {
             nuevoEstatus = 'M3';
-          } else if (m2Value === '1' || m2Value === 1) {
+          } else if (m2Value === '1' || m2Value === 1 || m2Value === '1.0' || m2Value === 1.0) {
             nuevoEstatus = 'M2';
-          } else if (m1Value === '1' || m1Value === 1) {
+          } else if (m1Value === '1' || m1Value === 1 || m1Value === '1.0' || m1Value === 1.0) {
             nuevoEstatus = 'M1';
           } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
             nuevoEstatus = 'FPD Corriente';
           }
         }
         
-        // Si se detectó un nuevo estatus, actualizar (incluso si ya tenía uno, para corregir errores)
-        if (nuevoEstatus && nuevoEstatus !== estatusActual) {
+        // Si se detectó un nuevo estatus, actualizar (SIEMPRE actualizar si se detectó uno, incluso si ya tenía)
+        if (nuevoEstatus) {
+          // Actualizar siempre si se detectó un estatus, incluso si es el mismo (para asegurar consistencia)
           batch.update(clientDoc.ref, { Estatus: nuevoEstatus });
+          updated++;
+          batchCount++;
+          
+          if (batchCount >= BATCH_SIZE) {
+            await batch.commit();
+            setProgress(`Actualizados ${updated} de ${clients.length} clientes...`);
+            batch = writeBatch(db);
+            batchCount = 0;
+            await new Promise(r => setTimeout(r, 100));
+          }
+        } else if (!estatusActual || estatusActual === '' || estatusActual === 'Sin estatus') {
+          // Si no se pudo detectar y no tiene estatus, marcar como "Sin estatus" para debugging
+          batch.update(clientDoc.ref, { Estatus: 'Sin estatus' });
           updated++;
           batchCount++;
           
@@ -1797,7 +1818,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       }
       
       setProgress('');
-      alert(`✅ Actualización completada:\n${updated} clientes actualizados\n${clients.length - updated} clientes sin cambios`);
+      const sinCambios = clients.length - updated;
+      alert(`✅ Actualización completada:\n\n${updated} clientes actualizados\n${sinCambios} clientes sin cambios necesarios\n\nTotal procesados: ${clients.length}\n\nLos estatus se han recalculado basándose en las columnas M, M1, M2, M3, M4.`);
     } catch (error) {
       console.error('Error al actualizar estatus:', error);
       alert('Error al actualizar estatus: ' + error.message);
@@ -2564,44 +2586,55 @@ Tu servicio de *Izzi* está listo para instalarse.
     
     // Si no, intentar mapear desde ciudad o plaza
     const ciudadPlaza = cleanValue(ciudad || plaza || '').toUpperCase();
-    if (!ciudadPlaza) return 'Sin región';
+    if (!ciudadPlaza) return regionValida || 'Sin región';
     
-    // Mapeo de ciudades comunes a regiones (puedes expandir esto según tus datos)
-    // Sureste
+    // Mapeo expandido de ciudades comunes a regiones
+    // Sureste (Yucatán, Quintana Roo, Campeche, Tabasco, Chiapas, y ciudades de Puebla/Tlaxcala)
     if (ciudadPlaza.includes('CAMPECHE') || ciudadPlaza.includes('CHETUMAL') || ciudadPlaza.includes('CANCUN') || 
         ciudadPlaza.includes('CANCÚN') || ciudadPlaza.includes('MERIDA') || ciudadPlaza.includes('MÉRIDA') ||
         ciudadPlaza.includes('VILLAHERMOSA') || ciudadPlaza.includes('TUXTLA') || ciudadPlaza.includes('TAPACHULA') ||
-        ciudadPlaza.includes('TUXTLA GUTIERREZ') || ciudadPlaza.includes('TUXTLA GUTIÉRREZ')) {
+        ciudadPlaza.includes('TUXTLA GUTIERREZ') || ciudadPlaza.includes('TUXTLA GUTIÉRREZ') ||
+        ciudadPlaza.includes('APIZACO') || ciudadPlaza.includes('ATLIXCO') || ciudadPlaza.includes('PUEBLA') ||
+        ciudadPlaza.includes('TLAXCALA') || ciudadPlaza.includes('CHOLULA') || ciudadPlaza.includes('TEHUACAN') ||
+        ciudadPlaza.includes('TEHUACÁN') || ciudadPlaza.includes('SAN MARTIN') || ciudadPlaza.includes('SAN MARTÍN') ||
+        ciudadPlaza.includes('HUEJOTZINGO') || ciudadPlaza.includes('CHIAUTEMPAN') || ciudadPlaza.includes('TLAXCALA')) {
       return 'Sureste';
     }
     
-    // Noreste
+    // Noreste (Nuevo León, Coahuila, Tamaulipas)
     if (ciudadPlaza.includes('MONTERREY') || ciudadPlaza.includes('SALTILLO') || ciudadPlaza.includes('REYNOSA') ||
         ciudadPlaza.includes('MATAMOROS') || ciudadPlaza.includes('NUEVO LAREDO') || ciudadPlaza.includes('TAMPICO') ||
-        ciudadPlaza.includes('CIUDAD VICTORIA') || ciudadPlaza.includes('CIUDAD VICTORIA')) {
+        ciudadPlaza.includes('CIUDAD VICTORIA') || ciudadPlaza.includes('TORREON') || ciudadPlaza.includes('TORREÓN') ||
+        ciudadPlaza.includes('PIEDRAS NEGRAS') || ciudadPlaza.includes('SABINAS') || ciudadPlaza.includes('MONCLOVA')) {
       return 'Noreste';
     }
     
-    // Metropolitana
+    // Metropolitana (CDMX y Estado de México)
     if (ciudadPlaza.includes('CDMX') || ciudadPlaza.includes('CIUDAD DE MEXICO') || ciudadPlaza.includes('CIUDAD DE MÉXICO') ||
         ciudadPlaza.includes('MEXICO') || ciudadPlaza.includes('MÉXICO') || ciudadPlaza.includes('EDOMEX') ||
         ciudadPlaza.includes('ESTADO DE MEXICO') || ciudadPlaza.includes('ESTADO DE MÉXICO') || ciudadPlaza.includes('NAUCALPAN') ||
-        ciudadPlaza.includes('TLALNEPANTLA') || ciudadPlaza.includes('ECATEPEC') || ciudadPlaza.includes('NEZAHUALCOYOTL')) {
+        ciudadPlaza.includes('TLALNEPANTLA') || ciudadPlaza.includes('ECATEPEC') || ciudadPlaza.includes('NEZAHUALCOYOTL') ||
+        ciudadPlaza.includes('IZTAPALAPA') || ciudadPlaza.includes('GUSTAVO A. MADERO') || ciudadPlaza.includes('BENITO JUAREZ') ||
+        ciudadPlaza.includes('BENITO JUÁREZ') || ciudadPlaza.includes('COYOACAN') || ciudadPlaza.includes('COYOACÁN') ||
+        ciudadPlaza.includes('ALVARO OBREGON') || ciudadPlaza.includes('ÁLVARO OBREGÓN') || ciudadPlaza.includes('MIGUEL HIDALGO')) {
       return 'Metropolitana';
     }
     
-    // Pacífico
+    // Pacífico (Jalisco, Colima, Guerrero)
     if (ciudadPlaza.includes('GUADALAJARA') || ciudadPlaza.includes('PUERTO VALLARTA') || ciudadPlaza.includes('COLIMA') ||
         ciudadPlaza.includes('MANZANILLO') || ciudadPlaza.includes('ACAPULCO') || ciudadPlaza.includes('CHILPANCINGO') ||
-        ciudadPlaza.includes('IXTAPA') || ciudadPlaza.includes('ZIHUATANEJO')) {
+        ciudadPlaza.includes('IXTAPA') || ciudadPlaza.includes('ZIHUATANEJO') || ciudadPlaza.includes('ZAPOPAN') ||
+        ciudadPlaza.includes('TLAQUEPAQUE') || ciudadPlaza.includes('TONALA') || ciudadPlaza.includes('TONALÁ')) {
       return 'Pacífico';
     }
     
-    // Occidente
+    // Occidente (Guanajuato, Aguascalientes, San Luis Potosí, Querétaro, Michoacán)
     if (ciudadPlaza.includes('LEON') || ciudadPlaza.includes('LEÓN') || ciudadPlaza.includes('GUANAJUATO') ||
         ciudadPlaza.includes('AGUASCALIENTES') || ciudadPlaza.includes('SAN LUIS POTOSI') || ciudadPlaza.includes('SAN LUIS POTOSÍ') ||
         ciudadPlaza.includes('QUERETARO') || ciudadPlaza.includes('QUERÉTARO') || ciudadPlaza.includes('MORELIA') ||
-        ciudadPlaza.includes('ZAMORA') || ciudadPlaza.includes('URUAPAN')) {
+        ciudadPlaza.includes('ZAMORA') || ciudadPlaza.includes('URUAPAN') || ciudadPlaza.includes('IRAPUATO') ||
+        ciudadPlaza.includes('CELAYA') || ciudadPlaza.includes('SALAMANCA') || ciudadPlaza.includes('SAN MIGUEL') ||
+        ciudadPlaza.includes('PATZCUARO') || ciudadPlaza.includes('PÁTZCUARO') || ciudadPlaza.includes('LA PIEDAD')) {
       return 'Occidente';
     }
     
