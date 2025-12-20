@@ -1707,13 +1707,8 @@ Tu servicio de *Izzi* está listo para instalarse.
         const clientData = clientDoc.data();
         
         // Determinar estatus basándose en M, M1, M2, M3, M4
-        let nuevoEstatus = clientData.Estatus || '';
-        
-        // Si ya tiene un estatus válido, mantenerlo
-        const estatusActual = (clientData.Estatus || '').toString().trim().toUpperCase();
-        if (estatusActual === 'M1' || estatusActual === 'M2' || estatusActual === 'M3' || estatusActual === 'M4' || estatusActual.includes('FPD')) {
-          continue; // Ya tiene estatus válido, saltar
-        }
+        let nuevoEstatus = null;
+        const estatusActual = (clientData.Estatus || '').toString().trim();
         
         // Intentar detectar desde Estatus Cobranza o Estatus FPD
         const estatusCobranza = cleanValue(clientData['Estatus Cobranza'] || clientData.EstatusCobranza || '');
@@ -1780,8 +1775,8 @@ Tu servicio de *Izzi* está listo para instalarse.
           }
         }
         
-        // Si se detectó un nuevo estatus, actualizar
-        if (nuevoEstatus && nuevoEstatus !== clientData.Estatus) {
+        // Si se detectó un nuevo estatus, actualizar (incluso si ya tenía uno, para corregir errores)
+        if (nuevoEstatus && nuevoEstatus !== estatusActual) {
           batch.update(clientDoc.ref, { Estatus: nuevoEstatus });
           updated++;
           batchCount++;
