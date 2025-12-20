@@ -2642,6 +2642,123 @@ Tu servicio de *Izzi* está listo para instalarse.
     return regionValida || cleanValue(ciudad || plaza) || 'Sin región';
   };
 
+  // Función para calcular estadísticas de Operación del Día por región y ciudad (sin duplicar por número de cuenta)
+  const calcularEstadisticasOperacionPorRegion = (operaciones) => {
+    // Agrupar por número de cuenta y tomar el estado más reciente/final
+    const cuentasUnicas = {};
+    
+    operaciones.forEach(o => {
+      const cuenta = cleanValue(o['Nº de cuenta'] || o.Cuenta || '');
+      if (!cuenta) return;
+      
+      const estado = (o.Estado || o.Estatus || '').toString().trim();
+      const fechaSolicitada = o['Fecha solicitada'] || o.Creado || '';
+      
+      // Si no existe esta cuenta o esta orden es más reciente, actualizar
+      if (!cuentasUnicas[cuenta]) {
+        cuentasUnicas[cuenta] = {
+          cuenta,
+          estado,
+          fechaSolicitada,
+          region: obtenerRegionDeCiudad(o.Ciudad, o.Plaza || o.Hub, o.Region),
+          ciudad: cleanValue(o.Ciudad || o.Plaza || o.Hub || ''),
+          orden: o['Nº de orden'] || o.Orden || '',
+          compania: o.Compañía || o.Compania || ''
+        };
+      } else {
+        // Prioridad de estados: Instalado/Completo > Cancelada > Not Done > Abierta
+        const prioridadEstados = {
+          'Instalado': 4,
+          'Completo': 4,
+          'Completa': 4,
+          'Instalada': 4,
+          'Cancelada': 3,
+          'Cancelado': 3,
+          'Not Done': 2,
+          'NotDone': 2,
+          'Abierta': 1,
+          'Abierto': 1
+        };
+        
+        const estadoActualPrioridad = prioridadEstados[estado] || 0;
+        const estadoGuardadoPrioridad = prioridadEstados[cuentasUnicas[cuenta].estado] || 0;
+        
+        // Si el estado actual tiene mayor prioridad, o si es el mismo pero más reciente
+        if (estadoActualPrioridad > estadoGuardadoPrioridad || 
+            (estadoActualPrioridad === estadoGuardadoPrioridad && fechaSolicitada > cuentasUnicas[cuenta].fechaSolicitada)) {
+          cuentasUnicas[cuenta] = {
+            cuenta,
+            estado,
+            fechaSolicitada,
+            region: obtenerRegionDeCiudad(o.Ciudad, o.Plaza || o.Hub, o.Region),
+            ciudad: cleanValue(o.Ciudad || o.Plaza || o.Hub || ''),
+            orden: o['Nº de orden'] || o.Orden || '',
+            compania: o.Compañía || o.Compania || ''
+          };
+        }
+      }
+    });
+    
+    // Agrupar por región y ciudad
+    const porRegion = {};
+    
+    Object.values(cuentasUnicas).forEach(cuenta => {
+      const region = cuenta.region || 'Sin región';
+      const ciudad = cuenta.ciudad || 'Sin ciudad';
+      const estado = cuenta.estado || 'Sin estado';
+      
+      if (!porRegion[region]) {
+        porRegion[region] = {
+          total: 0,
+          instaladas: 0,
+          abiertas: 0,
+          canceladas: 0,
+          notDone: 0,
+          ciudades: {}
+        };
+      }
+      
+      porRegion[region].total++;
+      
+      // Contar por estado
+      const estadoLower = estado.toLowerCase();
+      if (estadoLower.includes('instalado') || estadoLower.includes('completo') || estadoLower.includes('completa')) {
+        porRegion[region].instaladas++;
+      } else if (estadoLower.includes('abierta') || estadoLower.includes('abierto')) {
+        porRegion[region].abiertas++;
+      } else if (estadoLower.includes('cancelada') || estadoLower.includes('cancelado')) {
+        porRegion[region].canceladas++;
+      } else if (estadoLower.includes('not done') || estadoLower.includes('notdone')) {
+        porRegion[region].notDone++;
+      }
+      
+      // Agrupar por ciudad dentro de la región
+      if (!porRegion[region].ciudades[ciudad]) {
+        porRegion[region].ciudades[ciudad] = {
+          total: 0,
+          instaladas: 0,
+          abiertas: 0,
+          canceladas: 0,
+          notDone: 0
+        };
+      }
+      
+      porRegion[region].ciudades[ciudad].total++;
+      
+      if (estadoLower.includes('instalado') || estadoLower.includes('completo') || estadoLower.includes('completa')) {
+        porRegion[region].ciudades[ciudad].instaladas++;
+      } else if (estadoLower.includes('abierta') || estadoLower.includes('abierto')) {
+        porRegion[region].ciudades[ciudad].abiertas++;
+      } else if (estadoLower.includes('cancelada') || estadoLower.includes('cancelado')) {
+        porRegion[region].ciudades[ciudad].canceladas++;
+      } else if (estadoLower.includes('not done') || estadoLower.includes('notdone')) {
+        porRegion[region].ciudades[ciudad].notDone++;
+      }
+    });
+    
+    return { porRegion, totalCuentas: Object.keys(cuentasUnicas).length };
+  };
+
   // Función para calcular porcentajes por estatus y región
   const calcularPorcentajesPorEstatusYRegion = (clientes, estatusFiltro) => {
     const clientesFiltrados = clientes.filter(c => {
@@ -6155,6 +6272,100 @@ Tu servicio de *Izzi* está listo para instalarse.
         {/* OPERACIÓN DEL DÍA */}
         {activeTab === 'operacion' && (
           <div className="space-y-4">
+            {/* Estadísticas por Región y Ciudad */}
+            {(() => {
+              const estadisticas = calcularEstadisticasOperacionPorRegion(operacionData);
+              const regionesOrdenadas = Object.keys(estadisticas.porRegion).sort((a, b) => {
+                const ordenPrincipal = ['Sureste', 'Noreste', 'Metropolitana', 'Pacífico', 'Occidente'];
+                const indexA = ordenPrincipal.indexOf(a);
+                const indexB = ordenPrincipal.indexOf(b);
+                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                return a.localeCompare(b);
+              });
+              
+              return (
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                    <BarChart3 size={20} className="text-indigo-600"/>
+                    Estadísticas por Región y Ciudad - Operación del Día
+                  </h3>
+                  <div className="mb-3 text-sm text-slate-700">
+                    <span className="font-bold">Total de cuentas únicas: {estadisticas.totalCuentas}</span>
+                    <span className="text-slate-500 ml-4">(sin duplicar por número de cuenta)</span>
+                  </div>
+                  {estadisticas.totalCuentas > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {regionesOrdenadas.map(region => {
+                        const datos = estadisticas.porRegion[region];
+                        const ciudadesOrdenadas = Object.keys(datos.ciudades || {}).sort((a, b) => 
+                          (datos.ciudades[b].total || 0) - (datos.ciudades[a].total || 0)
+                        );
+                        return (
+                          <div key={region} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                <MapPin size={16} className="text-indigo-500"/>
+                                {region}
+                              </h4>
+                              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                                {datos.total} cuentas
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="bg-green-50 p-2 rounded">
+                                  <div className="font-bold text-green-700">Instaladas</div>
+                                  <div className="text-lg font-bold text-green-800">{datos.instaladas}</div>
+                                </div>
+                                <div className="bg-blue-50 p-2 rounded">
+                                  <div className="font-bold text-blue-700">Abiertas</div>
+                                  <div className="text-lg font-bold text-blue-800">{datos.abiertas}</div>
+                                </div>
+                                <div className="bg-red-50 p-2 rounded">
+                                  <div className="font-bold text-red-700">Canceladas</div>
+                                  <div className="text-lg font-bold text-red-800">{datos.canceladas}</div>
+                                </div>
+                                <div className="bg-orange-50 p-2 rounded">
+                                  <div className="font-bold text-orange-700">Not Done</div>
+                                  <div className="text-lg font-bold text-orange-800">{datos.notDone}</div>
+                                </div>
+                              </div>
+                              {/* Mostrar ciudades dentro de la región */}
+                              {ciudadesOrdenadas.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                  <p className="text-xs font-semibold text-slate-600 mb-2">Por Ciudad:</p>
+                                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                                    {ciudadesOrdenadas.map(ciudad => {
+                                      const ciudadData = datos.ciudades[ciudad];
+                                      return (
+                                        <div key={ciudad} className="bg-slate-50 p-2 rounded text-xs">
+                                          <div className="font-bold text-slate-700 mb-1">{ciudad}</div>
+                                          <div className="grid grid-cols-4 gap-1 text-xs">
+                                            <span className="text-green-600">✓{ciudadData.instaladas}</span>
+                                            <span className="text-blue-600">○{ciudadData.abiertas}</span>
+                                            <span className="text-red-600">✗{ciudadData.canceladas}</span>
+                                            <span className="text-orange-600">!{ciudadData.notDone}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-center text-slate-500 py-4">No hay datos de operación del día</p>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Barra de búsqueda y filtros */}
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
               <div className="flex flex-col md:flex-row gap-3 mb-3">
