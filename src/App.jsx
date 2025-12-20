@@ -2381,24 +2381,101 @@ Tu servicio de *Izzi* está listo para instalarse.
     await handleAssignVendorWithName(selectedVendor);
   };
 
+  // Función para mapear ciudad/plaza a región
+  const obtenerRegionDeCiudad = (ciudad, plaza, region) => {
+    // Si ya tiene una región válida, usarla
+    const regionValida = cleanValue(region || '');
+    if (regionValida) {
+      const regionUpper = regionValida.toUpperCase();
+      if (regionUpper.includes('SURESTE') || regionUpper === 'SE' || regionUpper === 'SURESTE') {
+        return 'Sureste';
+      }
+      if (regionUpper.includes('NORESTE') || regionUpper === 'NE' || regionUpper === 'NORESTE') {
+        return 'Noreste';
+      }
+      if (regionUpper.includes('METROPOLITANA') || regionUpper.includes('METRO') || regionUpper === 'MET' || regionUpper === 'METROPOLITANA') {
+        return 'Metropolitana';
+      }
+      if (regionUpper.includes('PACIFICO') || regionUpper.includes('PACÍFICO') || regionUpper === 'PAC' || regionUpper === 'PACIFICO' || regionUpper === 'PACÍFICO') {
+        return 'Pacífico';
+      }
+      if (regionUpper.includes('OCCIDENTE') || regionUpper === 'OCC' || regionUpper === 'OCCIDENTE') {
+        return 'Occidente';
+      }
+    }
+    
+    // Si no, intentar mapear desde ciudad o plaza
+    const ciudadPlaza = cleanValue(ciudad || plaza || '').toUpperCase();
+    if (!ciudadPlaza) return 'Sin región';
+    
+    // Mapeo de ciudades comunes a regiones (puedes expandir esto según tus datos)
+    // Sureste
+    if (ciudadPlaza.includes('CAMPECHE') || ciudadPlaza.includes('CHETUMAL') || ciudadPlaza.includes('CANCUN') || 
+        ciudadPlaza.includes('CANCÚN') || ciudadPlaza.includes('MERIDA') || ciudadPlaza.includes('MÉRIDA') ||
+        ciudadPlaza.includes('VILLAHERMOSA') || ciudadPlaza.includes('TUXTLA') || ciudadPlaza.includes('TAPACHULA') ||
+        ciudadPlaza.includes('TUXTLA GUTIERREZ') || ciudadPlaza.includes('TUXTLA GUTIÉRREZ')) {
+      return 'Sureste';
+    }
+    
+    // Noreste
+    if (ciudadPlaza.includes('MONTERREY') || ciudadPlaza.includes('SALTILLO') || ciudadPlaza.includes('REYNOSA') ||
+        ciudadPlaza.includes('MATAMOROS') || ciudadPlaza.includes('NUEVO LAREDO') || ciudadPlaza.includes('TAMPICO') ||
+        ciudadPlaza.includes('CIUDAD VICTORIA') || ciudadPlaza.includes('CIUDAD VICTORIA')) {
+      return 'Noreste';
+    }
+    
+    // Metropolitana
+    if (ciudadPlaza.includes('CDMX') || ciudadPlaza.includes('CIUDAD DE MEXICO') || ciudadPlaza.includes('CIUDAD DE MÉXICO') ||
+        ciudadPlaza.includes('MEXICO') || ciudadPlaza.includes('MÉXICO') || ciudadPlaza.includes('EDOMEX') ||
+        ciudadPlaza.includes('ESTADO DE MEXICO') || ciudadPlaza.includes('ESTADO DE MÉXICO') || ciudadPlaza.includes('NAUCALPAN') ||
+        ciudadPlaza.includes('TLALNEPANTLA') || ciudadPlaza.includes('ECATEPEC') || ciudadPlaza.includes('NEZAHUALCOYOTL')) {
+      return 'Metropolitana';
+    }
+    
+    // Pacífico
+    if (ciudadPlaza.includes('GUADALAJARA') || ciudadPlaza.includes('PUERTO VALLARTA') || ciudadPlaza.includes('COLIMA') ||
+        ciudadPlaza.includes('MANZANILLO') || ciudadPlaza.includes('ACAPULCO') || ciudadPlaza.includes('CHILPANCINGO') ||
+        ciudadPlaza.includes('IXTAPA') || ciudadPlaza.includes('ZIHUATANEJO')) {
+      return 'Pacífico';
+    }
+    
+    // Occidente
+    if (ciudadPlaza.includes('LEON') || ciudadPlaza.includes('LEÓN') || ciudadPlaza.includes('GUANAJUATO') ||
+        ciudadPlaza.includes('AGUASCALIENTES') || ciudadPlaza.includes('SAN LUIS POTOSI') || ciudadPlaza.includes('SAN LUIS POTOSÍ') ||
+        ciudadPlaza.includes('QUERETARO') || ciudadPlaza.includes('QUERÉTARO') || ciudadPlaza.includes('MORELIA') ||
+        ciudadPlaza.includes('ZAMORA') || ciudadPlaza.includes('URUAPAN')) {
+      return 'Occidente';
+    }
+    
+    // Si no se encuentra, devolver la ciudad/plaza original o "Sin región"
+    return regionValida || cleanValue(ciudad || plaza) || 'Sin región';
+  };
+
   // Función para calcular porcentajes por estatus y región
   const calcularPorcentajesPorEstatusYRegion = (clientes, estatusFiltro) => {
     const clientesFiltrados = clientes.filter(c => {
       const estatus = (c.Estatus || c.Estado || c['Estado'] || '').toString().trim();
-      return estatus === estatusFiltro || estatus === `FPD Corriente` || estatus.includes(estatusFiltro);
+      return estatus === estatusFiltro;
     });
     
     const total = clientesFiltrados.length;
     if (total === 0) return { total: 0, porRegion: {} };
     
-    // Agrupar por región
+    // Agrupar por región (usando el mapeo de ciudades a regiones)
     const porRegion = {};
     clientesFiltrados.forEach(c => {
-      const region = cleanValue(c.Region || c.Plaza || 'Sin región') || 'Sin región';
+      const region = obtenerRegionDeCiudad(c.Ciudad, c.Plaza, c.Region);
       if (!porRegion[region]) {
-        porRegion[region] = { total: 0, estatus: {} };
+        porRegion[region] = { total: 0, estatus: {}, ciudades: {} };
       }
       porRegion[region].total++;
+      
+      // También agrupar por ciudad dentro de la región para mostrar después
+      const ciudad = cleanValue(c.Ciudad || c.Plaza || 'Sin ciudad') || 'Sin ciudad';
+      if (!porRegion[region].ciudades[ciudad]) {
+        porRegion[region].ciudades[ciudad] = 0;
+      }
+      porRegion[region].ciudades[ciudad]++;
       
       const estatus = (c.Estatus || c.Estado || c['Estado'] || 'Sin estatus').toString().trim();
       if (!porRegion[region].estatus[estatus]) {
@@ -2414,7 +2491,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       porRegionConPorcentajes[region] = {
         total: datos.total,
         porcentaje: ((datos.total / total) * 100).toFixed(1),
-        estatus: {}
+        estatus: {},
+        ciudades: datos.ciudades
       };
       
       Object.keys(datos.estatus).forEach(est => {
@@ -4792,6 +4870,18 @@ Tu servicio de *Izzi* está listo para instalarse.
             {currentModule === 'sales' && (activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') && (() => {
               const estatusFiltro = activeTab.toUpperCase();
               const porcentajes = calcularPorcentajesPorEstatusYRegion(allClients, estatusFiltro);
+              
+              // Ordenar regiones: primero las principales (Sureste, Noreste, Metropolitana, Pacífico, Occidente), luego las demás
+              const regionesOrdenadas = Object.keys(porcentajes.porRegion).sort((a, b) => {
+                const ordenPrincipal = ['Sureste', 'Noreste', 'Metropolitana', 'Pacífico', 'Occidente'];
+                const indexA = ordenPrincipal.indexOf(a);
+                const indexB = ordenPrincipal.indexOf(b);
+                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                return a.localeCompare(b);
+              });
+              
               return (
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl shadow-sm border border-slate-200">
                   <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -4800,8 +4890,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                   </h3>
                   {porcentajes.total > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {Object.keys(porcentajes.porRegion).sort().map(region => {
+                      {regionesOrdenadas.map(region => {
                         const datos = porcentajes.porRegion[region];
+                        const ciudadesOrdenadas = Object.keys(datos.ciudades || {}).sort((a, b) => 
+                          (datos.ciudades[b] || 0) - (datos.ciudades[a] || 0)
+                        );
                         return (
                           <div key={region} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                             <div className="flex items-center justify-between mb-3">
@@ -4827,6 +4920,23 @@ Tu servicio de *Izzi* está listo para instalarse.
                                   </div>
                                 ))}
                               </div>
+                              {/* Mostrar ciudades dentro de la región */}
+                              {ciudadesOrdenadas.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                  <p className="text-xs font-semibold text-slate-600 mb-2">Ciudades:</p>
+                                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                                    {ciudadesOrdenadas.slice(0, 10).map(ciudad => (
+                                      <div key={ciudad} className="flex items-center justify-between text-xs text-slate-600">
+                                        <span className="truncate">{ciudad}</span>
+                                        <span className="font-bold text-slate-700 ml-2">{datos.ciudades[ciudad]}</span>
+                                      </div>
+                                    ))}
+                                    {ciudadesOrdenadas.length > 10 && (
+                                      <p className="text-xs text-slate-500 italic">+{ciudadesOrdenadas.length - 10} más...</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
