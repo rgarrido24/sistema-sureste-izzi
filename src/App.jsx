@@ -2894,19 +2894,27 @@ Tu servicio de *Izzi* está listo para instalarse.
         } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
           estatus = (m2Value === '1' || m2Value === 1) ? 'M2' : 'FPD Corriente';
         } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
-          estatus = (m3Value === '1' || m3Value === 1) ? 'M3' : 'FPD Corriente';
+          const m3IsOne = m3Value === 1 || m3Value === '1' || m3Value === 1.0 || m3Value === '1.0' || String(m3Value || '0').trim() === '1' || String(m3Value || '0').trim() === '1.0';
+          estatus = m3IsOne ? 'M3' : 'FPD Corriente';
         } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
-          estatus = (m4Value === '1' || m4Value === 1) ? 'M4' : 'FPD Corriente';
-        } else if (m4Value === '1' || m4Value === 1) {
-          estatus = 'M4';
-        } else if (m3Value === '1' || m3Value === 1) {
-          estatus = 'M3';
-        } else if (m2Value === '1' || m2Value === 1) {
-          estatus = 'M2';
-        } else if (m1Value === '1' || m1Value === 1) {
-          estatus = 'M1';
-        } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
-          estatus = 'FPD Corriente';
+          const m4IsOne = m4Value === 1 || m4Value === '1' || m4Value === 1.0 || m4Value === '1.0' || String(m4Value || '0').trim() === '1' || String(m4Value || '0').trim() === '1.0';
+          estatus = m4IsOne ? 'M4' : 'FPD Corriente';
+        } else {
+          const m4IsOne = m4Value === 1 || m4Value === '1' || m4Value === 1.0 || m4Value === '1.0' || String(m4Value || '0').trim() === '1' || String(m4Value || '0').trim() === '1.0';
+          const m3IsOne = m3Value === 1 || m3Value === '1' || m3Value === 1.0 || m3Value === '1.0' || String(m3Value || '0').trim() === '1' || String(m3Value || '0').trim() === '1.0';
+          const m2IsOne = m2Value === 1 || m2Value === '1' || m2Value === 1.0 || m2Value === '1.0' || String(m2Value || '0').trim() === '1' || String(m2Value || '0').trim() === '1.0';
+          const m1IsOne = m1Value === 1 || m1Value === '1' || m1Value === 1.0 || m1Value === '1.0' || String(m1Value || '0').trim() === '1' || String(m1Value || '0').trim() === '1.0';
+          if (m4IsOne) {
+            estatus = 'M4';
+          } else if (m3IsOne) {
+            estatus = 'M3';
+          } else if (m2IsOne) {
+            estatus = 'M2';
+          } else if (m1IsOne) {
+            estatus = 'M1';
+          } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
+            estatus = 'FPD Corriente';
+          }
         }
       }
       
@@ -4051,10 +4059,22 @@ Tu servicio de *Izzi* está listo para instalarse.
                       // ESPECIAL: Asegurar que M, M1, M2, M3, M4 se guarden correctamente (preservar números)
                       if (fieldName === 'M' || fieldName === 'M1' || fieldName === 'M2' || fieldName === 'M3' || fieldName === 'M4') {
                         // Guardar el valor tal cual (puede ser número o texto como "MS_2")
-                        docData[fieldName] = value; // Usar value original, no cleanedValue, para preservar números y formato
+                        // Si es un número de Excel, convertirlo a string para consistencia
+                        let finalValue = value;
+                        if (typeof value === 'number') {
+                          // Si es un número, convertirlo a string pero preservar el valor
+                          finalValue = value.toString();
+                        } else if (typeof value === 'string') {
+                          // Si es string, limpiar espacios pero preservar el valor
+                          finalValue = value.trim();
+                        }
+                        docData[fieldName] = finalValue;
                         hasData = true;
-                        if (rowIndex < 5) {
-                          console.log(`💾 Guardando ${fieldName} = ${value} (tipo: ${typeof value})`);
+                        // Log para TODOS los registros con M3 o M4, no solo los primeros 5
+                        if (fieldName === 'M3' || fieldName === 'M4') {
+                          console.log(`💾 Guardando ${fieldName} = ${finalValue} (tipo original: ${typeof value}, tipo final: ${typeof finalValue}) en registro ${rowIndex + 1}`);
+                        } else if (rowIndex < 5) {
+                          console.log(`💾 Guardando ${fieldName} = ${finalValue} (tipo: ${typeof value})`);
                         }
                       } else {
                         docData[fieldName] = cleanedValue;
@@ -4272,7 +4292,28 @@ Tu servicio de *Izzi* está listo para instalarse.
                   M4: docData.M4 || 'NO ENCONTRADO',
                   'Estatus Cobranza': docData['Estatus Cobranza'] || docData.EstatusCobranza || 'NO ENCONTRADO',
                   'Estatus FPD': docData['Estatus FPD'] || docData.EstatusFPD || docData.FPD || 'NO ENCONTRADO',
-                  'ColumnMapping completo': Object.keys(columnMapping).map(k => `${k}:${columnMapping[k]}`).join(', ')
+                  'ColumnMapping completo': Object.keys(columnMapping).map(k => `${k}:${columnMapping[k]}`).join(', '),
+                  'Tipo M3': typeof docData.M3,
+                  'Tipo M4': typeof docData.M4,
+                  'Valor raw M3': docData.M3,
+                  'Valor raw M4': docData.M4
+                });
+              }
+              
+              // DEBUG ESPECÍFICO PARA M3 Y M4 - Log para TODOS los registros que tienen M3 o M4
+              if (docData.M3 !== undefined || docData.M4 !== undefined) {
+                console.log(`🔍 M3/M4 Detectado en registro ${rowIndex + 1}:`, {
+                  M: docData.M,
+                  M3: docData.M3,
+                  M4: docData.M4,
+                  'Tipo M3': typeof docData.M3,
+                  'Tipo M4': typeof docData.M4,
+                  'M3 === 1': docData.M3 === 1,
+                  'M3 === "1"': docData.M3 === '1',
+                  'M4 === 1': docData.M4 === 1,
+                  'M4 === "1"': docData.M4 === '1',
+                  'String(M3).trim() === "1"': String(docData.M3 || '0').trim() === '1',
+                  'String(M4).trim() === "1"': String(docData.M4 || '0').trim() === '1'
                 });
               }
               
@@ -4339,24 +4380,28 @@ Tu servicio de *Izzi* está listo para instalarse.
                 } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
                   // Verificar columna M3: 1 = debe M3, 0 = FPD Corriente
                   const m3Value = docData.M3;
-                  const m3IsOne = m3Value === 1 || m3Value === '1' || String(m3Value).trim() === '1';
+                  // Verificar múltiples formatos: número 1, string "1", "1.0", etc.
+                  const m3IsOne = m3Value === 1 || m3Value === '1' || m3Value === 1.0 || m3Value === '1.0' || 
+                                  String(m3Value || '0').trim() === '1' || String(m3Value || '0').trim() === '1.0';
                   if (m3IsOne) {
                     docData.Estatus = 'M3';
-                    if (rowIndex < 5) console.log(`✅ Detectado M3: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=M3`);
+                    console.log(`✅ Detectado M3: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=M3`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
-                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=FPD Corriente`);
+                    console.log(`⚠️ M3 con valor 0: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=FPD Corriente`);
                   }
                 } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
                   // Verificar columna M4: 1 = debe M4, 0 = FPD Corriente
                   const m4Value = docData.M4;
-                  const m4IsOne = m4Value === 1 || m4Value === '1' || String(m4Value).trim() === '1';
+                  // Verificar múltiples formatos: número 1, string "1", "1.0", etc.
+                  const m4IsOne = m4Value === 1 || m4Value === '1' || m4Value === 1.0 || m4Value === '1.0' || 
+                                  String(m4Value || '0').trim() === '1' || String(m4Value || '0').trim() === '1.0';
                   if (m4IsOne) {
                     docData.Estatus = 'M4';
-                    if (rowIndex < 5) console.log(`✅ Detectado M4: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=M4`);
+                    console.log(`✅ Detectado M4: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=M4`);
                   } else {
                     docData.Estatus = 'FPD Corriente';
-                    if (rowIndex < 5) console.log(`✅ Detectado FPD Corriente: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=FPD Corriente`);
+                    console.log(`⚠️ M4 con valor 0: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=FPD Corriente`);
                   }
                 }
               } else {
@@ -4367,17 +4412,17 @@ Tu servicio de *Izzi* está listo para instalarse.
                 const m3Value = docData.M3;
                 const m4Value = docData.M4;
                 
-                const m1IsOne = m1Value === 1 || m1Value === '1' || String(m1Value || '0').trim() === '1';
-                const m2IsOne = m2Value === 1 || m2Value === '1' || String(m2Value || '0').trim() === '1';
-                const m3IsOne = m3Value === 1 || m3Value === '1' || String(m3Value || '0').trim() === '1';
-                const m4IsOne = m4Value === 1 || m4Value === '1' || String(m4Value || '0').trim() === '1';
+                const m1IsOne = m1Value === 1 || m1Value === '1' || m1Value === 1.0 || m1Value === '1.0' || String(m1Value || '0').trim() === '1' || String(m1Value || '0').trim() === '1.0';
+                const m2IsOne = m2Value === 1 || m2Value === '1' || m2Value === 1.0 || m2Value === '1.0' || String(m2Value || '0').trim() === '1' || String(m2Value || '0').trim() === '1.0';
+                const m3IsOne = m3Value === 1 || m3Value === '1' || m3Value === 1.0 || m3Value === '1.0' || String(m3Value || '0').trim() === '1' || String(m3Value || '0').trim() === '1.0';
+                const m4IsOne = m4Value === 1 || m4Value === '1' || m4Value === 1.0 || m4Value === '1.0' || String(m4Value || '0').trim() === '1' || String(m4Value || '0').trim() === '1.0';
                 
                 if (m4IsOne) {
                   docData.Estatus = 'M4';
-                  if (rowIndex < 5) console.log(`✅ Detectado M4 directo: M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=M4`);
+                  console.log(`✅ Detectado M4 directo: M4=${m4Value} (tipo: ${typeof m4Value}) → Estatus=M4`);
                 } else if (m3IsOne) {
                   docData.Estatus = 'M3';
-                  if (rowIndex < 5) console.log(`✅ Detectado M3 directo: M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=M3`);
+                  console.log(`✅ Detectado M3 directo: M3=${m3Value} (tipo: ${typeof m3Value}) → Estatus=M3`);
                 } else if (m2IsOne) {
                   docData.Estatus = 'M2';
                   if (rowIndex < 5) console.log(`✅ Detectado M2 directo: M2=${m2Value} (tipo: ${typeof m2Value}) → Estatus=M2`);
