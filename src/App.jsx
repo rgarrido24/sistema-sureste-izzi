@@ -1791,39 +1791,63 @@ Tu servicio de *Izzi* está listo para instalarse.
         // PRIORIDAD 2: Si hay columna M con valores MS_1, MS_2, MS_3, MS_4
         if (!nuevoEstatus && clientData.M) {
           const mValue = String(clientData.M || '').trim().toUpperCase();
-          const m1Value = String(clientData.M1 || '0').trim();
-          const m2Value = String(clientData.M2 || '0').trim();
-          const m3Value = String(clientData.M3 || '0').trim();
-          const m4Value = String(clientData.M4 || '0').trim();
+          // NO convertir a string aquí - mantener el tipo original para comparación más robusta
+          const m1Value = clientData.M1;
+          const m2Value = clientData.M2;
+          const m3Value = clientData.M3;
+          const m4Value = clientData.M4;
+          
+          // Función auxiliar para verificar si un valor es "1"
+          const isOne = (val) => {
+            if (val === undefined || val === null) return false;
+            return val === 1 || val === '1' || val === 1.0 || val === '1.0' || 
+                   String(val).trim() === '1' || String(val).trim() === '1.0';
+          };
           
           if (mValue.includes('MS_1') || mValue.includes('MS1')) {
-            nuevoEstatus = (m1Value === '1' || m1Value === 1 || m1Value === '1.0' || m1Value === 1.0) ? 'M1' : 'FPD Corriente';
+            nuevoEstatus = isOne(m1Value) ? 'M1' : 'FPD Corriente';
           } else if (mValue.includes('MS_2') || mValue.includes('MS2')) {
-            nuevoEstatus = (m2Value === '1' || m2Value === 1 || m2Value === '1.0' || m2Value === 1.0) ? 'M2' : 'FPD Corriente';
+            nuevoEstatus = isOne(m2Value) ? 'M2' : 'FPD Corriente';
           } else if (mValue.includes('MS_3') || mValue.includes('MS3')) {
-            nuevoEstatus = (m3Value === '1' || m3Value === 1 || m3Value === '1.0' || m3Value === 1.0) ? 'M3' : 'FPD Corriente';
+            nuevoEstatus = isOne(m3Value) ? 'M3' : 'FPD Corriente';
+            if (i < 10) console.log(`🔄 Actualizando M3: M=${mValue}, M3=${m3Value} (tipo: ${typeof m3Value}), isOne=${isOne(m3Value)} → ${nuevoEstatus}`);
           } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
-            nuevoEstatus = (m4Value === '1' || m4Value === 1 || m4Value === '1.0' || m4Value === 1.0) ? 'M4' : 'FPD Corriente';
+            nuevoEstatus = isOne(m4Value) ? 'M4' : 'FPD Corriente';
+            if (i < 10) console.log(`🔄 Actualizando M4: M=${mValue}, M4=${m4Value} (tipo: ${typeof m4Value}), isOne=${isOne(m4Value)} → ${nuevoEstatus}`);
           }
         } 
         // PRIORIDAD 3: Si no hay M, verificar directamente M1, M2, M3, M4
         if (!nuevoEstatus && (clientData.M1 !== undefined || clientData.M2 !== undefined || clientData.M3 !== undefined || clientData.M4 !== undefined)) {
-          const m4Value = String(clientData.M4 || '0').trim();
-          const m3Value = String(clientData.M3 || '0').trim();
-          const m2Value = String(clientData.M2 || '0').trim();
-          const m1Value = String(clientData.M1 || '0').trim();
+          // NO convertir a string aquí - mantener el tipo original
+          const m4Value = clientData.M4;
+          const m3Value = clientData.M3;
+          const m2Value = clientData.M2;
+          const m1Value = clientData.M1;
+          
+          // Función auxiliar para verificar si un valor es "1"
+          const isOne = (val) => {
+            if (val === undefined || val === null) return false;
+            return val === 1 || val === '1' || val === 1.0 || val === '1.0' || 
+                   String(val).trim() === '1' || String(val).trim() === '1.0';
+          };
           
           // Verificar en orden de prioridad: M4 > M3 > M2 > M1
-          if (m4Value === '1' || m4Value === 1 || m4Value === '1.0' || m4Value === 1.0) {
+          if (isOne(m4Value)) {
             nuevoEstatus = 'M4';
-          } else if (m3Value === '1' || m3Value === 1 || m3Value === '1.0' || m3Value === 1.0) {
+            if (i < 10) console.log(`🔄 Actualizando M4 directo: M4=${m4Value} (tipo: ${typeof m4Value}) → M4`);
+          } else if (isOne(m3Value)) {
             nuevoEstatus = 'M3';
-          } else if (m2Value === '1' || m2Value === 1 || m2Value === '1.0' || m2Value === 1.0) {
+            if (i < 10) console.log(`🔄 Actualizando M3 directo: M3=${m3Value} (tipo: ${typeof m3Value}) → M3`);
+          } else if (isOne(m2Value)) {
             nuevoEstatus = 'M2';
-          } else if (m1Value === '1' || m1Value === 1 || m1Value === '1.0' || m1Value === 1.0) {
+          } else if (isOne(m1Value)) {
             nuevoEstatus = 'M1';
-          } else if (m1Value === '0' && m2Value === '0' && m3Value === '0' && m4Value === '0') {
-            nuevoEstatus = 'FPD Corriente';
+          } else {
+            // Si todos son 0 o no existen, verificar si todos son explícitamente 0
+            const allZero = (!isOne(m1Value) && !isOne(m2Value) && !isOne(m3Value) && !isOne(m4Value));
+            if (allZero && (m1Value !== undefined || m2Value !== undefined || m3Value !== undefined || m4Value !== undefined)) {
+              nuevoEstatus = 'FPD Corriente';
+            }
           }
         }
         
@@ -4059,20 +4083,18 @@ Tu servicio de *Izzi* está listo para instalarse.
                       // ESPECIAL: Asegurar que M, M1, M2, M3, M4 se guarden correctamente (preservar números)
                       if (fieldName === 'M' || fieldName === 'M1' || fieldName === 'M2' || fieldName === 'M3' || fieldName === 'M4') {
                         // Guardar el valor tal cual (puede ser número o texto como "MS_2")
-                        // Si es un número de Excel, convertirlo a string para consistencia
+                        // NO convertir números a string - mantener el tipo original para que la comparación funcione
                         let finalValue = value;
-                        if (typeof value === 'number') {
-                          // Si es un número, convertirlo a string pero preservar el valor
-                          finalValue = value.toString();
-                        } else if (typeof value === 'string') {
-                          // Si es string, limpiar espacios pero preservar el valor
+                        // Si es string, limpiar espacios
+                        if (typeof value === 'string') {
                           finalValue = value.trim();
                         }
+                        // Si es número, mantenerlo como número (Excel puede traer 1, 0, etc. como números)
                         docData[fieldName] = finalValue;
                         hasData = true;
                         // Log para TODOS los registros con M3 o M4, no solo los primeros 5
                         if (fieldName === 'M3' || fieldName === 'M4') {
-                          console.log(`💾 Guardando ${fieldName} = ${finalValue} (tipo original: ${typeof value}, tipo final: ${typeof finalValue}) en registro ${rowIndex + 1}`);
+                          console.log(`💾 Guardando ${fieldName} = ${finalValue} (tipo: ${typeof finalValue}, valor raw: ${value}) en registro ${rowIndex + 1}, columna ${colIndex}`);
                         } else if (rowIndex < 5) {
                           console.log(`💾 Guardando ${fieldName} = ${finalValue} (tipo: ${typeof value})`);
                         }
@@ -4451,9 +4473,40 @@ Tu servicio de *Izzi* está listo para instalarse.
               if (docData.Estatus) {
                 docData.Estatus = String(docData.Estatus).trim();
               } else {
-                // Si después de todo no hay estatus, dejarlo vacío pero loguear para debug
-                console.warn(`⚠️ Registro sin Estatus detectado - Cuenta: ${docData.Cuenta || 'N/A'}, Cliente: ${docData.Cliente || 'N/A'}`);
-                docData.Estatus = '';
+                // Si después de todo no hay estatus, intentar una última vez desde M, M1, M2, M3, M4
+                const mValue = String(docData.M || '').trim().toUpperCase();
+                const m1Value = docData.M1;
+                const m2Value = docData.M2;
+                const m3Value = docData.M3;
+                const m4Value = docData.M4;
+                
+                if (mValue.includes('MS_3') || mValue.includes('MS3')) {
+                  const m3IsOne = m3Value === 1 || m3Value === '1' || m3Value === 1.0 || m3Value === '1.0' || String(m3Value || '0').trim() === '1';
+                  docData.Estatus = m3IsOne ? 'M3' : 'FPD Corriente';
+                  console.log(`🔄 Último intento M3: M=${mValue}, M3=${m3Value} → Estatus=${docData.Estatus}`);
+                } else if (mValue.includes('MS_4') || mValue.includes('MS4')) {
+                  const m4IsOne = m4Value === 1 || m4Value === '1' || m4Value === 1.0 || m4Value === '1.0' || String(m4Value || '0').trim() === '1';
+                  docData.Estatus = m4IsOne ? 'M4' : 'FPD Corriente';
+                  console.log(`🔄 Último intento M4: M=${mValue}, M4=${m4Value} → Estatus=${docData.Estatus}`);
+                } else {
+                  const m4IsOne = m4Value === 1 || m4Value === '1' || m4Value === 1.0 || m4Value === '1.0' || String(m4Value || '0').trim() === '1';
+                  const m3IsOne = m3Value === 1 || m3Value === '1' || m3Value === 1.0 || m3Value === '1.0' || String(m3Value || '0').trim() === '1';
+                  if (m4IsOne) {
+                    docData.Estatus = 'M4';
+                    console.log(`🔄 Último intento M4 directo: M4=${m4Value} → Estatus=M4`);
+                  } else if (m3IsOne) {
+                    docData.Estatus = 'M3';
+                    console.log(`🔄 Último intento M3 directo: M3=${m3Value} → Estatus=M3`);
+                  } else {
+                    console.warn(`⚠️ Registro sin Estatus detectado - Cuenta: ${docData.Cuenta || 'N/A'}, Cliente: ${docData.Cliente || 'N/A'}, M=${mValue}, M1=${m1Value}, M2=${m2Value}, M3=${m3Value}, M4=${m4Value}`);
+                    docData.Estatus = '';
+                  }
+                }
+              }
+              
+              // Log final del estatus asignado para M3 y M4
+              if (docData.Estatus === 'M3' || docData.Estatus === 'M4') {
+                console.log(`✅ ESTATUS FINAL: ${docData.Estatus} - Cuenta: ${docData.Cuenta || 'N/A'}, M=${docData.M}, M3=${docData.M3}, M4=${docData.M4}`);
               }
             }
             
@@ -4487,13 +4540,50 @@ Tu servicio de *Izzi* está listo para instalarse.
           const conEstatus = processedRows.filter(r => r.Estatus && r.Estatus.trim() !== '');
           console.log(`📊 Resumen de Estatus - Con estatus: ${conEstatus.length}, Sin estatus: ${sinEstatus.length}`);
           
-          // Contar por estatus
+          // Contar por estatus con detalles
+          const estatusCounts = {};
+          processedRows.forEach(r => {
+            const est = (r.Estatus || 'Sin estatus').toString().trim();
+            estatusCounts[est] = (estatusCounts[est] || 0) + 1;
+          });
+          console.log('📊 Distribución de Estatus:', estatusCounts);
+          
+          // Contar específicamente M3 y M4
+          const m3Count = processedRows.filter(r => (r.Estatus || '').toString().trim() === 'M3').length;
+          const m4Count = processedRows.filter(r => (r.Estatus || '').toString().trim() === 'M4').length;
+          const m3Raw = processedRows.filter(r => r.M3 !== undefined && r.M3 !== null).length;
+          const m4Raw = processedRows.filter(r => r.M4 !== undefined && r.M4 !== null).length;
+          console.log(`🔍 M3: ${m3Count} con estatus M3 de ${m3Raw} registros con columna M3`);
+          console.log(`🔍 M4: ${m4Count} con estatus M4 de ${m4Raw} registros con columna M4`);
+          
+          // Mostrar algunos ejemplos de registros con M3 o M4
+          const ejemplosM3 = processedRows.filter(r => r.M3 !== undefined).slice(0, 5);
+          const ejemplosM4 = processedRows.filter(r => r.M4 !== undefined).slice(0, 5);
+          if (ejemplosM3.length > 0) {
+            console.log('📋 Ejemplos de registros con M3:', ejemplosM3.map(r => ({
+              Cuenta: r.Cuenta,
+              M: r.M,
+              M3: r.M3,
+              Estatus: r.Estatus,
+              'Tipo M3': typeof r.M3
+            })));
+          }
+          if (ejemplosM4.length > 0) {
+            console.log('📋 Ejemplos de registros con M4:', ejemplosM4.map(r => ({
+              Cuenta: r.Cuenta,
+              M: r.M,
+              M4: r.M4,
+              Estatus: r.Estatus,
+              'Tipo M4': typeof r.M4
+            })));
+          }
+          
+          // Contar por estatus (mantener compatibilidad)
           const porEstatus = {};
           conEstatus.forEach(r => {
             const est = r.Estatus.trim();
             porEstatus[est] = (porEstatus[est] || 0) + 1;
           });
-          console.log('📊 Distribución de Estatus:', porEstatus);
           
           if (sinEstatus.length > 0) {
             console.warn(`⚠️ ${sinEstatus.length} registros sin Estatus detectados. Revisar lógica de detección.`);
