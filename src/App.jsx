@@ -4729,28 +4729,39 @@ Tu servicio de *Izzi* está listo para instalarse.
           }
         } else if (currentModule === 'sales' || targetCollection === 'sales_master') {
           // Para cobranza: actualizar existentes por número de cuenta o crear nuevos
-          // Usar lotes MUY pequeños para evitar bloqueos, especialmente para archivos grandes
+          // Usar lotes MUY pequeños para evitar exceder cuota de Firestore
           const chunks = [];
-          // Reducir aún más el tamaño del lote para archivos muy grandes
-          const chunkSize = processedRows.length > 10000 ? 15 : (processedRows.length > 5000 ? 20 : 30);
+          // Reducir aún más el tamaño del lote para archivos muy grandes y evitar "Quota exceeded"
+          const chunkSize = processedRows.length > 10000 ? 10 : (processedRows.length > 5000 ? 15 : 20);
           for (let i = 0; i < processedRows.length; i += chunkSize) {
             chunks.push(processedRows.slice(i, i + chunkSize));
           }
           
           console.log(`Total de lotes a subir: ${chunks.length} (tamaño de lote: ${chunkSize})`);
+          console.log(`⚠️ IMPORTANTE: Para evitar "Quota exceeded", se usarán pausas largas entre lotes.`);
           
           for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
             const chunk = chunks[chunkIndex];
             setProgress(`Subiendo lote ${chunkIndex + 1} de ${chunks.length} (${chunkIndex * chunkSize + 1} a ${Math.min((chunkIndex + 1) * chunkSize, processedRows.length)} de ${processedRows.length})...`);
             
-            // Pausa antes de procesar el lote para permitir que la UI se actualice
-            // Pausa más larga para los primeros lotes para asegurar que la UI responda
+            // Pausa ANTES de procesar cada lote para evitar exceder cuota
+            // Pausas más largas para evitar "Quota exceeded" de Firestore
             if (chunkIndex > 0) {
+              // Pausa progresiva: más tiempo al principio y al final
+              let pauseTime = 500; // Base de 500ms
+              if (chunkIndex < 20) {
+                pauseTime = 1000; // Primeros 20 lotes: 1 segundo
+              } else if (chunkIndex > chunks.length * 0.9) {
+                pauseTime = 1500; // Últimos 10%: 1.5 segundos
+              }
+              
               await new Promise(resolve => {
                 requestAnimationFrame(() => {
                   setTimeout(() => {
-                    requestAnimationFrame(resolve);
-                  }, chunkIndex < 10 ? 100 : 50);
+                    requestAnimationFrame(() => {
+                      setTimeout(resolve, pauseTime);
+                    });
+                  }, 100);
                 });
               });
             }
@@ -4862,10 +4873,10 @@ Tu servicio de *Izzi* está listo para instalarse.
               inserted++;
             }
             
-            // Commit con manejo de errores y reintentos
+            // Commit con manejo de errores y reintentos, especialmente para "Quota exceeded"
             let commitSuccess = false;
             let retries = 0;
-            const maxRetries = 3;
+            const maxRetries = 5; // Aumentar reintentos para errores de cuota
             
             while (!commitSuccess && retries < maxRetries) {
               try {
@@ -4875,39 +4886,80 @@ Tu servicio de *Izzi* está listo para instalarse.
                 console.log(`✅ Lote ${chunkIndex + 1}/${chunks.length} subido: ${inserted}/${processedRows.length} (${updated} actualizados, ${created} nuevos)`);
               } catch (error) {
                 retries++;
-                console.warn(`⚠️ Error al hacer commit del lote ${chunkIndex + 1} (intento ${retries}/${maxRetries}):`, error);
-                if (retries < maxRetries) {
-                  // Esperar antes de reintentar (backoff exponencial)
-                  await new Promise(r => setTimeout(r, 1000 * retries));
-                  // Recrear el batch si es necesario
-                  batch = writeBatch(db);
-                  // Reintentar con el mismo chunk
-                  for (const data of chunk) {
-                    const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
-                    if (nCuenta && existingSales.has(nCuenta)) {
-                      const existing = existingSales.get(nCuenta);
-                      const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
-                      batch.update(docRef, data);
-                    } else if (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
-                      const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
-                      batch.set(ref, data);
+                const isQuotaError = error.code === 'resource-exhausted' || error.message?.includes('Quota exceeded') || error.message?.includes('quota');
+                
+                if (isQuotaError) {
+                  console.warn(`⚠️ QUOTA EXCEDIDA en lote ${chunkIndex + 1} (intento ${retries}/${maxRetries}). Esperando más tiempo...`);
+                  setProgress(`⚠️ Cuota excedida. Esperando antes de reintentar lote ${chunkIndex + 1}... (${retries}/${maxRetries})`);
+                  
+                  if (retries < maxRetries) {
+                    // Para errores de cuota, esperar mucho más tiempo (backoff exponencial más agresivo)
+                    const waitTime = Math.min(5000 * Math.pow(2, retries - 1), 30000); // Máximo 30 segundos
+                    console.log(`⏳ Esperando ${waitTime/1000} segundos antes de reintentar...`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    
+                    // Recrear el batch
+                    batch = writeBatch(db);
+                    // Reintentar con el mismo chunk
+                    for (const data of chunk) {
+                      const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+                      if (nCuenta && existingSales.has(nCuenta)) {
+                        const existing = existingSales.get(nCuenta);
+                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
+                        batch.update(docRef, data);
+                      } else if (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                        const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                        batch.set(ref, data);
+                      }
                     }
+                  } else {
+                    console.error(`❌ Error de cuota persistente después de ${maxRetries} intentos. Deteniendo carga.`);
+                    alert(`⚠️ Error: Se excedió la cuota de Firestore después de ${maxRetries} intentos.\n\nPor favor:\n1. Espera unos minutos\n2. Vuelve a intentar la carga\n3. O divide el archivo en partes más pequeñas`);
+                    throw error;
                   }
                 } else {
-                  throw error; // Si falla después de todos los reintentos, lanzar el error
+                  console.warn(`⚠️ Error al hacer commit del lote ${chunkIndex + 1} (intento ${retries}/${maxRetries}):`, error);
+                  if (retries < maxRetries) {
+                    // Para otros errores, esperar menos tiempo
+                    await new Promise(r => setTimeout(r, 2000 * retries));
+                    // Recrear el batch
+                    batch = writeBatch(db);
+                    // Reintentar con el mismo chunk
+                    for (const data of chunk) {
+                      const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+                      if (nCuenta && existingSales.has(nCuenta)) {
+                        const existing = existingSales.get(nCuenta);
+                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
+                        batch.update(docRef, data);
+                      } else if (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                        const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                        batch.set(ref, data);
+                      }
+                    }
+                  } else {
+                    throw error;
+                  }
                 }
               }
             }
             
-            // Pausa más larga entre lotes para evitar bloqueos y dar tiempo a Firestore
+            // Pausa DESPUÉS de cada commit para evitar exceder cuota
             if (chunkIndex < chunks.length - 1) {
-              // Pausa progresiva: más tiempo entre lotes al final, usando requestAnimationFrame
-              const pauseTime = chunkIndex > chunks.length * 0.8 ? 500 : (chunkIndex < 10 ? 200 : 100);
+              // Pausa más larga después de cada commit para dar tiempo a Firestore
+              let pauseTime = 800; // Base de 800ms
+              if (chunkIndex < 20) {
+                pauseTime = 1500; // Primeros 20 lotes: 1.5 segundos
+              } else if (chunkIndex > chunks.length * 0.9) {
+                pauseTime = 2000; // Últimos 10%: 2 segundos
+              }
+              
               await new Promise(resolve => {
                 requestAnimationFrame(() => {
                   setTimeout(() => {
-                    requestAnimationFrame(resolve);
-                  }, pauseTime);
+                    requestAnimationFrame(() => {
+                      setTimeout(resolve, pauseTime);
+                    });
+                  }, 100);
                 });
               });
             }
