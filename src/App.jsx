@@ -4731,28 +4731,38 @@ Tu servicio de *Izzi* está listo para instalarse.
           // Para cobranza: actualizar existentes por número de cuenta o crear nuevos
           // Usar lotes MUY pequeños para evitar exceder cuota de Firestore
           const chunks = [];
-          // Reducir aún más el tamaño del lote para archivos muy grandes y evitar "Quota exceeded"
-          const chunkSize = processedRows.length > 10000 ? 10 : (processedRows.length > 5000 ? 15 : 20);
+          // Reducir AÚN MÁS el tamaño del lote para archivos muy grandes y evitar "Quota exceeded"
+          // Para archivos >10,000: usar lotes de 5 registros (muy conservador)
+          const chunkSize = processedRows.length > 10000 ? 5 : (processedRows.length > 5000 ? 8 : 15);
           for (let i = 0; i < processedRows.length; i += chunkSize) {
             chunks.push(processedRows.slice(i, i + chunkSize));
           }
           
           console.log(`Total de lotes a subir: ${chunks.length} (tamaño de lote: ${chunkSize})`);
-          console.log(`⚠️ IMPORTANTE: Para evitar "Quota exceeded", se usarán pausas largas entre lotes.`);
+          console.log(`⚠️ IMPORTANTE: Para evitar "Quota exceeded", se usarán pausas MUY largas entre lotes.`);
+          console.log(`⏱️ El proceso será más lento pero evitará errores de cuota.`);
           
           for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
             const chunk = chunks[chunkIndex];
             setProgress(`Subiendo lote ${chunkIndex + 1} de ${chunks.length} (${chunkIndex * chunkSize + 1} a ${Math.min((chunkIndex + 1) * chunkSize, processedRows.length)} de ${processedRows.length})...`);
             
             // Pausa ANTES de procesar cada lote para evitar exceder cuota
-            // Pausas más largas para evitar "Quota exceeded" de Firestore
+            // Pausas MUY largas para evitar "Quota exceeded" de Firestore
             if (chunkIndex > 0) {
               // Pausa progresiva: más tiempo al principio y al final
-              let pauseTime = 500; // Base de 500ms
+              let pauseTime = 2000; // Base de 2 segundos (aumentado de 500ms)
               if (chunkIndex < 20) {
-                pauseTime = 1000; // Primeros 20 lotes: 1 segundo
+                pauseTime = 3000; // Primeros 20 lotes: 3 segundos (aumentado de 1 segundo)
               } else if (chunkIndex > chunks.length * 0.9) {
-                pauseTime = 1500; // Últimos 10%: 1.5 segundos
+                pauseTime = 4000; // Últimos 10%: 4 segundos (aumentado de 1.5 segundos)
+              }
+              
+              // Pausa EXTRA cada 50 lotes para dar tiempo a que Firestore se recupere
+              if (chunkIndex % 50 === 0 && chunkIndex > 0) {
+                const extraPause = 30000; // 30 segundos cada 50 lotes
+                console.log(`⏸️ Pausa de recuperación: ${extraPause/1000}s después del lote ${chunkIndex}...`);
+                setProgress(`⏸️ Pausa de recuperación (${extraPause/1000}s) después del lote ${chunkIndex}...`);
+                await new Promise(resolve => setTimeout(resolve, extraPause));
               }
               
               await new Promise(resolve => {
@@ -4893,9 +4903,11 @@ Tu servicio de *Izzi* está listo para instalarse.
                   setProgress(`⚠️ Cuota excedida. Esperando antes de reintentar lote ${chunkIndex + 1}... (${retries}/${maxRetries})`);
                   
                   if (retries < maxRetries) {
-                    // Para errores de cuota, esperar mucho más tiempo (backoff exponencial más agresivo)
-                    const waitTime = Math.min(5000 * Math.pow(2, retries - 1), 30000); // Máximo 30 segundos
+                    // Para errores de cuota, esperar MUCHO más tiempo (backoff exponencial más agresivo)
+                    // Aumentado: mínimo 10 segundos, máximo 60 segundos
+                    const waitTime = Math.min(10000 * Math.pow(2, retries - 1), 60000); // Máximo 60 segundos (aumentado de 30)
                     console.log(`⏳ Esperando ${waitTime/1000} segundos antes de reintentar...`);
+                    setProgress(`⏳ Esperando ${waitTime/1000}s antes de reintentar lote ${chunkIndex + 1}...`);
                     await new Promise(r => setTimeout(r, waitTime));
                     
                     // Recrear el batch
@@ -4945,12 +4957,12 @@ Tu servicio de *Izzi* está listo para instalarse.
             
             // Pausa DESPUÉS de cada commit para evitar exceder cuota
             if (chunkIndex < chunks.length - 1) {
-              // Pausa más larga después de cada commit para dar tiempo a Firestore
-              let pauseTime = 800; // Base de 800ms
+              // Pausa MUY larga después de cada commit para dar tiempo a Firestore
+              let pauseTime = 3000; // Base de 3 segundos (aumentado de 800ms)
               if (chunkIndex < 20) {
-                pauseTime = 1500; // Primeros 20 lotes: 1.5 segundos
+                pauseTime = 5000; // Primeros 20 lotes: 5 segundos (aumentado de 1.5 segundos)
               } else if (chunkIndex > chunks.length * 0.9) {
-                pauseTime = 2000; // Últimos 10%: 2 segundos
+                pauseTime = 6000; // Últimos 10%: 6 segundos (aumentado de 2 segundos)
               }
               
               await new Promise(resolve => {
