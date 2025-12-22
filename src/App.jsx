@@ -4731,7 +4731,8 @@ Tu servicio de *Izzi* está listo para instalarse.
           // Para cobranza: actualizar existentes por número de cuenta o crear nuevos
           // Usar lotes MUY pequeños para evitar bloqueos, especialmente para archivos grandes
           const chunks = [];
-          const chunkSize = processedRows.length > 10000 ? 25 : 50; // Lotes más pequeños para archivos grandes
+          // Reducir aún más el tamaño del lote para archivos muy grandes
+          const chunkSize = processedRows.length > 10000 ? 15 : (processedRows.length > 5000 ? 20 : 30);
           for (let i = 0; i < processedRows.length; i += chunkSize) {
             chunks.push(processedRows.slice(i, i + chunkSize));
           }
@@ -4741,6 +4742,18 @@ Tu servicio de *Izzi* está listo para instalarse.
           for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
             const chunk = chunks[chunkIndex];
             setProgress(`Subiendo lote ${chunkIndex + 1} de ${chunks.length} (${chunkIndex * chunkSize + 1} a ${Math.min((chunkIndex + 1) * chunkSize, processedRows.length)} de ${processedRows.length})...`);
+            
+            // Pausa antes de procesar el lote para permitir que la UI se actualice
+            // Pausa más larga para los primeros lotes para asegurar que la UI responda
+            if (chunkIndex > 0) {
+              await new Promise(resolve => {
+                requestAnimationFrame(() => {
+                  setTimeout(() => {
+                    requestAnimationFrame(resolve);
+                  }, chunkIndex < 10 ? 100 : 50);
+                });
+              });
+            }
             
             try {
               const batch = writeBatch(db);
@@ -4849,21 +4862,60 @@ Tu servicio de *Izzi* está listo para instalarse.
               inserted++;
             }
             
-            await batch.commit();
-            setProgress(`Subido: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
-            console.log(`✅ Lote ${chunkIndex + 1}/${chunks.length} subido: ${inserted}/${processedRows.length} (${updated} actualizados, ${created} nuevos)`);
+            // Commit con manejo de errores y reintentos
+            let commitSuccess = false;
+            let retries = 0;
+            const maxRetries = 3;
+            
+            while (!commitSuccess && retries < maxRetries) {
+              try {
+                await batch.commit();
+                commitSuccess = true;
+                setProgress(`Subido: ${inserted} de ${processedRows.length}... (${updated} actualizados, ${created} nuevos)`);
+                console.log(`✅ Lote ${chunkIndex + 1}/${chunks.length} subido: ${inserted}/${processedRows.length} (${updated} actualizados, ${created} nuevos)`);
+              } catch (error) {
+                retries++;
+                console.warn(`⚠️ Error al hacer commit del lote ${chunkIndex + 1} (intento ${retries}/${maxRetries}):`, error);
+                if (retries < maxRetries) {
+                  // Esperar antes de reintentar (backoff exponencial)
+                  await new Promise(r => setTimeout(r, 1000 * retries));
+                  // Recrear el batch si es necesario
+                  batch = writeBatch(db);
+                  // Reintentar con el mismo chunk
+                  for (const data of chunk) {
+                    const nCuenta = data.Cuenta || data['Nº de cuenta'] || '';
+                    if (nCuenta && existingSales.has(nCuenta)) {
+                      const existing = existingSales.get(nCuenta);
+                      const docRef = doc(db, 'artifacts', appId, 'public', 'data', targetCollection, existing.id);
+                      batch.update(docRef, data);
+                    } else if (data.Cliente && cleanValue(data.Cliente).toLowerCase() !== 'izzi') {
+                      const ref = doc(collection(db, 'artifacts', appId, 'public', 'data', targetCollection));
+                      batch.set(ref, data);
+                    }
+                  }
+                } else {
+                  throw error; // Si falla después de todos los reintentos, lanzar el error
+                }
+              }
+            }
             
             // Pausa más larga entre lotes para evitar bloqueos y dar tiempo a Firestore
             if (chunkIndex < chunks.length - 1) {
-              // Pausa progresiva: más tiempo entre lotes al final
-              const pauseTime = chunkIndex > chunks.length * 0.8 ? 500 : 200;
-              await new Promise(r => setTimeout(r, pauseTime));
+              // Pausa progresiva: más tiempo entre lotes al final, usando requestAnimationFrame
+              const pauseTime = chunkIndex > chunks.length * 0.8 ? 500 : (chunkIndex < 10 ? 200 : 100);
+              await new Promise(resolve => {
+                requestAnimationFrame(() => {
+                  setTimeout(() => {
+                    requestAnimationFrame(resolve);
+                  }, pauseTime);
+                });
+              });
             }
             } catch (error) {
               console.error(`Error en lote ${chunkIndex + 1}:`, error);
               setProgress(`Error en lote ${chunkIndex + 1}: ${error.message}. Reintentando...`);
               // Reintentar el lote una vez
-              await new Promise(r => setTimeout(r, 1000));
+              await new Promise(r => setTimeout(r, 2000));
               chunkIndex--; // Volver a intentar este lote
             }
           }
