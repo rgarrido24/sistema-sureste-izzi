@@ -176,19 +176,32 @@ async function loginUser(username, password) {
     const cleanUsername = username.trim().toLowerCase();
     console.log('🔐 Intentando login:', { cleanUsername, passwordLength: password.length });
     
-    // Obtener TODOS los usuarios para debug
+    // Obtener TODOS los usuarios para debug y búsqueda manual
     const allUsersSnap = await getDocs(usersRef);
     const allUsers = allUsersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    console.log('👥 Todos los usuarios en BD:', allUsers.map(u => ({ id: u.id, username: u.username, name: u.name, hasHash: !!u.passwordHash })));
+    console.log('👥 Todos los usuarios en BD:', allUsers.map(u => ({ 
+      id: u.id, 
+      username: u.username, 
+      usernameType: typeof u.username,
+      name: u.name, 
+      hasHash: !!u.passwordHash 
+    })));
     
+    // Intentar búsqueda con query primero
     const q = query(usersRef, where('username', '==', cleanUsername));
     const snapshot = await getDocs(q);
     
     console.log('📊 Usuarios encontrados con query:', snapshot.size);
     
-    if (snapshot.empty) {
-      // Buscar manualmente por si hay problema con la query
-      const foundUser = allUsers.find(u => u.username && u.username.toLowerCase() === cleanUsername);
+    // Buscar manualmente también (más robusto)
+    const foundUser = allUsers.find(u => {
+      if (!u.username) return false;
+      const uUsername = String(u.username).trim().toLowerCase();
+      return uUsername === cleanUsername;
+    });
+    
+    if (snapshot.empty && !foundUser) {
+      // No se encontró con query ni manualmente
       if (foundUser) {
         console.log('✅ Usuario encontrado manualmente:', foundUser);
         const userData = foundUser;
@@ -227,8 +240,22 @@ async function loginUser(username, password) {
       return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsers.map(u => u.username || u.name).join(', ')}` };
     }
     
-    const userDoc = snapshot.docs[0];
-    const userData = userDoc.data();
+    // Usar el usuario encontrado manualmente si la query falló, o el de la query si funcionó
+    let userDoc, userData;
+    if (foundUser && snapshot.empty) {
+      // Usar el encontrado manualmente
+      userData = foundUser;
+      userDoc = { id: foundUser.id };
+      console.log('✅ Usando usuario encontrado manualmente');
+    } else if (!snapshot.empty) {
+      // Usar el de la query
+      userDoc = snapshot.docs[0];
+      userData = userDoc.data();
+      console.log('✅ Usando usuario encontrado con query');
+    } else {
+      // No debería llegar aquí, pero por si acaso
+      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsers.map(u => u.username || u.name).join(', ')}` };
+    }
     
     console.log('👤 Datos del usuario:', {
       id: userDoc.id,
@@ -325,19 +352,32 @@ async function createUser(username, password, name, role, email = '') {
     console.log('✅ Usuario creado con ID:', docRef.id);
     
     // Verificar que se guardó correctamente
-    const verifySnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', docRef.id));
-    if (!verifySnap.exists()) {
+    const verifyUserSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', docRef.id));
+    if (!verifyUserSnap.exists()) {
       console.error('❌ ERROR: El usuario no se guardó correctamente');
       return { success: false, error: 'Error al guardar el usuario. Por favor, intenta de nuevo.' };
     }
     
-    const savedData = verifySnap.data();
+    const savedData = verifyUserSnap.data();
     console.log('✅ Usuario guardado correctamente:', { 
       id: docRef.id, 
       username: savedData.username, 
+      usernameType: typeof savedData.username,
       hasHash: !!savedData.passwordHash,
       hashLength: savedData.passwordHash?.length 
     });
+    
+    // Esperar un momento para que Firestore se sincronice antes de continuar
+    await new Promise(r => setTimeout(r, 500));
+    
+    // Verificar nuevamente que el usuario se puede encontrar
+    const verifyQuery = query(usersRef, where('username', '==', cleanUsername));
+    const verifyQuerySnap = await getDocs(verifyQuery);
+    if (verifyQuerySnap.empty) {
+      console.warn('⚠️ Usuario creado pero no se encuentra inmediatamente con query. Esto puede ser normal por sincronización de Firestore.');
+    } else {
+      console.log('✅ Usuario verificado y encontrable inmediatamente');
+    }
     
     // Si es un usuario vendedor, auto-asignar cuentas con ese nombre
     if (role === 'vendor' || role === 'vendedor') {
@@ -985,6 +1025,9 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [editingUser, setEditingUser] = useState(null);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [editingUserName, setEditingUserName] = useState('');
+  const [editingUserRole, setEditingUserRole] = useState('');
+  const [editingUserEmail, setEditingUserEmail] = useState('');
   const [clientNote, setClientNote] = useState('');
   
   // Estados para mapeo CVVEN -> Vendedores (para asignación automática futura)
@@ -1795,8 +1838,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       console.log('✅ Usuario eliminado de Firestore');
       
       // Verificar que se eliminó correctamente
-      const verifySnap = await getDoc(userRef);
-      if (verifySnap.exists()) {
+      const verifyDeleteSnap = await getDoc(userRef);
+      if (verifyDeleteSnap.exists()) {
         console.error('❌ ERROR: El usuario aún existe después de eliminarlo');
         alert('⚠️ Error: El usuario no se pudo eliminar completamente. Por favor, intenta de nuevo.');
         return;
@@ -1981,33 +2024,63 @@ Tu servicio de *Izzi* está listo para instalarse.
   const updateUser = async () => {
     if (!editingUser) return;
     
+    // Si el usuario NO es admin, solo puede cambiar su propia contraseña
+    const isAdmin = user?.role === 'admin' || user?.role === 'admin_general';
+    const isEditingSelf = editingUser.id === user?.id;
+    
+    if (!isAdmin && !isEditingSelf) {
+      alert('❌ Solo puedes editar tu propia información');
+      return;
+    }
+    
     // Validar que si se cambia la contraseña, tenga al menos 6 caracteres
     if (newPassword && newPassword.length < 6) {
       alert('La contraseña debe tener al menos 6 caracteres');
       return;
     }
     
-    if (!editingUserName || editingUserName.trim() === '') {
-      alert('El nombre es obligatorio');
-      return;
+    // Si es admin, puede cambiar nombre, rol, email
+    // Si no es admin, solo puede cambiar contraseña
+    if (isAdmin) {
+      if (!editingUserName || editingUserName.trim() === '') {
+        alert('El nombre es obligatorio');
+        return;
+      }
+    } else {
+      // Usuario normal solo puede cambiar contraseña
+      if (!newPassword || newPassword.trim() === '') {
+        alert('Por favor ingresa una nueva contraseña');
+        return;
+      }
     }
     
     try {
       const updateData = {
-        name: editingUserName.trim(),
-        role: editingUserRole,
-        email: editingUserEmail.trim() || '',
         updatedAt: serverTimestamp()
       };
       
-      // Solo actualizar contraseña si se proporcionó una nueva
+      // Solo admin puede cambiar nombre, rol, email
+      if (isAdmin) {
+        updateData.name = editingUserName.trim();
+        updateData.role = editingUserRole;
+        updateData.email = editingUserEmail.trim() || '';
+      }
+      
+      // Cualquiera puede cambiar su contraseña (si se proporcionó)
       if (newPassword && newPassword.trim() !== '') {
         updateData.passwordHash = hashPassword(newPassword);
       }
       
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', editingUser.id), updateData, { merge: true });
       
-      alert('✅ Usuario actualizado correctamente');
+      if (isAdmin) {
+        alert('✅ Usuario actualizado correctamente');
+      } else {
+        alert('✅ Contraseña actualizada correctamente. Por favor, inicia sesión nuevamente.');
+        // Cerrar sesión si cambió su propia contraseña
+        window.location.reload();
+      }
+      
       setShowEditUserModal(false);
       setEditingUser(null);
       setNewPassword('');
@@ -2073,6 +2146,9 @@ Tu servicio de *Izzi* está listo para instalarse.
         await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
       }
       
+      // Esperar un momento para que Firestore se sincronice
+      await new Promise(r => setTimeout(r, 1000));
+      
       // Verificar que se eliminaron todos
       const verifyOperacionSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'));
       const verifyReportsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'));
@@ -2081,7 +2157,8 @@ Tu servicio de *Izzi* está listo para instalarse.
       
       setProgress('');
       if (remainingOperacion === 0 && remainingReports === 0) {
-        alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas correctamente.\n\nEl sistema está listo para empezar de cero.`);
+        alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas correctamente.\n\nEl sistema está listo para empezar de cero.\n\nPor favor, recarga la página (F5) para actualizar la vista.`);
+        setTimeout(() => window.location.reload(), 2000);
       } else {
         alert(`⚠️ Se eliminaron ${deletedOperacion} registros de Operación y ${deletedReports} reportes, pero aún quedan ${remainingOperacion} de Operación y ${remainingReports} reportes. Por favor, intenta de nuevo.`);
       }
@@ -2127,12 +2204,13 @@ Tu servicio de *Izzi* está listo para instalarse.
       }
       
       // Verificar que se eliminaron todos
-      const verifySnap = await getDocs(installRef);
-      const remaining = verifySnap.size;
+      const verifyInstallSnap = await getDocs(installRef);
+      const remaining = verifyInstallSnap.size;
       
       setProgress('');
       if (remaining === 0) {
-        alert(`✅ Se eliminaron ${deleted} registros de Instalaciones correctamente.\n\nEl sistema está listo para empezar de cero.`);
+        alert(`✅ Se eliminaron ${deleted} registros de Instalaciones correctamente.\n\nEl sistema está listo para empezar de cero.\n\nPor favor, recarga la página (F5) para actualizar la vista.`);
+        setTimeout(() => window.location.reload(), 2000);
       } else {
         alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros. Por favor, intenta de nuevo.`);
       }
@@ -2154,8 +2232,9 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
-      setProgress('Eliminando datos de Cobranza...');
+      setProgress('🔄 Preparando eliminación... Esto puede tardar varios minutos.');
       
+      // Obtener TODOS los documentos primero (sin listeners activos)
       const cobranzaRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
       const cobranzaSnap = await getDocs(cobranzaRef);
       const totalDocs = cobranzaSnap.size;
@@ -2167,34 +2246,55 @@ Tu servicio de *Izzi* está listo para instalarse.
         return;
       }
       
+      // Guardar todas las referencias de documentos
       const cobranzaDocs = [];
-      cobranzaSnap.docs.forEach(d => cobranzaDocs.push(d));
+      cobranzaSnap.docs.forEach(d => cobranzaDocs.push({ ref: d.ref, id: d.id }));
+      
+      setProgress(`🗑️ Eliminando ${totalDocs} registros de Cobranza...`);
       
       let deleted = 0;
       let batchNumber = 0;
+      const errors = [];
+      
       while (cobranzaDocs.length > 0) {
         batchNumber++;
-        const batch = writeBatch(db);
-        const chunk = cobranzaDocs.splice(0, 400); // Lotes de 400 para estar seguros
-        chunk.forEach(d => {
-          batch.delete(d.ref);
-          deleted++;
-        });
-        await batch.commit();
-        console.log(`✅ Lote ${batchNumber} eliminado: ${deleted}/${totalDocs}`);
-        setProgress(`Eliminando: ${deleted} de ${totalDocs}... (Lote ${batchNumber})`);
-        await new Promise(r => setTimeout(r, 200)); // Pausa entre lotes
+        try {
+          const batch = writeBatch(db);
+          const chunk = cobranzaDocs.splice(0, 400); // Lotes de 400 para estar seguros
+          chunk.forEach(doc => {
+            batch.delete(doc.ref);
+            deleted++;
+          });
+          await batch.commit();
+          console.log(`✅ Lote ${batchNumber} eliminado: ${deleted}/${totalDocs}`);
+          setProgress(`🗑️ Eliminando: ${deleted} de ${totalDocs}... (Lote ${batchNumber})`);
+          await new Promise(r => setTimeout(r, 300)); // Pausa entre lotes
+        } catch (batchError) {
+          console.error(`❌ Error en lote ${batchNumber}:`, batchError);
+          errors.push(`Lote ${batchNumber}: ${batchError.message}`);
+          // Continuar con el siguiente lote
+        }
       }
       
+      // Esperar un momento para que Firestore se sincronice
+      await new Promise(r => setTimeout(r, 1000));
+      
       // Verificar que se eliminaron todos
-      const verifySnap = await getDocs(cobranzaRef);
-      const remaining = verifySnap.size;
+      const verifyCobranzaSnap = await getDocs(cobranzaRef);
+      const remaining = verifyCobranzaSnap.size;
       
       setProgress('');
+      
+      if (errors.length > 0) {
+        console.warn('⚠️ Errores durante la eliminación:', errors);
+      }
+      
       if (remaining === 0) {
-        alert(`✅ Se eliminaron ${deleted} registros de Cobranza correctamente.\n\nEl sistema está listo para empezar de cero.`);
+        alert(`✅ Se eliminaron ${deleted} registros de Cobranza correctamente.\n\nEl sistema está listo para empezar de cero.\n\nPor favor, recarga la página (F5) para actualizar la vista.`);
+        // Recargar la página después de un momento
+        setTimeout(() => window.location.reload(), 2000);
       } else {
-        alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros. Por favor, intenta de nuevo.`);
+        alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros.\n\nErrores: ${errors.length > 0 ? errors.join(', ') : 'Ninguno'}\n\nPor favor, intenta de nuevo o recarga la página.`);
       }
     } catch (error) {
       console.error('Error al eliminar datos de cobranza:', error);
@@ -6279,11 +6379,14 @@ Tu servicio de *Izzi* está listo para instalarse.
                       <button
                         onClick={() => {
                           setEditingUser(u);
+                          setEditingUserName(u.name || '');
+                          setEditingUserRole(u.role || 'vendor');
+                          setEditingUserEmail(u.email || '');
                           setNewPassword('');
                           setShowEditUserModal(true);
                         }}
                         className="text-blue-600 hover:text-blue-800 p-1"
-                        title="Editar contraseña"
+                        title={user?.role === 'admin' || user?.role === 'admin_general' ? "Editar usuario" : "Cambiar mi contraseña"}
                       >
                         <Wrench size={16}/>
                       </button>
@@ -7655,60 +7758,82 @@ Tu servicio de *Izzi* está listo para instalarse.
         )}
 
         {/* Modal para editar usuario */}
-        {showEditUserModal && editingUser && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Wrench size={20} className="text-purple-500"/> Editar Usuario
-              </h3>
-              <div className="mb-4 p-3 bg-slate-50 rounded-lg">
-                <p className="text-sm text-slate-600">
-                  <strong>Usuario:</strong> {editingUser.username}
-                </p>
-              </div>
-              <div className="space-y-4 mb-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Nombre completo:</label>
-                  <input
-                    type="text"
-                    value={editingUserName}
-                    onChange={(e) => setEditingUserName(e.target.value)}
-                    placeholder="Nombre completo"
-                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
-                  />
+        {showEditUserModal && editingUser && (() => {
+          const isAdmin = user?.role === 'admin' || user?.role === 'admin_general';
+          const isEditingSelf = editingUser.id === user?.id;
+          const canEditAll = isAdmin;
+          const canEditPassword = isAdmin || isEditingSelf;
+          
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Wrench size={20} className="text-purple-500"/> 
+                  {canEditAll ? 'Editar Usuario' : 'Cambiar Mi Contraseña'}
+                </h3>
+                <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+                  <p className="text-sm text-slate-600">
+                    <strong>Usuario:</strong> {editingUser.username}
+                  </p>
+                  {!canEditAll && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Solo puedes cambiar tu contraseña. Contacta al administrador para otros cambios.
+                    </p>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Rol:</label>
-                  <select
-                    value={editingUserRole}
-                    onChange={(e) => setEditingUserRole(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
-                  >
-                    <option value="vendor">Vendedor</option>
-                    <option value="admin">Administrador</option>
-                  </select>
+                <div className="space-y-4 mb-4">
+                  {canEditAll && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Nombre completo:</label>
+                        <input
+                          type="text"
+                          value={editingUserName}
+                          onChange={(e) => setEditingUserName(e.target.value)}
+                          placeholder="Nombre completo"
+                          className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Rol:</label>
+                        <select
+                          value={editingUserRole}
+                          onChange={(e) => setEditingUserRole(e.target.value)}
+                          className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                        >
+                          <option value="vendor">Vendedor</option>
+                          <option value="admin_region">Administrador Regional</option>
+                          {(user?.role === 'admin' || user?.role === 'admin_general') && <option value="admin_general">Administrador General</option>}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Email (opcional):</label>
+                        <input
+                          type="email"
+                          value={editingUserEmail}
+                          onChange={(e) => setEditingUserEmail(e.target.value)}
+                          placeholder="email@ejemplo.com"
+                          className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                        />
+                      </div>
+                    </>
+                  )}
+                  {canEditPassword && (
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2">
+                        {canEditAll ? 'Nueva contraseña (dejar vacío para no cambiar):' : 'Nueva contraseña (obligatorio):'}
+                      </label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full p-3 border border-slate-300 rounded-lg text-sm"
+                        required={!canEditAll}
+                      />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Email (opcional):</label>
-                  <input
-                    type="email"
-                    value={editingUserEmail}
-                    onChange={(e) => setEditingUserEmail(e.target.value)}
-                    placeholder="email@ejemplo.com"
-                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Nueva contraseña (dejar vacío para no cambiar):</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres (opcional)"
-                    className="w-full p-3 border border-slate-300 rounded-lg text-sm"
-                  />
-                </div>
-              </div>
               <div className="flex gap-3">
                 <button
                   onClick={updateUser}
@@ -7732,7 +7857,8 @@ Tu servicio de *Izzi* está listo para instalarse.
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
