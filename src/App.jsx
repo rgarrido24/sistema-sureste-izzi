@@ -195,66 +195,40 @@ async function loginUser(username, password) {
     
     // Buscar manualmente también (más robusto)
     const foundUser = allUsers.find(u => {
-      if (!u.username) return false;
+      if (!u.username) {
+        console.log(`⚠️ Usuario sin username: ID=${u.id}, name=${u.name}`);
+        return false;
+      }
       const uUsername = String(u.username).trim().toLowerCase();
-      return uUsername === cleanUsername;
+      const match = uUsername === cleanUsername;
+      if (match) {
+        console.log(`✅ Usuario encontrado manualmente: "${u.username}" (ID: ${u.id})`);
+      }
+      return match;
     });
     
-    if (snapshot.empty && !foundUser) {
-      // No se encontró con query ni manualmente
-      if (foundUser) {
-        console.log('✅ Usuario encontrado manualmente:', foundUser);
-        const userData = foundUser;
-        
-        if (!userData.passwordHash) {
-          console.error('❌ Usuario sin passwordHash');
-          return { success: false, error: 'Usuario sin contraseña configurada. Contacta al administrador.' };
-        }
-        
-        const passwordHashCalculado = hashPassword(password);
-        const passwordMatch = passwordHashCalculado === userData.passwordHash;
-        
-        console.log('🔑 Verificación de contraseña:', {
-          passwordHashCalculado: passwordHashCalculado.substring(0, 10) + '...',
-          passwordHashGuardado: userData.passwordHash.substring(0, 10) + '...',
-          match: passwordMatch
-        });
-        
-        if (!passwordMatch) {
-          return { success: false, error: 'Contraseña incorrecta' };
-        }
-        
-        console.log('✅ Login exitoso (usuario encontrado manualmente)');
-        return { 
-          success: true, 
-          user: {
-            id: userData.id,
-            username: userData.username,
-            name: userData.name,
-            role: userData.role,
-            email: userData.email || ''
-          }
-        };
-      }
-      
-      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsers.map(u => u.username || u.name).join(', ')}` };
-    }
-    
-    // Usar el usuario encontrado manualmente si la query falló, o el de la query si funcionó
+    // Determinar qué usuario usar (priorizar el encontrado manualmente)
     let userDoc, userData;
-    if (foundUser && snapshot.empty) {
-      // Usar el encontrado manualmente
+    if (foundUser) {
+      // Usar el encontrado manualmente (más confiable)
       userData = foundUser;
       userDoc = { id: foundUser.id };
       console.log('✅ Usando usuario encontrado manualmente');
     } else if (!snapshot.empty) {
-      // Usar el de la query
+      // Usar el de la query si no se encontró manualmente
       userDoc = snapshot.docs[0];
       userData = userDoc.data();
       console.log('✅ Usando usuario encontrado con query');
     } else {
-      // No debería llegar aquí, pero por si acaso
-      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsers.map(u => u.username || u.name).join(', ')}` };
+      // No se encontró de ninguna forma
+      const availableUsernames = allUsers.map(u => u.username || u.name || 'Sin nombre').filter(Boolean);
+      console.error('❌ Usuario no encontrado:', {
+        buscando: cleanUsername,
+        tipo: typeof cleanUsername,
+        longitud: cleanUsername.length,
+        disponibles: availableUsernames
+      });
+      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${availableUsernames.join(', ')}` };
     }
     
     console.log('👤 Datos del usuario:', {
@@ -348,11 +322,24 @@ async function createUser(username, password, name, role, email = '') {
     };
     
     console.log('💾 Guardando usuario:', { ...userData, passwordHash: '***' });
-    const docRef = await addDoc(usersRef, userData);
-    console.log('✅ Usuario creado con ID:', docRef.id);
+    
+    // Usar setDoc con un ID específico basado en el username para evitar duplicados
+    const userId = cleanUsername.replace(/[^a-z0-9]/g, '_'); // ID basado en username
+    const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userId);
+    
+    // Verificar si ya existe con este ID
+    const existingDoc = await getDoc(userDocRef);
+    if (existingDoc.exists()) {
+      console.log('⚠️ Usuario ya existe con este ID');
+      return { success: false, error: 'El usuario ya existe' };
+    }
+    
+    // Guardar con setDoc usando el ID específico
+    await setDoc(userDocRef, userData);
+    console.log('✅ Usuario creado con ID:', userId);
     
     // Verificar que se guardó correctamente
-    const verifyUserSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', docRef.id));
+    const verifyUserSnap = await getDoc(userDocRef);
     if (!verifyUserSnap.exists()) {
       console.error('❌ ERROR: El usuario no se guardó correctamente');
       return { success: false, error: 'Error al guardar el usuario. Por favor, intenta de nuevo.' };
@@ -360,21 +347,30 @@ async function createUser(username, password, name, role, email = '') {
     
     const savedData = verifyUserSnap.data();
     console.log('✅ Usuario guardado correctamente:', { 
-      id: docRef.id, 
+      id: userId, 
       username: savedData.username, 
       usernameType: typeof savedData.username,
+      usernameValue: savedData.username,
       hasHash: !!savedData.passwordHash,
       hashLength: savedData.passwordHash?.length 
     });
     
-    // Esperar un momento para que Firestore se sincronice antes de continuar
-    await new Promise(r => setTimeout(r, 500));
+    // Esperar más tiempo para que Firestore se sincronice completamente
+    await new Promise(r => setTimeout(r, 1000));
     
-    // Verificar nuevamente que el usuario se puede encontrar
+    // Verificar nuevamente que el usuario se puede encontrar con query
     const verifyQuery = query(usersRef, where('username', '==', cleanUsername));
     const verifyQuerySnap = await getDocs(verifyQuery);
     if (verifyQuerySnap.empty) {
-      console.warn('⚠️ Usuario creado pero no se encuentra inmediatamente con query. Esto puede ser normal por sincronización de Firestore.');
+      console.warn('⚠️ Usuario creado pero no se encuentra inmediatamente con query. Esperando más tiempo...');
+      await new Promise(r => setTimeout(r, 2000));
+      const verifyQuerySnap2 = await getDocs(verifyQuery);
+      if (verifyQuerySnap2.empty) {
+        console.error('❌ Usuario aún no encontrable después de esperar. Puede haber un problema de sincronización.');
+        // Aún así, retornar éxito porque el documento se guardó
+      } else {
+        console.log('✅ Usuario verificado y encontrable después de esperar');
+      }
     } else {
       console.log('✅ Usuario verificado y encontrable inmediatamente');
     }
@@ -402,7 +398,7 @@ async function createUser(username, password, name, role, email = '') {
       }
     }
     
-    return { success: true, userId: docRef.id };
+    return { success: true, userId: userId };
   } catch (error) {
     console.error('Error al crear usuario:', error);
     return { success: false, error: error.message };
@@ -1029,6 +1025,7 @@ function AdminDashboard({ user, currentModule, setModule }) {
   const [editingUserRole, setEditingUserRole] = useState('');
   const [editingUserEmail, setEditingUserEmail] = useState('');
   const [clientNote, setClientNote] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false); // Flag para pausar listeners durante borrado
   
   // Estados para mapeo CVVEN -> Vendedores (para asignación automática futura)
   const [cvvenVendorMap, setCvvenVendorMap] = useState(() => {
@@ -1097,6 +1094,11 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
 
     const qMain = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
     const unsubMain = onSnapshot(qMain, (snap) => {
+      // NO actualizar si estamos en proceso de borrado
+      if (isDeleting) {
+        console.log('⏸️ Listener pausado durante borrado');
+        return;
+      }
       setDbCount(snap.size);
       // Cargar todos los clientes para la vista de clientes
       const clients = snap.docs.map(d => {
@@ -1287,7 +1289,7 @@ Somos de *Izzi Sureste*. Te contactamos porque tienes un saldo pendiente:
       unsubSalesMaster();
       if (unsubUsers) unsubUsers();
     };
-  }, [collectionName, appId, currentModule, user]);
+  }, [collectionName, appId, currentModule, user, isDeleting]);
 
   // useEffect para combinar reportes con órdenes completadas e instalaciones
   useEffect(() => {
@@ -2104,6 +2106,10 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
+      // Pausar listeners durante el borrado
+      setIsDeleting(true);
+      await new Promise(r => setTimeout(r, 500));
+      
       setProgress('Eliminando datos de Operación del Día...');
       
       // Eliminar todos los documentos de operacion_dia en lotes
@@ -2146,8 +2152,9 @@ Tu servicio de *Izzi* está listo para instalarse.
         await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
       }
       
-      // Esperar un momento para que Firestore se sincronice
-      await new Promise(r => setTimeout(r, 1000));
+      // Esperar más tiempo para que Firestore se sincronice completamente
+      setProgress('🔄 Sincronizando con Firestore...');
+      await new Promise(r => setTimeout(r, 3000));
       
       // Verificar que se eliminaron todos
       const verifyOperacionSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'));
@@ -2155,14 +2162,19 @@ Tu servicio de *Izzi* está listo para instalarse.
       const remainingOperacion = verifyOperacionSnap.size;
       const remainingReports = verifyReportsSnap.size;
       
+      // Reanudar listeners
+      setIsDeleting(false);
       setProgress('');
+      
       if (remainingOperacion === 0 && remainingReports === 0) {
-        alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas correctamente.\n\nEl sistema está listo para empezar de cero.\n\nPor favor, recarga la página (F5) para actualizar la vista.`);
-        setTimeout(() => window.location.reload(), 2000);
+        alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas correctamente.\n\nEl sistema está listo para empezar de cero.\n\nLa página se recargará automáticamente en 3 segundos...`);
+        setTimeout(() => window.location.reload(), 3000);
       } else {
         alert(`⚠️ Se eliminaron ${deletedOperacion} registros de Operación y ${deletedReports} reportes, pero aún quedan ${remainingOperacion} de Operación y ${remainingReports} reportes. Por favor, intenta de nuevo.`);
+        setTimeout(() => window.location.reload(), 3000);
       }
     } catch (error) {
+      setIsDeleting(false);
       console.error('Error al eliminar datos:', error);
       setProgress('');
       alert('Error al eliminar los datos: ' + error.message);
@@ -2180,6 +2192,10 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
+      // Pausar listeners durante el borrado
+      setIsDeleting(true);
+      await new Promise(r => setTimeout(r, 500));
+      
       // Eliminar todos los documentos de install_master
       const installRef = collection(db, 'artifacts', appId, 'public', 'data', 'install_master');
       const installSnap = await getDocs(installRef);
@@ -2203,18 +2219,27 @@ Tu servicio de *Izzi* está listo para instalarse.
         await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
       }
       
+      // Esperar más tiempo para que Firestore se sincronice completamente
+      setProgress('🔄 Sincronizando con Firestore...');
+      await new Promise(r => setTimeout(r, 3000));
+      
       // Verificar que se eliminaron todos
       const verifyInstallSnap = await getDocs(installRef);
       const remaining = verifyInstallSnap.size;
       
+      // Reanudar listeners
+      setIsDeleting(false);
       setProgress('');
+      
       if (remaining === 0) {
-        alert(`✅ Se eliminaron ${deleted} registros de Instalaciones correctamente.\n\nEl sistema está listo para empezar de cero.\n\nPor favor, recarga la página (F5) para actualizar la vista.`);
-        setTimeout(() => window.location.reload(), 2000);
+        alert(`✅ Se eliminaron ${deleted} registros de Instalaciones correctamente.\n\nEl sistema está listo para empezar de cero.\n\nLa página se recargará automáticamente en 3 segundos...`);
+        setTimeout(() => window.location.reload(), 3000);
       } else {
         alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros. Por favor, intenta de nuevo.`);
+        setTimeout(() => window.location.reload(), 3000);
       }
     } catch (error) {
+      setIsDeleting(false);
       console.error('Error al eliminar datos de instalaciones:', error);
       setProgress('');
       alert('Error al eliminar los datos de instalaciones: ' + error.message);
@@ -2232,7 +2257,12 @@ Tu servicio de *Izzi* está listo para instalarse.
     }
     
     try {
+      // Pausar listeners durante el borrado
+      setIsDeleting(true);
       setProgress('🔄 Preparando eliminación... Esto puede tardar varios minutos.');
+      
+      // Esperar un momento para que los listeners se pausen
+      await new Promise(r => setTimeout(r, 500));
       
       // Obtener TODOS los documentos primero (sin listeners activos)
       const cobranzaRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
@@ -2241,6 +2271,7 @@ Tu servicio de *Izzi* está listo para instalarse.
       console.log(`🗑️ Total de documentos a eliminar: ${totalDocs}`);
       
       if (totalDocs === 0) {
+        setIsDeleting(false);
         setProgress('');
         alert('✅ No hay registros de Cobranza para eliminar.');
         return;
@@ -2268,21 +2299,25 @@ Tu servicio de *Izzi* está listo para instalarse.
           await batch.commit();
           console.log(`✅ Lote ${batchNumber} eliminado: ${deleted}/${totalDocs}`);
           setProgress(`🗑️ Eliminando: ${deleted} de ${totalDocs}... (Lote ${batchNumber})`);
-          await new Promise(r => setTimeout(r, 300)); // Pausa entre lotes
+          await new Promise(r => setTimeout(r, 500)); // Pausa más larga entre lotes
         } catch (batchError) {
           console.error(`❌ Error en lote ${batchNumber}:`, batchError);
           errors.push(`Lote ${batchNumber}: ${batchError.message}`);
           // Continuar con el siguiente lote
+          await new Promise(r => setTimeout(r, 2000)); // Esperar más si hay error
         }
       }
       
-      // Esperar un momento para que Firestore se sincronice
-      await new Promise(r => setTimeout(r, 1000));
+      // Esperar más tiempo para que Firestore se sincronice completamente
+      setProgress('🔄 Sincronizando con Firestore...');
+      await new Promise(r => setTimeout(r, 3000));
       
       // Verificar que se eliminaron todos
       const verifyCobranzaSnap = await getDocs(cobranzaRef);
       const remaining = verifyCobranzaSnap.size;
       
+      // Reanudar listeners
+      setIsDeleting(false);
       setProgress('');
       
       if (errors.length > 0) {
@@ -2290,13 +2325,16 @@ Tu servicio de *Izzi* está listo para instalarse.
       }
       
       if (remaining === 0) {
-        alert(`✅ Se eliminaron ${deleted} registros de Cobranza correctamente.\n\nEl sistema está listo para empezar de cero.\n\nPor favor, recarga la página (F5) para actualizar la vista.`);
+        alert(`✅ Se eliminaron ${deleted} registros de Cobranza correctamente.\n\nEl sistema está listo para empezar de cero.\n\nLa página se recargará automáticamente en 3 segundos...`);
         // Recargar la página después de un momento
-        setTimeout(() => window.location.reload(), 2000);
+        setTimeout(() => window.location.reload(), 3000);
       } else {
-        alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros.\n\nErrores: ${errors.length > 0 ? errors.join(', ') : 'Ninguno'}\n\nPor favor, intenta de nuevo o recarga la página.`);
+        alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros.\n\nErrores: ${errors.length > 0 ? errors.join(', ') : 'Ninguno'}\n\nPor favor, intenta de nuevo o recarga la página manualmente.`);
+        // Recargar de todas formas para actualizar la vista
+        setTimeout(() => window.location.reload(), 3000);
       }
     } catch (error) {
+      setIsDeleting(false);
       console.error('Error al eliminar datos de cobranza:', error);
       setProgress('');
       alert('Error al eliminar los datos de cobranza: ' + error.message);
