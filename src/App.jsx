@@ -4829,26 +4829,41 @@ Tu servicio de *Izzi* está listo para instalarse.
                 }
                 
                 // Asegurar que el Estatus se guarde correctamente (prioridad al nuevo calculado)
+                // Si el nuevo archivo tiene un estatus calculado, usarlo (es más reciente y preciso)
                 const estatusFinal = data.Estatus && String(data.Estatus).trim() 
                   ? String(data.Estatus).trim() 
                   : (existingData.Estatus && String(existingData.Estatus).trim() 
                     ? String(existingData.Estatus).trim() 
                     : '');
                 
+                // Construir updateData preservando TODOS los campos existentes y actualizando solo los nuevos
+                // Esto asegura que no se pierda información cuando se cargan archivos por separado
                 const updateData = {
+                  // Primero, preservar TODOS los campos existentes
+                  ...existingData,
+                  // Luego, actualizar con los nuevos datos (esto sobrescribe solo los campos que vienen en el nuevo archivo)
                   ...data,
-                  // Asegurar que Estatus siempre esté presente y normalizado
+                  // Asegurar que Estatus siempre esté presente y normalizado (prioridad al nuevo)
                   Estatus: estatusFinal,
-                  // Preservar vendedor asignado si ya estaba asignado
-                  Vendedor: existingData.Vendedor || data.Vendedor || '',
-                  VendedorAsignado: existingData.VendedorAsignado || data.VendedorAsignado || '',
-                  normalized_resp: existingData.normalized_resp || data.normalized_resp || '',
+                  // Preservar vendedor asignado si ya estaba asignado (no sobrescribir si el nuevo archivo no trae vendedor)
+                  Vendedor: data.Vendedor && data.Vendedor.trim() ? data.Vendedor : (existingData.Vendedor || ''),
+                  VendedorAsignado: data.VendedorAsignado && data.VendedorAsignado.trim() ? data.VendedorAsignado : (existingData.VendedorAsignado || ''),
+                  normalized_resp: data.normalized_resp && data.normalized_resp.trim() ? data.normalized_resp : (existingData.normalized_resp || ''),
                   // Usar el valor final de Cliente determinado arriba (NUNCA "izzi" si hay otra opción)
                   Cliente: clienteFinal || nuevoCliente || clienteExistente || '',
-                  // Preservar fecha de creación original
+                  // Preservar fecha de creación original (NUNCA sobrescribir)
                   createdAt: existingData.createdAt || serverTimestamp(),
                   // Actualizar fecha de modificación
-                  updatedAt: serverTimestamp()
+                  updatedAt: serverTimestamp(),
+                  // Preservar campos M, M1, M2, M3, M4 si existen en el nuevo archivo, sino mantener los existentes
+                  M: data.M !== undefined ? data.M : existingData.M,
+                  M1: data.M1 !== undefined ? data.M1 : existingData.M1,
+                  M2: data.M2 !== undefined ? data.M2 : existingData.M2,
+                  M3: data.M3 !== undefined ? data.M3 : existingData.M3,
+                  M4: data.M4 !== undefined ? data.M4 : existingData.M4,
+                  // Preservar campos de estatus si existen
+                  'Estatus Cobranza': data['Estatus Cobranza'] || data.EstatusCobranza || existingData['Estatus Cobranza'] || existingData.EstatusCobranza || '',
+                  'Estatus FPD': data['Estatus FPD'] || data.EstatusFPD || data.FPD || existingData['Estatus FPD'] || existingData.EstatusFPD || existingData.FPD || ''
                 };
                 
                 // Log para debug (solo algunos registros para no saturar)
@@ -7052,17 +7067,75 @@ Tu servicio de *Izzi* está listo para instalarse.
         {activeTab === 'upload' && (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 {uploadStep === 1 && (
-                    <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
-                        <div className="mb-4 bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto"><FileSpreadsheet size={40} className="text-slate-400" /></div>
-                        <p className="text-slate-500 mb-4 text-sm">Soporta archivos <b>Excel (.xlsx)</b> y <b>CSV</b></p>
-                        <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold inline-flex items-center gap-2">
-                          <UploadCloud size={20}/> Seleccionar Archivo
-                          <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
-                        </label>
-                    </div>
+                    <>
+                        {/* Mensaje informativo para Cobranza (M1, M2, M3, M4) */}
+                        {currentModule === 'sales' && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                                <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                                    <DollarSign size={20}/> Cargar archivos de Cobranza (M1, M2, M3, M4)
+                                </h3>
+                                <p className="text-sm text-blue-700 mb-2">
+                                    Puedes cargar los archivos <strong>por separado</strong> (primero M1, luego M2, después M3 y por último M4). 
+                                    El sistema actualizará los registros existentes sin perder información y calculará automáticamente el estatus correcto.
+                                </p>
+                                <p className="text-xs text-blue-600">
+                                    ✅ <strong>El sistema detectará automáticamente:</strong> M, M1, M2, M3, M4, Estatus Cobranza, Estatus FPD
+                                    <br/>✅ <strong>Se preservará toda la información:</strong> Los registros existentes se actualizarán sin perder datos
+                                    <br/>✅ <strong>Estatus correcto:</strong> Se calculará automáticamente basándose en las columnas M, M1, M2, M3, M4
+                                    <br/>📊 <strong>Visualizar:</strong> Después de cargar, ve a las pestañas <strong>"M1"</strong>, <strong>"M2"</strong>, <strong>"M3"</strong>, <strong>"M4"</strong> para ver los datos
+                                </p>
+                            </div>
+                        )}
+                        {/* Mensaje informativo para Operación del Día */}
+                        {currentModule === 'install' && (
+                            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
+                                <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2">
+                                    <PlayCircle size={20}/> ¿Cargar archivo de "Operación del Día"?
+                                </h3>
+                                <p className="text-sm text-indigo-700 mb-2">
+                                    Si tu archivo tiene columnas como <strong>"Nº de orden"</strong>, <strong>"Compañía"</strong>, <strong>"Estado"</strong>, <strong>"Hub"</strong>, <strong>"Fecha solicitada"</strong>, 
+                                    el sistema lo detectará automáticamente como <strong>"Operación del Día"</strong> y lo guardará en la colección correspondiente.
+                                </p>
+                                <p className="text-xs text-indigo-600">
+                                    ✅ <strong>Columnas requeridas:</strong> Nº de orden, Compañía, Estado, Hub, Fecha solicitada
+                                    <br/>❌ <strong>NO debe tener:</strong> Saldo, Estatus Cobranza, Estatus FPD, FPD, SaldoPorVencer, SaldoVencido
+                                    <br/>📊 <strong>Visualizar:</strong> Después de cargar, ve a la pestaña <strong>"Operación"</strong> para ver los datos
+                                </p>
+                            </div>
+                        )}
+                        <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
+                            <div className="mb-4 bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto"><FileSpreadsheet size={40} className="text-slate-400" /></div>
+                            <p className="text-slate-500 mb-4 text-sm">Soporta archivos <b>Excel (.xlsx)</b> y <b>CSV</b></p>
+                            <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold inline-flex items-center gap-2">
+                              <UploadCloud size={20}/> Seleccionar Archivo
+                              <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
+                            </label>
+                        </div>
+                    </>
                 )}
                 {uploadStep === 2 && (
                     <div>
+                        {/* Detectar si es Operación del Día */}
+                        {(() => {
+                          const isOperacionDia = currentModule !== 'sales' && Object.values(columnMapping).some(v => 
+                            ['Nº de orden', 'Compañía', 'Estado', 'Hub', 'Fecha solicitada'].includes(v)
+                          ) && !Object.values(columnMapping).some(v => 
+                            ['Estatus Cobranza', 'Estatus FPD', 'FPD', 'Saldo', 'SaldoPorVencer', 'SaldoVencido'].includes(v)
+                          );
+                          return isOperacionDia ? (
+                            <div className="bg-indigo-50 border-2 border-indigo-300 rounded-xl p-4 mb-4">
+                              <h3 className="font-bold text-indigo-800 mb-2 flex items-center gap-2">
+                                <PlayCircle size={20}/> ✅ Archivo detectado como "Operación del Día"
+                              </h3>
+                              <p className="text-sm text-indigo-700 mb-2">
+                                Este archivo se guardará en la colección <strong>"operacion_dia"</strong> y podrás visualizarlo en la pestaña <strong>"Operación"</strong> después de cargarlo.
+                              </p>
+                              <p className="text-xs text-indigo-600">
+                                📊 Columnas detectadas: {Object.values(columnMapping).filter(v => ['Nº de orden', 'Compañía', 'Estado', 'Hub', 'Fecha solicitada'].includes(v)).join(', ')}
+                              </p>
+                            </div>
+                          ) : null;
+                        })()}
                         {/* Resumen de detección automática */}
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
                           <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
