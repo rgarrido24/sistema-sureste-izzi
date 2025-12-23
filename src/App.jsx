@@ -176,17 +176,55 @@ async function loginUser(username, password) {
     const cleanUsername = username.trim().toLowerCase();
     console.log('🔐 Intentando login:', { cleanUsername, passwordLength: password.length });
     
+    // Obtener TODOS los usuarios para debug
+    const allUsersSnap = await getDocs(usersRef);
+    const allUsers = allUsersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    console.log('👥 Todos los usuarios en BD:', allUsers.map(u => ({ id: u.id, username: u.username, name: u.name, hasHash: !!u.passwordHash })));
+    
     const q = query(usersRef, where('username', '==', cleanUsername));
     const snapshot = await getDocs(q);
     
-    console.log('📊 Usuarios encontrados:', snapshot.size);
+    console.log('📊 Usuarios encontrados con query:', snapshot.size);
     
     if (snapshot.empty) {
-      // Intentar buscar sin normalizar para debug
-      const allUsers = await getDocs(usersRef);
-      const allUsernames = allUsers.docs.map(d => d.data().username);
-      console.log('👥 Todos los usuarios en BD:', allUsernames);
-      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsernames.join(', ')}` };
+      // Buscar manualmente por si hay problema con la query
+      const foundUser = allUsers.find(u => u.username && u.username.toLowerCase() === cleanUsername);
+      if (foundUser) {
+        console.log('✅ Usuario encontrado manualmente:', foundUser);
+        const userData = foundUser;
+        
+        if (!userData.passwordHash) {
+          console.error('❌ Usuario sin passwordHash');
+          return { success: false, error: 'Usuario sin contraseña configurada. Contacta al administrador.' };
+        }
+        
+        const passwordHashCalculado = hashPassword(password);
+        const passwordMatch = passwordHashCalculado === userData.passwordHash;
+        
+        console.log('🔑 Verificación de contraseña:', {
+          passwordHashCalculado: passwordHashCalculado.substring(0, 10) + '...',
+          passwordHashGuardado: userData.passwordHash.substring(0, 10) + '...',
+          match: passwordMatch
+        });
+        
+        if (!passwordMatch) {
+          return { success: false, error: 'Contraseña incorrecta' };
+        }
+        
+        console.log('✅ Login exitoso (usuario encontrado manualmente)');
+        return { 
+          success: true, 
+          user: {
+            id: userData.id,
+            username: userData.username,
+            name: userData.name,
+            role: userData.role,
+            email: userData.email || ''
+          }
+        };
+      }
+      
+      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${allUsers.map(u => u.username || u.name).join(', ')}` };
     }
     
     const userDoc = snapshot.docs[0];
@@ -195,6 +233,7 @@ async function loginUser(username, password) {
     console.log('👤 Datos del usuario:', {
       id: userDoc.id,
       username: userData.username,
+      name: userData.name,
       hasPasswordHash: !!userData.passwordHash,
       passwordHashLength: userData.passwordHash?.length
     });
@@ -211,10 +250,16 @@ async function loginUser(username, password) {
     console.log('🔑 Verificación de contraseña:', {
       passwordHashCalculado: passwordHashCalculado.substring(0, 10) + '...',
       passwordHashGuardado: userData.passwordHash.substring(0, 10) + '...',
-      match: passwordMatch
+      match: passwordMatch,
+      passwordLength: password.length
     });
     
     if (!passwordMatch) {
+      // Debug adicional: mostrar los primeros caracteres de ambos hashes
+      console.error('❌ Contraseña no coincide:', {
+        calculado: passwordHashCalculado,
+        guardado: userData.passwordHash
+      });
       return { success: false, error: 'Contraseña incorrecta' };
     }
     
@@ -244,19 +289,27 @@ async function createUser(username, password, name, role, email = '') {
     // Limpiar username: quitar espacios y convertir a minúsculas
     const cleanUsername = username.trim().toLowerCase();
     
+    // Validar que la contraseña tenga al menos 6 caracteres
+    if (!password || password.length < 6) {
+      return { success: false, error: 'La contraseña debe tener al menos 6 caracteres' };
+    }
+    
     console.log('➕ Creando usuario:', { cleanUsername, name, role, passwordLength: password.length });
     
-    // Verificar si el usuario ya existe
-    const q = query(usersRef, where('username', '==', cleanUsername));
-    const snapshot = await getDocs(q);
+    // Verificar si el usuario ya existe (buscar en todos los usuarios)
+    const allUsersSnap = await getDocs(usersRef);
+    const existingUser = allUsersSnap.docs.find(d => {
+      const data = d.data();
+      return data.username && data.username.toLowerCase() === cleanUsername;
+    });
     
-    if (!snapshot.empty) {
-      console.log('⚠️ Usuario ya existe');
+    if (existingUser) {
+      console.log('⚠️ Usuario ya existe:', existingUser.id);
       return { success: false, error: 'El usuario ya existe' };
     }
     
     const passwordHash = hashPassword(password);
-    console.log('🔑 Hash generado:', passwordHash.substring(0, 10) + '...');
+    console.log('🔑 Hash generado:', passwordHash.substring(0, 15) + '...', 'Longitud:', passwordHash.length);
     
     const userData = {
       username: cleanUsername,
@@ -270,6 +323,21 @@ async function createUser(username, password, name, role, email = '') {
     console.log('💾 Guardando usuario:', { ...userData, passwordHash: '***' });
     const docRef = await addDoc(usersRef, userData);
     console.log('✅ Usuario creado con ID:', docRef.id);
+    
+    // Verificar que se guardó correctamente
+    const verifySnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', docRef.id));
+    if (!verifySnap.exists()) {
+      console.error('❌ ERROR: El usuario no se guardó correctamente');
+      return { success: false, error: 'Error al guardar el usuario. Por favor, intenta de nuevo.' };
+    }
+    
+    const savedData = verifySnap.data();
+    console.log('✅ Usuario guardado correctamente:', { 
+      id: docRef.id, 
+      username: savedData.username, 
+      hasHash: !!savedData.passwordHash,
+      hashLength: savedData.passwordHash?.length 
+    });
     
     // Si es un usuario vendedor, auto-asignar cuentas con ese nombre
     if (role === 'vendor' || role === 'vendedor') {
@@ -1719,10 +1787,23 @@ Tu servicio de *Izzi* está listo para instalarse.
         return;
       }
       
-      console.log('📋 Datos del usuario a eliminar:', userSnap.data());
+      const userData = userSnap.data();
+      console.log('📋 Datos del usuario a eliminar:', { id: userId, username: userData.username, name: userData.name });
+      
+      // Eliminar el documento
       await deleteDoc(userRef);
-      console.log('✅ Usuario eliminado');
-      alert('✅ Usuario eliminado permanentemente');
+      console.log('✅ Usuario eliminado de Firestore');
+      
+      // Verificar que se eliminó correctamente
+      const verifySnap = await getDoc(userRef);
+      if (verifySnap.exists()) {
+        console.error('❌ ERROR: El usuario aún existe después de eliminarlo');
+        alert('⚠️ Error: El usuario no se pudo eliminar completamente. Por favor, intenta de nuevo.');
+        return;
+      }
+      
+      console.log('✅ Usuario eliminado correctamente (verificado)');
+      alert(`✅ Usuario "${userData.name || userData.username}" eliminado permanentemente`);
     } catch (error) {
       console.error('❌ Error al eliminar usuario:', error);
       alert('Error al eliminar el usuario: ' + error.message);
@@ -1992,8 +2073,18 @@ Tu servicio de *Izzi* está listo para instalarse.
         await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
       }
       
+      // Verificar que se eliminaron todos
+      const verifyOperacionSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'operacion_dia'));
+      const verifyReportsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'sales_reports'));
+      const remainingOperacion = verifyOperacionSnap.size;
+      const remainingReports = verifyReportsSnap.size;
+      
       setProgress('');
-      alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas.\n\nEl sistema está listo para empezar de cero.`);
+      if (remainingOperacion === 0 && remainingReports === 0) {
+        alert(`✅ Se eliminaron ${deletedOperacion} registros de Operación del Día y ${deletedReports} reportes de ventas correctamente.\n\nEl sistema está listo para empezar de cero.`);
+      } else {
+        alert(`⚠️ Se eliminaron ${deletedOperacion} registros de Operación y ${deletedReports} reportes, pero aún quedan ${remainingOperacion} de Operación y ${remainingReports} reportes. Por favor, intenta de nuevo.`);
+      }
     } catch (error) {
       console.error('Error al eliminar datos:', error);
       setProgress('');
@@ -2035,8 +2126,16 @@ Tu servicio de *Izzi* está listo para instalarse.
         await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
       }
       
+      // Verificar que se eliminaron todos
+      const verifySnap = await getDocs(installRef);
+      const remaining = verifySnap.size;
+      
       setProgress('');
-      alert(`✅ Se eliminaron ${deleted} registros de Instalaciones.\n\nEl sistema está listo para empezar de cero.`);
+      if (remaining === 0) {
+        alert(`✅ Se eliminaron ${deleted} registros de Instalaciones correctamente.\n\nEl sistema está listo para empezar de cero.`);
+      } else {
+        alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros. Por favor, intenta de nuevo.`);
+      }
     } catch (error) {
       console.error('Error al eliminar datos de instalaciones:', error);
       setProgress('');
@@ -2059,11 +2158,22 @@ Tu servicio de *Izzi* está listo para instalarse.
       
       const cobranzaRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
       const cobranzaSnap = await getDocs(cobranzaRef);
+      const totalDocs = cobranzaSnap.size;
+      console.log(`🗑️ Total de documentos a eliminar: ${totalDocs}`);
+      
+      if (totalDocs === 0) {
+        setProgress('');
+        alert('✅ No hay registros de Cobranza para eliminar.');
+        return;
+      }
+      
       const cobranzaDocs = [];
       cobranzaSnap.docs.forEach(d => cobranzaDocs.push(d));
       
       let deleted = 0;
+      let batchNumber = 0;
       while (cobranzaDocs.length > 0) {
+        batchNumber++;
         const batch = writeBatch(db);
         const chunk = cobranzaDocs.splice(0, 400); // Lotes de 400 para estar seguros
         chunk.forEach(d => {
@@ -2071,12 +2181,21 @@ Tu servicio de *Izzi* está listo para instalarse.
           deleted++;
         });
         await batch.commit();
-        setProgress(`Eliminando: ${deleted} de ${cobranzaSnap.size}...`);
-        await new Promise(r => setTimeout(r, 100)); // Pequeña pausa entre lotes
+        console.log(`✅ Lote ${batchNumber} eliminado: ${deleted}/${totalDocs}`);
+        setProgress(`Eliminando: ${deleted} de ${totalDocs}... (Lote ${batchNumber})`);
+        await new Promise(r => setTimeout(r, 200)); // Pausa entre lotes
       }
       
+      // Verificar que se eliminaron todos
+      const verifySnap = await getDocs(cobranzaRef);
+      const remaining = verifySnap.size;
+      
       setProgress('');
-      alert(`✅ Se eliminaron ${deleted} registros de Cobranza.\n\nEl sistema está listo para empezar de cero.`);
+      if (remaining === 0) {
+        alert(`✅ Se eliminaron ${deleted} registros de Cobranza correctamente.\n\nEl sistema está listo para empezar de cero.`);
+      } else {
+        alert(`⚠️ Se eliminaron ${deleted} registros, pero aún quedan ${remaining} registros. Por favor, intenta de nuevo.`);
+      }
     } catch (error) {
       console.error('Error al eliminar datos de cobranza:', error);
       setProgress('');
@@ -6106,13 +6225,23 @@ Tu servicio de *Izzi* está listo para instalarse.
                     alert('Completa todos los campos obligatorios');
                     return;
                   }
+                  
+                  // Validar contraseña
+                  if (newUser.password.length < 6) {
+                    alert('La contraseña debe tener al menos 6 caracteres');
+                    return;
+                  }
+                  
                   setCreatingUser(true);
+                  console.log('🔄 Creando usuario desde UI:', newUser.username);
                   const result = await createUser(newUser.username, newUser.password, newUser.name, newUser.role, newUser.email);
                   if (result.success) {
-                    alert('¡Usuario creado exitosamente!');
+                    alert(`✅ Usuario "${newUser.name}" creado exitosamente!\n\nUsuario: ${newUser.username}\nRol: ${newUser.role}\n\nYa puedes iniciar sesión con este usuario.`);
                     setNewUser({ username: '', password: '', name: '', role: 'vendor', email: '' });
+                    // Esperar un momento para que el onSnapshot actualice la lista
+                    await new Promise(r => setTimeout(r, 500));
                   } else {
-                    alert('Error: ' + result.error);
+                    alert('❌ Error al crear usuario: ' + result.error);
                   }
                   setCreatingUser(false);
                 }}
