@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, query, onSnapshot, writeBatch, doc, getDocs, limit, addDoc, serverTimestamp, orderBy, deleteDoc, getDoc, setDoc, where } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import { Shield, Users, Cloud, LogOut, MessageSquare, Search, RefreshCw, Database, Settings, Link as LinkIcon, Check, AlertTriangle, PlayCircle, List, FileSpreadsheet, UploadCloud, Sparkles, PlusCircle, Download, MapPin, Wifi, FileText, Trash2, DollarSign, Wrench, Phone, MessageCircleQuestion, Send, X, Youtube, Calendar, Hash, Building, BarChart3, CheckCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import * as api from './api.js';
 
 // --- PANTALLA DE ERROR (DIAGNÓSTICO) ---
 function ErrorDisplay({ message, details, currentKey }) {
@@ -37,40 +34,29 @@ function ErrorDisplay({ message, details, currentKey }) {
   );
 }
 
-// --- CONFIGURACIÓN SEGURA ---
+// --- CONFIGURACIÓN ---
 const getEnv = () => {
   try { return import.meta.env || {}; } catch (e) { return {}; }
 };
 
 const env = getEnv();
 
-const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID
-};
-
 // API Key de Gemini - valor hardcodeado
 const geminiApiKey = 'AIzaSyAZDsPBqR6geJAYIla42y0hnJCM7Ztix2E';
 console.log('Gemini API Key configurada:', geminiApiKey ? 'Sí' : 'No', geminiApiKey?.substring(0, 15) + '...');
 
-// --- INICIALIZACIÓN ---
-let app, auth, db, storage;
-let initError = null;
-
-try {
-  if (firebaseConfig.apiKey) {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    storage = getStorage(app);
+// Verificar conexión con el backend
+let backendConnected = false;
+(async () => {
+  try {
+    await api.checkHealth();
+    backendConnected = true;
+    console.log('✅ Backend conectado');
+  } catch (error) {
+    console.error('❌ Error conectando al backend:', error);
+    backendConnected = false;
   }
-} catch (e) {
-  initError = e;
-}
+})();
 
 // --- FUNCIONES AUXILIARES ---
 async function callGemini(prompt, pdfUrls = []) {
@@ -170,238 +156,46 @@ function verifyPassword(password, hash) {
 // Login con usuario y contraseña
 async function loginUser(username, password) {
   try {
-    const appId = 'sales-master-production';
-    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
-    // Limpiar username: quitar espacios y convertir a minúsculas
-    const cleanUsername = username.trim().toLowerCase();
-    console.log('🔐 Intentando login:', { cleanUsername, passwordLength: password.length });
-    
-    // Obtener TODOS los usuarios para debug y búsqueda manual
-    const allUsersSnap = await getDocs(usersRef);
-    const allUsers = allUsersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    console.log('👥 Todos los usuarios en BD:', allUsers.map(u => ({ 
-      id: u.id, 
-      username: u.username, 
-      usernameType: typeof u.username,
-      name: u.name, 
-      hasHash: !!u.passwordHash 
-    })));
-    
-    // Intentar búsqueda con query primero
-    const q = query(usersRef, where('username', '==', cleanUsername));
-    const snapshot = await getDocs(q);
-    
-    console.log('📊 Usuarios encontrados con query:', snapshot.size);
-    
-    // Buscar manualmente también (más robusto)
-    const foundUser = allUsers.find(u => {
-      if (!u.username) {
-        console.log(`⚠️ Usuario sin username: ID=${u.id}, name=${u.name}`);
-        return false;
-      }
-      const uUsername = String(u.username).trim().toLowerCase();
-      const match = uUsername === cleanUsername;
-      if (match) {
-        console.log(`✅ Usuario encontrado manualmente: "${u.username}" (ID: ${u.id})`);
-      }
-      return match;
-    });
-    
-    // Determinar qué usuario usar (priorizar el encontrado manualmente)
-    let userDoc, userData;
-    if (foundUser) {
-      // Usar el encontrado manualmente (más confiable)
-      userData = foundUser;
-      userDoc = { id: foundUser.id };
-      console.log('✅ Usando usuario encontrado manualmente');
-    } else if (!snapshot.empty) {
-      // Usar el de la query si no se encontró manualmente
-      userDoc = snapshot.docs[0];
-      userData = userDoc.data();
-      console.log('✅ Usando usuario encontrado con query');
-    } else {
-      // No se encontró de ninguna forma
-      const availableUsernames = allUsers.map(u => u.username || u.name || 'Sin nombre').filter(Boolean);
-      console.error('❌ Usuario no encontrado:', {
-        buscando: cleanUsername,
-        tipo: typeof cleanUsername,
-        longitud: cleanUsername.length,
-        disponibles: availableUsernames
-      });
-      return { success: false, error: `Usuario no encontrado. Usuarios disponibles: ${availableUsernames.join(', ')}` };
+    const result = await api.loginUser(username, password);
+    if (result.success) {
+      // Convertir _id a id para compatibilidad
+      return {
+        success: true,
+        user: {
+          id: result.user.id || result.user._id,
+          username: result.user.username,
+          name: result.user.name,
+          role: result.user.role,
+          email: result.user.email || ''
+        }
+      };
     }
-    
-    console.log('👤 Datos del usuario:', {
-      id: userDoc.id,
-      username: userData.username,
-      name: userData.name,
-      hasPasswordHash: !!userData.passwordHash,
-      passwordHashLength: userData.passwordHash?.length
-    });
-    
-    // Verificar contraseña - si no hay passwordHash, puede ser un usuario antiguo
-    if (!userData.passwordHash) {
-      console.error('❌ Usuario sin passwordHash');
-      return { success: false, error: 'Usuario sin contraseña configurada. Contacta al administrador.' };
-    }
-    
-    const passwordHashCalculado = hashPassword(password);
-    const passwordMatch = passwordHashCalculado === userData.passwordHash;
-    
-    console.log('🔑 Verificación de contraseña:', {
-      passwordHashCalculado: passwordHashCalculado.substring(0, 10) + '...',
-      passwordHashGuardado: userData.passwordHash.substring(0, 10) + '...',
-      match: passwordMatch,
-      passwordLength: password.length
-    });
-    
-    if (!passwordMatch) {
-      // Debug adicional: mostrar los primeros caracteres de ambos hashes
-      console.error('❌ Contraseña no coincide:', {
-        calculado: passwordHashCalculado,
-        guardado: userData.passwordHash
-      });
-      return { success: false, error: 'Contraseña incorrecta' };
-    }
-    
-    console.log('✅ Login exitoso');
-    return { 
-      success: true, 
-      user: {
-        id: userDoc.id,
-        username: userData.username,
-        name: userData.name,
-        role: userData.role,
-        email: userData.email || ''
-      }
-    };
+    return result;
   } catch (error) {
     console.error('❌ Error en login:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message || 'Error de conexión con el servidor' };
   }
 }
 
 // Crear usuario nuevo
 async function createUser(username, password, name, role, email = '') {
   try {
-    const appId = 'sales-master-production';
-    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
-    
-    // Limpiar username: quitar espacios y convertir a minúsculas
-    const cleanUsername = username.trim().toLowerCase();
-    
-    // Validar que la contraseña tenga al menos 6 caracteres
-    if (!password || password.length < 6) {
-      return { success: false, error: 'La contraseña debe tener al menos 6 caracteres' };
-    }
-    
-    console.log('➕ Creando usuario:', { cleanUsername, name, role, passwordLength: password.length });
-    
-    // Verificar si el usuario ya existe (buscar en todos los usuarios)
-    const allUsersSnap = await getDocs(usersRef);
-    const existingUser = allUsersSnap.docs.find(d => {
-      const data = d.data();
-      return data.username && data.username.toLowerCase() === cleanUsername;
-    });
-    
-    if (existingUser) {
-      console.log('⚠️ Usuario ya existe:', existingUser.id);
-      return { success: false, error: 'El usuario ya existe' };
-    }
-    
-    const passwordHash = hashPassword(password);
-    console.log('🔑 Hash generado:', passwordHash.substring(0, 15) + '...', 'Longitud:', passwordHash.length);
-    
-    const userData = {
-      username: cleanUsername,
-      passwordHash,
-      name: name.trim(),
-      role,
-      email: email.trim(),
-      createdAt: serverTimestamp()
-    };
-    
-    console.log('💾 Guardando usuario:', { ...userData, passwordHash: '***' });
-    
-    // Usar setDoc con un ID específico basado en el username para evitar duplicados
-    const userId = cleanUsername.replace(/[^a-z0-9]/g, '_'); // ID basado en username
-    const userDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userId);
-    
-    // Verificar si ya existe con este ID
-    const existingDoc = await getDoc(userDocRef);
-    if (existingDoc.exists()) {
-      console.log('⚠️ Usuario ya existe con este ID');
-      return { success: false, error: 'El usuario ya existe' };
-    }
-    
-    // Guardar con setDoc usando el ID específico
-    await setDoc(userDocRef, userData);
-    console.log('✅ Usuario creado con ID:', userId);
-    
-    // Verificar que se guardó correctamente
-    const verifyUserSnap = await getDoc(userDocRef);
-    if (!verifyUserSnap.exists()) {
-      console.error('❌ ERROR: El usuario no se guardó correctamente');
-      return { success: false, error: 'Error al guardar el usuario. Por favor, intenta de nuevo.' };
-    }
-    
-    const savedData = verifyUserSnap.data();
-    console.log('✅ Usuario guardado correctamente:', { 
-      id: userId, 
-      username: savedData.username, 
-      usernameType: typeof savedData.username,
-      usernameValue: savedData.username,
-      hasHash: !!savedData.passwordHash,
-      hashLength: savedData.passwordHash?.length 
-    });
-    
-    // Esperar más tiempo para que Firestore se sincronice completamente
-    await new Promise(r => setTimeout(r, 1000));
-    
-    // Verificar nuevamente que el usuario se puede encontrar con query
-    const verifyQuery = query(usersRef, where('username', '==', cleanUsername));
-    const verifyQuerySnap = await getDocs(verifyQuery);
-    if (verifyQuerySnap.empty) {
-      console.warn('⚠️ Usuario creado pero no se encuentra inmediatamente con query. Esperando más tiempo...');
-      await new Promise(r => setTimeout(r, 2000));
-      const verifyQuerySnap2 = await getDocs(verifyQuery);
-      if (verifyQuerySnap2.empty) {
-        console.error('❌ Usuario aún no encontrable después de esperar. Puede haber un problema de sincronización.');
-        // Aún así, retornar éxito porque el documento se guardó
-      } else {
-        console.log('✅ Usuario verificado y encontrable después de esperar');
-      }
-    } else {
-      console.log('✅ Usuario verificado y encontrable inmediatamente');
-    }
-    
-    // Si es un usuario vendedor, auto-asignar cuentas con ese nombre
-    if (role === 'vendor' || role === 'vendedor') {
-      try {
-        const salesRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales_master');
-        const salesQuery = query(salesRef, where('Vendedor', '==', name.trim()));
-        const salesSnapshot = await getDocs(salesQuery);
-        
-        if (!salesSnapshot.empty) {
-          const batch = writeBatch(db);
-          let count = 0;
-          salesSnapshot.docs.forEach(doc => {
-            batch.update(doc.ref, { VendedorAsignado: name.trim() });
-            count++;
-          });
-          await batch.commit();
-          console.log(`✅ Auto-asignadas ${count} cuentas al vendedor ${name.trim()}`);
+    const result = await api.createUser(username, password, name, role, email);
+    if (result.success) {
+      // Si es un usuario vendedor, auto-asignar cuentas con ese nombre
+      if (role === 'vendor' || role === 'vendedor') {
+        try {
+          // Esto se puede hacer después, por ahora solo creamos el usuario
+          console.log(`✅ Usuario vendedor creado: ${name.trim()}`);
+        } catch (error) {
+          console.error('Error al auto-asignar cuentas:', error);
         }
-      } catch (error) {
-        console.error('Error al auto-asignar cuentas:', error);
-        // No fallar la creación del usuario si esto falla
       }
     }
-    
-    return { success: true, userId: userId };
+    return result;
   } catch (error) {
     console.error('Error al crear usuario:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message || 'Error de conexión con el servidor' };
   }
 }
 
