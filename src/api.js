@@ -13,13 +13,33 @@ async function apiRequest(endpoint, options = {}) {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Error del servidor' }));
-      throw new Error(error.error || `Error ${response.status}`);
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { 
+          error: `Error ${response.status}: ${response.statusText}`,
+          message: `El servidor respondió con código ${response.status}`
+        };
+      }
+      
+      const error = new Error(errorData.error || errorData.message || `Error ${response.status}`);
+      error.status = response.status;
+      error.details = errorData;
+      throw error;
     }
 
     return await response.json();
   } catch (error) {
     console.error('Error en API request:', error);
+    console.error('Endpoint:', endpoint);
+    console.error('Error completo:', error);
+    
+    // Si es un error de red, agregar más información
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw new Error('No se pudo conectar al servidor. Verifica que el backend esté corriendo en http://localhost:3001');
+    }
+    
     throw error;
   }
 }
@@ -46,6 +66,20 @@ export async function getAllUsers() {
 export async function deleteUser(userId) {
   return apiRequest(`/users/${userId}`, {
     method: 'DELETE',
+  });
+}
+
+export async function updateUserPassword(userId, password) {
+  return apiRequest(`/users/${userId}/password`, {
+    method: 'PUT',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function updateUser(userId, updates) {
+  return apiRequest(`/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
   });
 }
 
@@ -110,8 +144,20 @@ export async function updateInstall(id, data) {
 }
 
 // ========== OPERACION DIA ==========
-export async function getOperacionDia() {
-  return apiRequest('/operacion');
+export async function getOperacionDia(vendedor = null) {
+  const endpoint = vendedor ? `/operacion?vendedor=${encodeURIComponent(vendedor)}` : '/operacion';
+  return apiRequest(endpoint);
+}
+
+export async function updateOperacionVendedor(operacionId, vendedor) {
+  return apiRequest(`/operacion/${operacionId}/vendedor`, {
+    method: 'PUT',
+    body: JSON.stringify({ vendedor }),
+  });
+}
+
+export async function getOperacionVendors() {
+  return apiRequest('/operacion/vendors');
 }
 
 export async function getOperacionDiaCount() {
@@ -162,10 +208,10 @@ export async function getPackages() {
   return apiRequest('/packages');
 }
 
-export async function createPackage(name, price, description = '') {
+export async function createPackage(name, price, description = '', codigo = '', tipo = '') {
   return apiRequest('/packages', {
     method: 'POST',
-    body: JSON.stringify({ name, price, description }),
+    body: JSON.stringify({ name, price, description, codigo, tipo }),
   });
 }
 
@@ -221,5 +267,219 @@ export async function deletePDF(id) {
 // ========== HEALTH CHECK ==========
 export async function checkHealth() {
   return apiRequest('/health');
+}
+
+// ========== M1 MASTER ==========
+export async function getM1Master(vendedor = null) {
+  const endpoint = vendedor ? `/m1?vendedor=${encodeURIComponent(vendedor)}` : '/m1';
+  return apiRequest(endpoint);
+}
+
+export async function getM1MasterCount(estatusFPD = 'M1') {
+  const result = await apiRequest(`/m1/count?estatusFPD=${estatusFPD}`);
+  return result.count;
+}
+
+export async function bulkUpsertM1(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m1/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function getM1ByCuenta(cuenta) {
+  return apiRequest(`/m1/cuenta/${encodeURIComponent(cuenta)}`);
+}
+
+export async function updateM1Estado(id, estado) {
+  return apiRequest(`/m1/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM1Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m1/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+  });
+}
+
+export async function deleteAllM1() {
+  return apiRequest('/m1/all', { method: 'DELETE' });
+}
+
+// ========== M2 MASTER ==========
+export async function getM2Master(vendedor = null) {
+  const endpoint = vendedor ? `/m2?vendedor=${encodeURIComponent(vendedor)}` : '/m2';
+  return apiRequest(endpoint);
+}
+
+export async function getM2MasterCount(estatusFPD = null, vendedor = null) {
+  let endpoint = '/m2/count';
+  const params = [];
+  if (estatusFPD) {
+    params.push(`estatusFPD=${encodeURIComponent(estatusFPD)}`);
+  }
+  if (vendedor) {
+    params.push(`vendedor=${encodeURIComponent(vendedor)}`);
+  }
+  if (params.length > 0) {
+    endpoint += `?${params.join('&')}`;
+  }
+  console.log(`🔍 Llamando a ${endpoint} para conteo M2`);
+  const result = await apiRequest(endpoint);
+  console.log(`📊 Resultado del conteo M2:`, result);
+  return result.count;
+}
+
+export async function bulkUpsertM2(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m2/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function updateM2Estado(id, estado) {
+  return apiRequest(`/m2/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function deleteAllM2() {
+  return apiRequest('/m2/all', { method: 'DELETE' });
+}
+
+// ========== M3 MASTER ==========
+export async function getM3Master(vendedor = null) {
+  const endpoint = vendedor ? `/m3?vendedor=${encodeURIComponent(vendedor)}` : '/m3';
+  return apiRequest(endpoint);
+}
+
+export async function getM3MasterCount(estatusFPD = null, vendedor = null) {
+  let endpoint = '/m3/count';
+  const params = [];
+  if (estatusFPD) {
+    params.push(`estatusFPD=${encodeURIComponent(estatusFPD)}`);
+  }
+  if (vendedor) {
+    params.push(`vendedor=${encodeURIComponent(vendedor)}`);
+  }
+  if (params.length > 0) {
+    endpoint += `?${params.join('&')}`;
+  }
+  console.log(`🔍 Llamando a ${endpoint} para conteo M3`);
+  const result = await apiRequest(endpoint);
+  console.log(`📊 Resultado del conteo M3:`, result);
+  return result.count;
+}
+
+export async function bulkUpsertM3(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m3/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function updateM3Estado(id, estado) {
+  return apiRequest(`/m3/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM3Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m3/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+  });
+}
+
+export async function deleteAllM3() {
+  return apiRequest('/m3/all', { method: 'DELETE' });
+}
+
+// ========== M4 MASTER ==========
+export async function getM4Master(vendedor = null) {
+  const endpoint = vendedor ? `/m4?vendedor=${encodeURIComponent(vendedor)}` : '/m4';
+  return apiRequest(endpoint);
+}
+
+export async function getM4MasterCount(estatusFPD = null, vendedor = null) {
+  let endpoint = '/m4/count';
+  const params = [];
+  if (estatusFPD) {
+    params.push(`estatusFPD=${encodeURIComponent(estatusFPD)}`);
+  }
+  if (vendedor) {
+    params.push(`vendedor=${encodeURIComponent(vendedor)}`);
+  }
+  if (params.length > 0) {
+    endpoint += `?${params.join('&')}`;
+  }
+  console.log(`🔍 Llamando a ${endpoint} para conteo M4`);
+  const result = await apiRequest(endpoint);
+  console.log(`📊 Resultado del conteo M4:`, result);
+  return result.count;
+}
+
+export async function bulkUpsertM4(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m4/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function updateM4Estado(id, estado) {
+  return apiRequest(`/m4/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM4Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m4/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+  });
+}
+
+export async function deleteAllM4() {
+  return apiRequest('/m4/all', { method: 'DELETE' });
+}
+
+// ========== TEMPLATES ==========
+export async function getTemplates(module = null) {
+  // Si se especifica un módulo, buscar plantillas para ese módulo
+  // Si no, obtener todas las plantillas activas
+  const endpoint = module ? `/templates?module=${encodeURIComponent(module)}` : '/templates';
+  const templates = await apiRequest(endpoint);
+  console.log('📋 Plantillas obtenidas del API:', templates.length, 'para módulo:', module || 'todos');
+  return templates;
+}
+
+export async function getTemplate(id) {
+  return apiRequest(`/templates/${id}`);
+}
+
+export async function createTemplate(name, module, content, videoUrl = '', variables = [], isActive = true, createdBy = 'admin') {
+  return apiRequest('/templates', {
+    method: 'POST',
+    body: JSON.stringify({ name, module, content, videoUrl, variables, isActive, createdBy }),
+  });
+}
+
+export async function updateTemplate(id, name, module, content, videoUrl = '', variables = [], isActive = true) {
+  return apiRequest(`/templates/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, module, content, videoUrl, variables, isActive }),
+  });
+}
+
+export async function deleteTemplate(id) {
+  return apiRequest(`/templates/${id}`, {
+    method: 'DELETE',
+  });
 }
 
