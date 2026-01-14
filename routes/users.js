@@ -33,7 +33,8 @@ router.post('/login', async (req, res) => {
         username: user.username,
         name: user.name,
         role: user.role,
-        email: user.email
+        email: user.email || '',
+        region: user.region || ''
       }
     });
   } catch (error) {
@@ -45,7 +46,7 @@ router.post('/login', async (req, res) => {
 // Crear usuario
 router.post('/create', async (req, res) => {
   try {
-    const { username, password, name, role, email } = req.body;
+    const { username, password, name, role, email, region } = req.body;
     const cleanUsername = username.trim().toLowerCase();
     
     if (!password || password.length < 6) {
@@ -64,7 +65,8 @@ router.post('/create', async (req, res) => {
       passwordHash,
       name: name.trim(),
       role,
-      email: email?.trim() || ''
+      email: email?.trim() || '',
+      region: (role === 'regionales' && region) ? region.trim() : ''
     });
     
     await user.save();
@@ -75,7 +77,8 @@ router.post('/create', async (req, res) => {
         id: user._id,
         username: user.username,
         name: user.name,
-        role: user.role
+        role: user.role,
+        region: user.region || ''
       }
     });
   } catch (error) {
@@ -99,7 +102,11 @@ router.post('/create', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const users = await User.find({}, { passwordHash: 0 });
-    res.json(users);
+    const usersWithRegion = users.map(user => {
+      const obj = user.toObject ? user.toObject() : user;
+      return { ...obj, region: obj.region || '' };
+    });
+    res.json(usersWithRegion);
   } catch (error) {
     console.error('Error obteniendo usuarios:', error);
     res.status(500).json({ error: 'Error del servidor' });
@@ -140,14 +147,19 @@ router.put('/:id/password', async (req, res) => {
 // Actualizar usuario (nombre, role, email)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, role, email } = req.body;
+    const { name, role, email, region } = req.body;
     const updateData = {};
     
     if (name) updateData.name = name.trim();
     if (role) updateData.role = role;
     if (email !== undefined) updateData.email = email.trim();
+    if (region !== undefined) updateData.region = region.trim();
     
-    const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
     
     if (!user) {
       return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
@@ -160,11 +172,16 @@ router.put('/:id', async (req, res) => {
         username: user.username,
         name: user.name,
         role: user.role,
-        email: user.email
+        email: user.email || '',
+        region: user.region || ''
       }
     });
   } catch (error) {
     console.error('Error actualizando usuario:', error);
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => e.message).join(', ');
+      return res.status(400).json({ success: false, error: `Error de validación: ${errors}` });
+    }
     res.status(500).json({ success: false, error: 'Error del servidor' });
   }
 });
