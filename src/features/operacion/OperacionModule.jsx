@@ -791,24 +791,10 @@ export default function OperacionModule() {
   useEffect(() => {
     const loadVendors = async () => {
       try {
-        // Obtener vendedores de M1 (sales_master e install_master)
+        // Endpoint optimizado en backend: devuelve vendedores desde usuarios (rápido)
         const vendorsData = await api.getOperacionVendors();
-        const vendorsList = vendorsData.vendors || [];
-        
-        // También obtener usuarios del sistema para combinarlos
-        try {
-          const users = await api.getAllUsers();
-          const userVendors = users
-            .filter(u => u.role === 'vendedor' || u.role === 'user')
-            .map(u => u.name || u.username);
-          
-          // Combinar y eliminar duplicados
-          const allVendors = [...new Set([...vendorsList, ...userVendors])].sort();
-          setVendors(allVendors.map(v => ({ id: v, name: v, username: v })));
-        } catch (userError) {
-          // Si falla obtener usuarios, usar solo los de M1
-          setVendors(vendorsList.map(v => ({ id: v, name: v, username: v })));
-        }
+        const vendorsList = (vendorsData?.vendors || []).filter(Boolean);
+        setVendors(vendorsList.map(v => ({ id: v, name: v, username: v })));
       } catch (error) {
         console.error('Error cargando vendedores:', error);
         // Fallback: intentar obtener usuarios del sistema
