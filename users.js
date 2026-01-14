@@ -33,7 +33,8 @@ router.post('/login', async (req, res) => {
         username: user.username,
         name: user.name,
         role: user.role,
-        email: user.email
+        email: user.email || '',
+        region: user.region || ''
       }
     });
   } catch (error) {
@@ -45,7 +46,7 @@ router.post('/login', async (req, res) => {
 // Crear usuario
 router.post('/create', async (req, res) => {
   try {
-    const { username, password, name, role, email } = req.body;
+    const { username, password, name, role, email, region } = req.body;
     const cleanUsername = username.trim().toLowerCase();
     
     if (!password || password.length < 6) {
@@ -64,7 +65,8 @@ router.post('/create', async (req, res) => {
       passwordHash,
       name: name.trim(),
       role,
-      email: email?.trim() || ''
+      email: email?.trim() || '',
+      region: (role === 'regionales' && region) ? region.trim() : ''
     });
     
     await user.save();
@@ -75,7 +77,8 @@ router.post('/create', async (req, res) => {
         id: user._id,
         username: user.username,
         name: user.name,
-        role: user.role
+        role: user.role,
+        region: user.region || ''
       }
     });
   } catch (error) {
@@ -99,7 +102,15 @@ router.post('/create', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const users = await User.find({}, { passwordHash: 0 });
-    res.json(users);
+    // Convertir a objetos planos y asegurar que todos tengan el campo region
+    const usersWithRegion = users.map(user => {
+      const userObj = user.toObject ? user.toObject() : user;
+      return {
+        ...userObj,
+        region: userObj.region || ''
+      };
+    });
+    res.json(usersWithRegion);
   } catch (error) {
     console.error('Error obteniendo usuarios:', error);
     res.status(500).json({ error: 'Error del servidor' });
