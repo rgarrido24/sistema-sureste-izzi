@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Phone, MessageCircle, Calendar, MapPin, User, CheckCircle, XCircle, Clock, Building2, UserPlus, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import * as api from '../../api.js';
@@ -673,7 +673,8 @@ export default function OperacionModule() {
   const { user } = useAuth();
   const [data, setData] = useState([]);
   const [allData, setAllData] = useState([]); // Todos los datos incluyendo Completa/Instalada para estadísticas
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // solo carga inicial
+  const [refreshing, setRefreshing] = useState(false); // refresco en segundo plano
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterFecha, setFilterFecha] = useState('');
@@ -686,12 +687,21 @@ export default function OperacionModule() {
   const [itemsPerPage, setItemsPerPage] = useState(25); // Items por página (25, 50, 75, 100)
   const [notas, setNotas] = useState({}); // Notas locales por item ID
   const [savingNotas, setSavingNotas] = useState({}); // Estado de guardado por item ID
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
-      
-      setLoading(true);
+
+      // Evitar refrescos simultáneos (muy común con redes lentas)
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+
+      // Si ya hay data, refrescar en segundo plano SIN bloquear pantalla
+      const isInitial = data.length === 0 && allData.length === 0;
+      if (isInitial) setLoading(true);
+      else setRefreshing(true);
+
       try {
         let operacionData = await api.getOperacionDia();
         operacionData = filterByVendor(operacionData, user);
@@ -778,14 +788,21 @@ export default function OperacionModule() {
       } catch (error) {
         console.error('Error cargando operación:', error);
       } finally {
-        setLoading(false);
+        if (isInitial) setLoading(false);
+        setRefreshing(false);
+        inFlightRef.current = false;
       }
     };
 
     loadData();
-    const interval = setInterval(loadData, 30000);
+    // Refresco menos agresivo para no interrumpir (Render Free + redes móviles)
+    const interval = setInterval(() => {
+      // No refrescar si la pestaña no está visible (evita “cargando” cuando vuelves)
+      if (document.visibilityState !== 'visible') return;
+      loadData();
+    }, 5 * 60 * 1000); // 5 minutos
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user]); // intencional: el refresco no depende de filtros/UI
 
   // Cargar lista de vendedores desde sales_master e install_master
   useEffect(() => {
@@ -1043,6 +1060,15 @@ export default function OperacionModule() {
     );
   }
 
+  // Indicador no intrusivo de refresco (ya no tapa la pantalla)
+  const RefreshBadge = () => (
+    refreshing ? (
+      <div className="fixed bottom-4 right-4 z-50 bg-white border border-slate-200 shadow-md rounded-full px-3 py-2 text-xs text-slate-700">
+        Actualizando datos…
+      </div>
+    ) : null
+  );
+
   // Calcular estadísticas por región
   const statsByRegion = {};
   const regiones = ['SURESTE', 'NORESTE', 'METROPOLITANA', 'PACIFICO', 'OCCIDENTE'];
@@ -1187,6 +1213,7 @@ export default function OperacionModule() {
 
   return (
     <div className="space-y-4">
+      <RefreshBadge />
       {/* Header */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex justify-between items-center mb-2">
