@@ -3,6 +3,8 @@ import * as api from '../api.js';
 
 const AuthContext = createContext(null);
 
+const STORAGE_KEY = 'ss_auth_v1';
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -11,6 +13,23 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState(null);
   const [backendError, setBackendError] = useState(null);
 
+  // Restaurar sesión desde localStorage (para que al refrescar no se pierda)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.user?.role) {
+        setUser(parsed.user);
+        setRole(parsed.user.role);
+        setVendorName(parsed.user.name || parsed.user.username || '');
+      }
+    } catch (e) {
+      // Si está corrupto, limpiar
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
   // Verificar conexión con el backend
   useEffect(() => {
     const checkBackend = async () => {
@@ -18,7 +37,8 @@ export function AuthProvider({ children }) {
         await api.checkHealth();
         setBackendError(null);
       } catch (error) {
-        setBackendError('No se puede conectar al backend. Asegúrate de que esté corriendo en http://localhost:3001');
+        // Mensaje genérico (en producción no debe mencionar localhost)
+        setBackendError('No se puede conectar al backend. Verifica que el servidor esté en línea.');
         console.error('Error conectando al backend:', error);
       }
     };
@@ -36,6 +56,11 @@ export function AuthProvider({ children }) {
         setUser(result.user);
         setRole(result.user.role);
         setVendorName(result.user.name);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: result.user }));
+        } catch (e) {
+          // ignore
+        }
         return { success: true };
       } else {
         setAuthError(new Error(result.error || 'Error al iniciar sesión'));
@@ -54,6 +79,11 @@ export function AuthProvider({ children }) {
     setRole(null);
     setVendorName('');
     setAuthError(null);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      // ignore
+    }
   };
 
   const value = {
