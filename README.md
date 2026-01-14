@@ -394,7 +394,7 @@ const cleanValue = (val) => {
 | admin_region | ❌ | ✅ | ✅ | ✅ | ❌ |
 | vendor | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-## 📞 Soporte
+## 📞 Soporte 5628426889
 
 Para problemas técnicos o preguntas sobre el funcionamiento del sistema, contactar al administrador del sistema.
 

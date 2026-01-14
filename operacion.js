@@ -499,23 +499,33 @@ router.put('/:id/estado', async (req, res) => {
 router.put('/:id/vendedor', async (req, res) => {
   try {
     const { id } = req.params;
-    const { vendedor } = req.body;
+    const { vendedor, usuarioModificadoPor, usuarioModificadoPorNombre } = req.body;
     
     if (!vendedor || vendedor.trim() === '') {
       return res.status(400).json({ error: 'El nombre del vendedor es requerido' });
     }
     
+    const updateData = {
+      'Clave Vendedor': vendedor.trim(),
+      'CVVEN': vendedor.trim(),
+      'VendedorAsignado': vendedor.trim(),
+      'Vendedor': vendedor.trim(),
+      'Vendedor Asignado': vendedor.trim(),
+      fechaActualizacion: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Agregar información del usuario que modificó
+    if (usuarioModificadoPor) {
+      updateData.UsuarioModificadoPor = usuarioModificadoPor;
+    }
+    if (usuarioModificadoPorNombre) {
+      updateData.UsuarioModificadoPorNombre = usuarioModificadoPorNombre;
+    }
+    
     const operacion = await OperacionDia.findByIdAndUpdate(
       id,
-      { 
-        'Clave Vendedor': vendedor.trim(),
-        'CVVEN': vendedor.trim(),
-        'VendedorAsignado': vendedor.trim(),
-        'Vendedor': vendedor.trim(),
-        'Vendedor Asignado': vendedor.trim(),
-        fechaActualizacion: new Date(),
-        updatedAt: new Date()
-      },
+      updateData,
       { new: true }
     );
     
@@ -523,7 +533,7 @@ router.put('/:id/vendedor', async (req, res) => {
       return res.status(404).json({ error: 'No encontrado' });
     }
     
-    console.log(`✅ Vendedor asignado: ${vendedor.trim()} a operación ${id}`);
+    console.log(`✅ Vendedor asignado: ${vendedor.trim()} a operación ${id} por ${usuarioModificadoPorNombre || usuarioModificadoPor || 'usuario desconocido'}`);
     res.json(operacion);
   } catch (error) {
     console.error('Error actualizando vendedor operacion:', error);

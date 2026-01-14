@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import os from 'os';
 import usersRoutes from './routes/users.js';
 import salesRoutes from './routes/sales.js';
 import installRoutes from './routes/install.js';
@@ -71,8 +72,29 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'API funcionando correctamente' });
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
+// Iniciar servidor - Escuchar en todas las interfaces de red (0.0.0.0)
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`🌐 Accesible desde la red local en:`);
+  
+  // Obtener la IP local
+  const networkInterfaces = os.networkInterfaces();
+  const ips = [];
+  
+  Object.keys(networkInterfaces).forEach((interfaceName) => {
+    networkInterfaces[interfaceName].forEach((iface) => {
+      // Solo IPv4 y no loopback
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push(`   http://${iface.address}:${PORT}`);
+      }
+    });
+  });
+  
+  if (ips.length > 0) {
+    ips.forEach(ip => console.log(ip));
+  } else {
+    console.log(`   (Ejecuta: ipconfig para ver tu IP local)`);
+  }
+  console.log('');
 });
 
