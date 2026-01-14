@@ -1,6 +1,7 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "installCommand": "npm --prefix sistema-sureste install",
+  "buildCommand": "npm --prefix sistema-sureste run build",
+  "outputDirectory": "sistema-sureste/dist",
   "framework": "vite",
   "rewrites": [
     {
