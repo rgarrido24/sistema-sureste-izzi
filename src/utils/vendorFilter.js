@@ -34,12 +34,131 @@ export function matchVendorName(userName, vendorName) {
 }
 
 /**
- * Filtra datos por vendedor basado en el usuario logueado
+ * Normaliza texto sin acentos (para comparación flexible)
+ */
+function normalizeText(text) {
+  if (!text) return '';
+  return String(text)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Eliminar diacríticos
+    .toUpperCase()
+    .trim();
+}
+
+/**
+ * Obtiene región desde HUB y PLAZA o campo Region
+ */
+function getRegionFromData(item) {
+  // Primero buscar campo Region directamente
+  const region = item.Region || item['Region'] || item.region || item.REGION;
+  if (region) {
+    return normalizeText(region);
+  }
+  
+  // Si no hay Region, buscar en HUB y PLAZA
+  const hub = item.HUB || item['HUB'] || item.Hub || item.hub || '';
+  const plaza = item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '';
+  
+  const hubStr = hub ? normalizeText(hub) : '';
+  const plazaStr = plaza ? normalizeText(plaza) : '';
+  
+  // Regiones según hub/plaza
+  // NORESTE
+  if (
+    hubStr.includes('NORESTE') || hubStr.includes('MONTERREY') ||
+    plazaStr.includes('MONTERREY') || plazaStr.includes('MATAMOROS') ||
+    plazaStr.includes('REYNOSA') || plazaStr.includes('SALTILLO') ||
+    plazaStr.includes('TAMPICO') || plazaStr.includes('NUEVO LAREDO')
+  ) {
+    return 'NORESTE';
+  }
+  
+  // OCCIDENTE
+  if (
+    hubStr.includes('OCCIDENTE') || hubStr.includes('GUADALAJARA') ||
+    plazaStr.includes('GUADALAJARA') || plazaStr.includes('PUERTO VALLARTA') ||
+    plazaStr.includes('AGUASCALIENTES')
+  ) {
+    return 'OCCIDENTE';
+  }
+  
+  // PACIFICO
+  if (
+    hubStr.includes('PACIFICO') || hubStr.includes('TIJUANA') ||
+    hubStr.includes('CHIHUAHUA') || plazaStr.includes('TIJUANA') ||
+    plazaStr.includes('MEXICALI') || plazaStr.includes('CHIHUAHUA') ||
+    plazaStr.includes('MAZATLAN') || plazaStr.includes('CIUDAD JUAREZ')
+  ) {
+    return 'PACIFICO';
+  }
+  
+  // SURESTE
+  if (
+    hubStr.includes('SURESTE') || hubStr.includes('VILLAHERMOSA') ||
+    plazaStr.includes('VILLAHERMOSA') || plazaStr.includes('COATZACOALCOS') ||
+    plazaStr.includes('CANCUN') || plazaStr.includes('MERIDA') ||
+    plazaStr.includes('CAMPECHE') || plazaStr.includes('CD. DEL CARMEN')
+  ) {
+    return 'SURESTE';
+  }
+  
+  // METROPOLITANA
+  if (
+    hubStr.includes('METROPOLITANA') || hubStr.includes('CDMX') ||
+    hubStr.includes('MEXICO') || plazaStr.includes('ARBOLEDAS') ||
+    plazaStr.includes('VALLEJO') || plazaStr.includes('SATELITE') ||
+    plazaStr.includes('POLANCO') || plazaStr.includes('TOLUCA')
+  ) {
+    return 'METROPOLITANA';
+  }
+  
+  return null;
+}
+
+/**
+ * Filtra datos por vendedor o región basado en el usuario logueado
  */
 export function filterByVendor(data, user) {
-  // Si el usuario es admin, no filtrar
-  if (user.role === 'admin') {
+  // Si el usuario es admin, admin_general o director, no filtrar
+  if (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director') {
     return data;
+  }
+  
+  // Si el usuario es regionales, filtrar por región
+  if (user.role === 'regionales') {
+    const userRegion = user.region ? normalizeText(user.region) : null;
+    
+    if (!userRegion) {
+      console.warn('⚠️ Usuario regional sin región asignada, no se puede filtrar');
+      return [];
+    }
+    
+    const filtered = data.filter(item => {
+      const itemRegion = getRegionFromData(item);
+      
+      if (!itemRegion) return false;
+      
+      const matches = itemRegion === userRegion;
+      
+      // Log para debugging (solo los primeros 5)
+      if (data.indexOf(item) < 5) {
+        console.log(`🔍 Regional: Comparando "${userRegion}" vs "${itemRegion}" = ${matches}`);
+      }
+      
+      return matches;
+    });
+    
+    console.log(`📊 Usuario Regional: ${user.name} (${userRegion}) | Total datos: ${data.length} | Filtrados: ${filtered.length}`);
+    
+    // Si no se encontraron datos, mostrar algunas regiones disponibles
+    if (filtered.length === 0 && data.length > 0) {
+      const uniqueRegions = [...new Set(data.slice(0, 20).map(item => {
+        return getRegionFromData(item) || 'Sin región';
+      }))];
+      console.log(`⚠️ No se encontraron coincidencias. Regiones en los datos:`, uniqueRegions);
+    }
+    
+    return filtered;
   }
   
   // Si el usuario es vendedor o user, filtrar por su nombre

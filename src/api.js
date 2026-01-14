@@ -52,10 +52,10 @@ export async function loginUser(username, password) {
   });
 }
 
-export async function createUser(username, password, name, role, email = '') {
+export async function createUser(username, password, name, role, email = '', region = '') {
   return apiRequest('/users/create', {
     method: 'POST',
-    body: JSON.stringify({ username, password, name, role, email }),
+    body: JSON.stringify({ username, password, name, role, email, region }),
   });
 }
 
@@ -149,10 +149,14 @@ export async function getOperacionDia(vendedor = null) {
   return apiRequest(endpoint);
 }
 
-export async function updateOperacionVendedor(operacionId, vendedor) {
+export async function updateOperacionVendedor(operacionId, vendedor, usuarioModificadoPor = null, usuarioModificadoPorNombre = null) {
   return apiRequest(`/operacion/${operacionId}/vendedor`, {
     method: 'PUT',
-    body: JSON.stringify({ vendedor }),
+    body: JSON.stringify({ 
+      vendedor,
+      usuarioModificadoPor,
+      usuarioModificadoPorNombre
+    }),
   });
 }
 

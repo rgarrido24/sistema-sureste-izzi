@@ -16,23 +16,36 @@ import DashboardModule from '../features/dashboard/DashboardModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
-  const [currentModule, setCurrentModule] = useState(MODULES.SALES);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // Si es rol 'usuarios', iniciar directamente en Administración > Usuarios
+  // Si es rol 'usuarios', forzar que siempre esté en Administración
+  const initialModule = user?.role === 'usuarios' ? MODULES.ADMIN : MODULES.SALES;
+  const initialTab = user?.role === 'usuarios' ? 'users' : 'dashboard';
+  const [currentModule, setCurrentModule] = useState(initialModule);
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Si el rol es 'usuarios' y cambia a otro módulo, forzar volver a Administración
+  const handleModuleChange = (module) => {
+    if (user?.role === 'usuarios' && module !== MODULES.ADMIN) {
+      // No permitir cambiar a otros módulos
+      return;
+    }
+    setCurrentModule(module);
+  };
 
   return (
     <AdminLayout
       user={user}
-      currentModule={currentModule}
-      setModule={setCurrentModule}
+      currentModule={user?.role === 'usuarios' ? MODULES.ADMIN : currentModule}
+      setModule={handleModuleChange}
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       onLogout={logout}
     >
-      {/* Dashboard - Siempre disponible */}
-      {activeTab === 'dashboard' && <DashboardModule currentModule={currentModule} />}
+      {/* Dashboard - No disponible para rol 'usuarios' */}
+      {activeTab === 'dashboard' && user?.role !== 'usuarios' && <DashboardModule currentModule={currentModule} />}
       
-      {/* Módulo de Cobranza */}
-      {currentModule === MODULES.SALES && (
+      {/* Módulo de Cobranza - Para admin, admin_general, director, mesa_control y regionales */}
+      {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
         <>
           {(activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4' || activeTab === 'view') && (
             <SalesModule activeTab={activeTab} />
@@ -41,8 +54,8 @@ export default function AdminDashboard({ user }) {
         </>
       )}
 
-      {/* Módulo de Instalaciones */}
-      {currentModule === MODULES.INSTALL && (
+      {/* Módulo de Instalaciones - Disponible para admin, admin_general, director, mesa_control y regionales */}
+      {currentModule === MODULES.INSTALL && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
         <>
           {activeTab === 'operacion' && <OperacionModule />}
           {activeTab === 'reports' && <ReportsModule />}

@@ -1,8 +1,8 @@
 // Componente del logo de RGO
 export default function RGOLogo({ size = 120, showText = false, className = '' }) {
-  // Usar el nombre exacto del archivo: "logo RGO.png"
-  // En Vite, los archivos en public/ se sirven desde la raíz con encodeURIComponent para espacios
-  const logoPath = '/logo%20RGO.png';
+  // Usar el nombre exacto del archivo: "LOGO RGO.png" (con mayúsculas)
+  // En Vite, los archivos en public/ se sirven desde la raíz
+  const logoPath = '/LOGO%20RGO.png';
 
   return (
     <div className={`flex flex-col items-center ${className}`}>
@@ -18,10 +18,12 @@ export default function RGOLogo({ size = 120, showText = false, className = '' }
           // Si no se encuentra, intentar variaciones
           console.warn('Logo RGO no encontrado en:', logoPath);
           const alternatives = [
+            '/LOGO RGO.png',
+            '/LOGO%20RGO.png',
             '/logo RGO.png',
+            '/logo%20RGO.png',
             '/logo-RGO.png',
-            '/logoRGO.png',
-            '/logo-rgo.png'
+            '/logoRGO.png'
           ];
           let currentAlt = 0;
           const tryNext = () => {

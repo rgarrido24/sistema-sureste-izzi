@@ -37,7 +37,7 @@ function AppContent() {
   }
 
   // Determinar tipo de dashboard según rol
-  if (role === 'admin' || role === 'admin_general' || role === 'admin_region') {
+  if (role === 'admin' || role === 'admin_general' || role === 'admin_region' || role === 'director' || role === 'usuarios' || role === 'mesa_control' || role === 'regionales') {
     return <AdminDashboard user={user} />;
   } else {
     return <VendorDashboard user={user} myName={vendorName} />;

@@ -495,7 +495,8 @@ export default function SalesStatusView({
       setLoading(true);
       try {
         // Determinar si el usuario es vendedor para filtrar
-        const isVendor = user.role === 'vendedor' || user.role === 'user';
+        // El rol 'director' puede ver todo sin filtros
+        const isVendor = (user.role === 'vendedor' || user.role === 'user') && user.role !== 'director';
         const vendorFilter = isVendor ? (user.name || user.username) : null;
         
         // Cargar desde la colección específica (M1, M2, M3, M4)

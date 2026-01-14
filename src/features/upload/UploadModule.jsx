@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { UploadCloud } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import { parseCSV, parseExcel } from '../../utils/fileParser.js';
 import * as api from '../../api.js';
 import { MODULES, COLLECTIONS } from '../../utils/constants.js';
 
 export default function UploadModule({ currentModule }) {
+  const { user } = useAuth();
+  // El rol director no puede cargar archivos
+  // El rol mesa_control puede cargar archivos
+  const canUpload = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'mesa_control';
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState('');
@@ -18,6 +23,11 @@ export default function UploadModule({ currentModule }) {
   };
 
   const handleUpload = async () => {
+    if (!canUpload) {
+      alert('No tienes permisos para cargar archivos');
+      return;
+    }
+    
     if (!file) {
       alert('Selecciona un archivo');
       return;
@@ -267,8 +277,8 @@ export default function UploadModule({ currentModule }) {
             type="file"
             accept=".csv,.xlsx,.xls,.xlsm,.txt"
             onChange={handleFileChange}
-            disabled={uploading}
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+            disabled={uploading || !canUpload}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
           />
           {file && (
             <p className="text-sm text-slate-600 mt-2">
@@ -307,9 +317,16 @@ export default function UploadModule({ currentModule }) {
           </div>
         )}
 
+        {!canUpload && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-sm text-red-800">
+              ⚠️ No tienes permisos para cargar archivos. Solo los administradores pueden realizar esta acción.
+            </p>
+          </div>
+        )}
         <button
           onClick={handleUpload}
-          disabled={!file || uploading}
+          disabled={!file || uploading || !canUpload}
           className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 disabled:bg-slate-400 transition-colors"
         >
           {uploading ? 'Cargando...' : 'Cargar Archivo'}

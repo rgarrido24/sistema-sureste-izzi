@@ -821,7 +821,8 @@ export default function OperacionModule() {
         }
       }
     };
-    if (user && (user.role === 'admin' || user.role === 'superadmin')) {
+    // Cargar vendedores para roles que pueden asignar
+    if (user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control')) {
       loadVendors();
     }
   }, [user]);
@@ -856,7 +857,16 @@ export default function OperacionModule() {
     }
 
     try {
-      await api.updateOperacionVendedor(itemId, vendedorNombre.trim());
+      // Obtener información del usuario actual para registrar quién modificó
+      const usuarioActual = user?.username || user?.id || '';
+      const usuarioActualNombre = user?.name || '';
+      
+      await api.updateOperacionVendedor(
+        itemId, 
+        vendedorNombre.trim(),
+        usuarioActual,
+        usuarioActualNombre
+      );
       // Recargar datos
       const operacionData = await api.getOperacionDia();
       const filtered = filterByVendor(operacionData, user);
@@ -1538,10 +1548,17 @@ export default function OperacionModule() {
                       <span>{telefono}</span>
                     </div>
                   )}
-                  {cvven && (
+                  {cvven && cvven !== 'N/A' && (
                     <div className="flex items-center gap-2">
                       <User size={12} className="text-slate-400" />
                       <span>CVVEN: {cvven}</span>
+                    </div>
+                  )}
+                  {/* Mostrar usuario que modificó por última vez */}
+                  {(item.UsuarioModificadoPorNombre || item['UsuarioModificadoPorNombre']) && (
+                    <div className="flex items-center gap-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2 mt-2">
+                      <User size={10} className="text-slate-400" />
+                      <span>Última modificación por: <strong className="text-slate-700">{item.UsuarioModificadoPorNombre || item['UsuarioModificadoPorNombre']}</strong></span>
                     </div>
                   )}
                   {hub && (
@@ -1679,8 +1696,8 @@ export default function OperacionModule() {
                     </a>
                   </div>
                   
-                  {/* Asignar Vendedor (solo para admin) */}
-                  {user && (user.role === 'admin' || user.role === 'superadmin') && (
+                  {/* Asignar Vendedor (para admin, admin_general, director y mesa_control) */}
+                  {user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control') && (
                     <div>
                       {assigningVendor === item.id ? (
                         <div className="bg-blue-50 p-2 rounded-lg border border-blue-200">
