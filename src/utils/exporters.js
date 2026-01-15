@@ -293,7 +293,13 @@ function mapOperacionDiaRow(item) {
     'createdAt'
   ]);
 
+  // CUENTA/REFERENCIA: SIEMPRE usar "Nº de cuenta" (columna BQ del archivo de Operación).
+  // Si no viene, caer a otras variantes.
   const cuenta = pickFirst(item, [
+    'Nº de cuenta',
+    'N° de cuenta',
+    'Nº Cuenta',
+    'N° Cuenta',
     'CUENTA',
     'Cuenta',
     'cuenta',
@@ -301,8 +307,6 @@ function mapOperacionDiaRow(item) {
     'Cuenta de Facturación',
     'Cuenta de facturacion',
     'Cuenta de Facturacion',
-    'Nº de cuenta',
-    'N° de cuenta',
   ]);
 
   // REFERENCIA: igual a CUENTA (mismo valor)
