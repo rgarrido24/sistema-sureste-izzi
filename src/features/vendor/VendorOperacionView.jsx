@@ -4,6 +4,7 @@ import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
+import { exportOperacionDiaToExcel } from '../../utils/exporters.js';
 
 // Función para limpiar y validar número de teléfono
 const cleanPhoneNumber = (phone) => {
@@ -242,6 +243,7 @@ export default function VendorOperacionView({ myName }) {
   const { user } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
 
@@ -305,13 +307,46 @@ export default function VendorOperacionView({ myName }) {
     <div className="space-y-4">
       {/* Header */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <h2 className="text-2xl font-bold mb-2">Mis Instalaciones</h2>
-        <p className="text-slate-600">
-          {data.length === 0 
-            ? 'No tienes instalaciones asignadas aún'
-            : `Total de instalaciones: ${data.length}`
-          }
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Mis Instalaciones</h2>
+            <p className="text-slate-600">
+              {data.length === 0 
+                ? 'No tienes instalaciones asignadas aún'
+                : `Total de instalaciones: ${data.length}`
+              }
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              if (!user) return;
+              try {
+                setExporting(true);
+                // Traer todo para el vendedor (limit=0) y filtrar por seguridad
+                let exportData = await api.getOperacionDiaExport({ vendedor: myName, limit: 0 });
+                exportData = filterByVendor(exportData, user);
+
+                // Solo instaladas/completas
+                const instaladas = exportData.filter(item => {
+                  const est = String(item?.['Estado'] || item?.estado || '').toUpperCase().trim();
+                  return est === 'COMPLETA' || est === 'INSTALADA';
+                });
+
+                exportOperacionDiaToExcel(instaladas, { filenameBase: 'mis_instaladas' });
+              } catch (e) {
+                console.error('Error exportando Excel vendedor:', e);
+                alert('Error al generar el Excel. Intenta de nuevo.');
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting}
+            className="px-4 py-2 bg-emerald-50 text-emerald-800 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-semibold disabled:opacity-60"
+            title="Descarga Excel con formato fijo (instaladas/completas)"
+          >
+            {exporting ? 'Generando Excel…' : 'Descargar Excel (Instaladas)'}
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import * as api from '../../api.js';
 import { filterByVendor } from '../../utils/vendorFilter.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
+import { exportOperacionDiaToExcel } from '../../utils/exporters.js';
 
 // Función para limpiar y validar número de teléfono
 const cleanPhoneNumber = (phone) => {
@@ -675,6 +676,7 @@ export default function OperacionModule() {
   const [allData, setAllData] = useState([]); // Todos los datos incluyendo Completa/Instalada para estadísticas
   const [loading, setLoading] = useState(false); // solo carga inicial
   const [refreshing, setRefreshing] = useState(false); // refresco en segundo plano
+  const [exporting, setExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [filterFecha, setFilterFecha] = useState('');
@@ -1211,6 +1213,35 @@ export default function OperacionModule() {
     return estado === 'COMPLETA' || estado === 'INSTALADA';
   }).length;
 
+  const canExportInstaladas = !!user && (
+    user.role === 'admin' ||
+    user.role === 'admin_general' ||
+    user.role === 'director' ||
+    user.role === 'mesa_control' ||
+    user.role === 'regionales'
+  );
+
+  const handleExportInstaladas = async () => {
+    if (!user) return;
+    try {
+      setExporting(true);
+      let exportData = await api.getOperacionDiaExport({ limit: 0 });
+      exportData = filterByVendor(exportData, user);
+
+      const instaladas = exportData.filter(item => {
+        const est = String(item?.['Estado'] || item?.estado || '').toUpperCase().trim();
+        return est === 'COMPLETA' || est === 'INSTALADA';
+      });
+
+      exportOperacionDiaToExcel(instaladas, { filenameBase: 'operacion_instaladas' });
+    } catch (error) {
+      console.error('❌ Error exportando Excel:', error);
+      alert('Error al generar el Excel. Intenta de nuevo.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <RefreshBadge />
@@ -1226,12 +1257,24 @@ export default function OperacionModule() {
               }
             </p>
           </div>
-          <button
-            onClick={() => setShowStats(!showStats)}
-            className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-semibold"
-          >
-            {showStats ? 'Ocultar' : 'Mostrar'} Estadísticas
-          </button>
+          <div className="flex items-center gap-2">
+            {canExportInstaladas && (
+              <button
+                onClick={handleExportInstaladas}
+                disabled={exporting}
+                className="px-4 py-2 bg-emerald-50 text-emerald-800 rounded-lg hover:bg-emerald-100 transition-colors text-sm font-semibold disabled:opacity-60"
+                title="Descarga Excel con formato fijo (instaladas/completas)"
+              >
+                {exporting ? 'Generando Excel…' : `Descargar Excel (Instaladas: ${totalInstaladasCompletas})`}
+              </button>
+            )}
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-semibold"
+            >
+              {showStats ? 'Ocultar' : 'Mostrar'} Estadísticas
+            </button>
+          </div>
         </div>
         
         {/* Desglose por estado (excluyendo Completas e Instaladas del listado principal) */}

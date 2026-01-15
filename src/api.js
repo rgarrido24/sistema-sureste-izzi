@@ -149,6 +149,16 @@ export async function getOperacionDia(vendedor = null) {
   return apiRequest(endpoint);
 }
 
+// Para exportar (permite limit=0 para traer todo, con cap del backend)
+export async function getOperacionDiaExport({ vendedor = null, limit = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (vendedor) params.set('vendedor', vendedor);
+  if (limit !== undefined && limit !== null) params.set('limit', String(limit));
+  const qs = params.toString();
+  const endpoint = qs ? `/operacion?${qs}` : '/operacion';
+  return apiRequest(endpoint);
+}
+
 export async function updateOperacionVendedor(operacionId, vendedor, usuarioModificadoPor = null, usuarioModificadoPorNombre = null) {
   return apiRequest(`/operacion/${operacionId}/vendedor`, {
     method: 'PUT',
@@ -348,6 +358,13 @@ export async function updateM2Estado(id, estado) {
   return apiRequest(`/m2/${id}/estado`, {
     method: 'PUT',
     body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM2Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m2/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
   });
 }
 
