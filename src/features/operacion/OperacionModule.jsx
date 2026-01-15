@@ -6,37 +6,46 @@ import { filterByVendor } from '../../utils/vendorFilter.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { exportOperacionDiaToExcel } from '../../utils/exporters.js';
 
-// Función para limpiar y validar número de teléfono
+// Función para limpiar y validar número de teléfono (elige el primer número válido si vienen varios)
 const cleanPhoneNumber = (phone) => {
   if (!phone) return null;
-  let cleaned = phone.toString().trim();
-  const hasPlus = cleaned.startsWith('+');
-  cleaned = cleaned.replace(/[^\d+]/g, '');
-  if (!hasPlus) {
+
+  const normalizeOne = (raw) => {
+    if (!raw) return null;
+    let cleaned = String(raw).trim();
+    cleaned = cleaned.replace(/[^\d+]/g, '');
+    if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
     cleaned = cleaned.replace(/\D/g, '');
-  }
-  if (!cleaned || cleaned.length === 0) return null;
-  if (cleaned.startsWith('+')) {
-    cleaned = cleaned.substring(1);
-  }
-  if (cleaned.startsWith('52')) {
-    if (cleaned.length >= 12) {
-      return cleaned;
+    if (!cleaned) return null;
+
+    if (cleaned.startsWith('521') && cleaned.length >= 13) {
+      cleaned = `52${cleaned.slice(-10)}`;
     }
-  }
-  if (cleaned.startsWith('1') && cleaned.length >= 11) {
-    return cleaned;
-  }
-  if (cleaned.length === 10) {
-    return `52${cleaned}`;
-  }
-  if (cleaned.length > 10) {
-    return cleaned;
-  }
-  if (cleaned.length < 10) {
+
+    if (cleaned.length === 10) return `52${cleaned}`;
+    if (cleaned.startsWith('52') && cleaned.length >= 12) return cleaned.slice(0, 12);
+
+    if (cleaned.length > 12) {
+      const last10 = cleaned.slice(-10);
+      if (last10.length === 10) return `52${last10}`;
+    }
+
+    if (cleaned.length >= 11) return cleaned;
     return null;
+  };
+
+  const text = String(phone);
+  const parts = text
+    .split(/[,;/|]+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  for (const p of parts) {
+    const normalized = normalizeOne(p);
+    if (normalized) return normalized;
   }
-  return cleaned;
+
+  return normalizeOne(text);
 };
 
 // Mapeo de códigos de plaza a nombres completos

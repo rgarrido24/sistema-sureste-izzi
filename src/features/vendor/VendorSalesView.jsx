@@ -209,60 +209,53 @@ const generateMessageFromTemplate = async (client, status) => {
   }
 };
 
-// Función para limpiar y validar número de teléfono
+// Función para limpiar y validar número de teléfono (elige el primer número válido si vienen varios)
 const cleanPhoneNumber = (phone) => {
   if (!phone) return null;
-  
-  // Convertir a string y eliminar todos los caracteres no numéricos excepto el +
-  let cleaned = phone.toString().trim();
-  
-  // Si tiene +, mantenerlo y eliminar todo lo demás que no sea número
-  const hasPlus = cleaned.startsWith('+');
-  cleaned = cleaned.replace(/[^\d+]/g, '');
-  
-  // Si no tiene +, eliminar todos los caracteres no numéricos
-  if (!hasPlus) {
+
+  const normalizeOne = (raw) => {
+    if (!raw) return null;
+    let cleaned = String(raw).trim();
+    // Quitar todo excepto dígitos y +
+    cleaned = cleaned.replace(/[^\d+]/g, '');
+    if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
     cleaned = cleaned.replace(/\D/g, '');
-  }
-  
-  // Si está vacío después de limpiar, retornar null
-  if (!cleaned || cleaned.length === 0) return null;
-  
-  // Si tiene +, quitar el + y procesar
-  if (cleaned.startsWith('+')) {
-    cleaned = cleaned.substring(1);
-  }
-  
-  // Si empieza con 52 (México), mantenerlo
-  if (cleaned.startsWith('52')) {
-    // Verificar que tenga al menos 12 dígitos (52 + 10 dígitos)
-    if (cleaned.length >= 12) {
-      return cleaned;
+    if (!cleaned) return null;
+
+    // Algunos vienen como 521XXXXXXXXXX (MX). Normalizar a 52 + 10 dígitos.
+    if (cleaned.startsWith('521') && cleaned.length >= 13) {
+      cleaned = `52${cleaned.slice(-10)}`;
     }
-  }
-  
-  // Si empieza con 1 (puede ser código de país), verificar longitud
-  if (cleaned.startsWith('1') && cleaned.length >= 11) {
-    return cleaned;
-  }
-  
-  // Si tiene 10 dígitos, agregar código de país 52 (México)
-  if (cleaned.length === 10) {
-    return `52${cleaned}`;
-  }
-  
-  // Si tiene más de 10 dígitos pero no empieza con código de país conocido
-  if (cleaned.length > 10) {
-    return cleaned;
-  }
-  
-  // Si tiene menos de 10 dígitos, no es válido
-  if (cleaned.length < 10) {
-    console.warn('Número de teléfono muy corto:', cleaned);
+
+    // México: 52 + 10 dígitos
+    if (cleaned.length === 10) return `52${cleaned}`;
+    if (cleaned.startsWith('52') && cleaned.length >= 12) return cleaned.slice(0, 12);
+
+    // Fallback: tomar últimos 10 dígitos si parece venir concatenado/extensión
+    if (cleaned.length > 12) {
+      const last10 = cleaned.slice(-10);
+      if (last10.length === 10) return `52${last10}`;
+    }
+
+    // Último recurso: aceptar 11+ si viene con otro prefijo
+    if (cleaned.length >= 11) return cleaned;
     return null;
+  };
+
+  const text = String(phone);
+  const parts = text
+    .split(/[,;/|]+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  // Probar por partes (evita concatenar 2 teléfonos)
+  for (const p of parts) {
+    const normalized = normalizeOne(p);
+    if (normalized) return normalized;
   }
-  
-  return cleaned;
+
+  // Si no había separadores, intentar normalizar todo
+  return normalizeOne(text);
 };
 
 // Función para abrir WhatsApp con mensaje personalizado
