@@ -1,0 +1,19 @@
+name: Render Keep-Alive
+
+on:
+  schedule:
+    # Cada 10 minutos (GitHub cron es best-effort)
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Render health endpoint
+        run: |
+          set -euo pipefail
+          URL="https://sistema-sureste-backend.onrender.com/api/health"
+          echo "Pinging $URL"
+          curl -fsSL --max-time 20 "$URL" | head -c 200 || true

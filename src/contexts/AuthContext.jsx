@@ -45,11 +45,43 @@ export function AuthProvider({ children }) {
     checkBackend();
   }, []);
 
+  // Keep-alive suave mientras la app está abierta (reduce cold start durante el uso)
+  useEffect(() => {
+    let intervalId = null;
+
+    const tick = async () => {
+      // Evitar pings cuando la pestaña no está visible (reduce ruido)
+      if (document.visibilityState !== 'visible') return;
+      try {
+        await api.checkHealth();
+        setBackendError(null);
+      } catch (error) {
+        // No spamear al usuario; solo registrar y dejar el mensaje genérico
+        setBackendError('No se puede conectar al backend. Verifica que el servidor esté en línea.');
+        console.error('Error conectando al backend (keep-alive):', error);
+      }
+    };
+
+    // Cada 8 minutos (Render suele dormir ~15 min de inactividad)
+    intervalId = setInterval(tick, 8 * 60 * 1000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
+
   const login = async (username, password) => {
     setIsAuthenticating(true);
     setAuthError(null);
     
     try {
+      // Warm-up: dispara el wake-up antes del login real (mejora primer intento post-cold-start)
+      try {
+        await api.checkHealth();
+        setBackendError(null);
+      } catch (e) {
+        // ignorar (el login igualmente intentará)
+      }
       const result = await api.loginUser(username, password);
       
       if (result.success) {
