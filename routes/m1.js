@@ -67,194 +67,161 @@ router.post('/bulk', async (req, res) => {
     if (!Array.isArray(data)) {
       return res.status(400).json({ error: 'Se espera un array de datos' });
     }
-    
-    // Si es reemplazo mensual, eliminar todos los registros existentes primero
-    if (replaceAll) {
-      console.log('🔄 Modo reemplazo mensual: Eliminando todos los registros M1 existentes...');
-      console.log('📋 Parámetro replaceAll recibido:', replaceAll);
-      
-      const countBefore = await M1Master.countDocuments({});
-      console.log(`📊 Registros existentes antes de eliminar: ${countBefore}`);
-      
-      // Eliminar todos los registros
-      const deleteResult = await M1Master.deleteMany({});
-      console.log(`✅ Resultado deleteMany: ${deleteResult.deletedCount} eliminados, acknowledged: ${deleteResult.acknowledged}`);
-      
-      // Verificar inmediatamente después
-      const countAfter = await M1Master.countDocuments({});
-      console.log(`📊 Registros existentes después de eliminar: ${countAfter}`);
-      
-      // Si aún quedan registros, intentar nuevamente con diferentes métodos
-      if (countAfter > 0) {
-        console.log('⚠️ ADVERTENCIA: Aún quedan registros después de deleteMany. Intentando métodos alternativos...');
-        
-        // Intentar eliminar por lotes
-        let remaining = await M1Master.countDocuments({});
-        let attempts = 0;
-        while (remaining > 0 && attempts < 5) {
-          attempts++;
-          console.log(`🔄 Intento ${attempts}: Eliminando ${remaining} registros restantes...`);
-          await M1Master.deleteMany({});
-          remaining = await M1Master.countDocuments({});
-          console.log(`📊 Registros restantes después del intento ${attempts}: ${remaining}`);
-        }
-        
-        if (remaining > 0) {
-          console.log(`❌ ERROR: Aún quedan ${remaining} registros después de ${attempts} intentos`);
-        } else {
-          console.log(`✅ Todos los registros eliminados después de ${attempts} intentos`);
-        }
-      } else {
-        console.log('✅ Todos los registros eliminados correctamente');
-      }
-    } else {
-      console.log('📋 Modo normal (no reemplazo mensual) - replaceAll:', replaceAll);
-    }
-    
+
     let created = 0;
     let updated = 0;
     let skipped = 0;
     const errors = [];
-    
-    console.log(`📦 Procesando ${data.length} registros para M1...`);
-    
-    // DEBUG: Mostrar el primer registro para ver su estructura
-    if (data.length > 0) {
-      console.log('🔍 DEBUG - Primer registro recibido:');
-      console.log('Campos disponibles:', Object.keys(data[0]));
-      console.log('Primer registro (muestra):', JSON.stringify(data[0], null, 2).substring(0, 500));
-      
-      // Intentar detectar el campo cuenta en el primer registro
-      const firstItem = data[0];
-      const cuentaTest = normalizeCuenta(firstItem);
-      console.log(`🔍 DEBUG - Campo "cuenta" detectado: "${cuentaTest}"`);
-      if (!cuentaTest) {
-        console.log('⚠️ ADVERTENCIA: No se pudo detectar el campo cuenta en el primer registro');
-        console.log('Buscando campo "cuenta" manualmente...');
-        for (const key in firstItem) {
-          if (key.toLowerCase().includes('cuenta')) {
-            console.log(`   - Encontrado campo similar: "${key}" = "${firstItem[key]}"`);
-          }
+
+    console.log(`📦 Recibidos ${data.length} registros para M1. Preparando importación...`);
+
+    // 1) Preparar + optimizar + deduplicar por cuenta (el último registro gana)
+    const byCuenta = new Map();
+    for (const item of data) {
+      try {
+        const preparedData = prepareDataForUpsert(item, 'm1');
+        if (!preparedData) {
+          skipped++;
+          continue;
         }
+        const optimizedData = optimizeDocument(preparedData, 'm1');
+        const cuenta = optimizedData?.cuenta || preparedData?.cuenta || normalizeCuenta(item);
+        if (!cuenta) {
+          skipped++;
+          continue;
+        }
+        byCuenta.set(cuenta, { ...optimizedData, cuenta });
+      } catch (itemError) {
+        errors.push({
+          item: { cuenta: normalizeCuenta(item) || 'N/A' },
+          error: itemError.message
+        });
       }
     }
-    
-    // Procesar en lotes para evitar sobrecarga
-    const BATCH_SIZE = 50; // Reducido para archivos grandes
-    const totalBatches = Math.ceil(data.length / BATCH_SIZE);
-    
-    console.log(`📊 Procesando en ${totalBatches} lotes de ${BATCH_SIZE} registros cada uno`);
-    
+
+    const docs = Array.from(byCuenta.values());
+    console.log(`🧾 Listos para procesar: ${docs.length} (deduplicados por cuenta). Omitidos: ${skipped}.`);
+
+    // 2) Reemplazo mensual: borrar todo + insertMany por lotes (MUY rápido)
+    if (replaceAll) {
+      console.log('🔄 Modo reemplazo mensual: Eliminando todos los registros M1 existentes...');
+      const deleteResult = await M1Master.deleteMany({});
+      console.log(`✅ deleteMany: ${deleteResult.deletedCount} eliminados`);
+
+      const INSERT_BATCH = 1000;
+      for (let i = 0; i < docs.length; i += INSERT_BATCH) {
+        const slice = docs.slice(i, i + INSERT_BATCH).map(d => ({
+          ...d,
+          fechaCreacion: d.fechaCreacion || new Date(),
+          fechaActualizacion: new Date()
+        }));
+        await M1Master.insertMany(slice, { ordered: false });
+        created += slice.length;
+        console.log(`✅ Insertados ${Math.min(i + INSERT_BATCH, docs.length)}/${docs.length}`);
+      }
+
+      return res.json({
+        success: true,
+        created,
+        updated: 0,
+        skipped,
+        total: data.length,
+        processed: docs.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    }
+
+    // 3) Modo normal: upsert/updates masivos por lotes (1 query + 1 bulkWrite por lote)
+    const BATCH_SIZE = 500;
+    const totalBatches = Math.ceil(docs.length / BATCH_SIZE);
+    console.log(`📊 Importando en ${totalBatches} lotes de ${BATCH_SIZE}...`);
+
     for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-      const batch = data.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE);
-      console.log(`🔄 Procesando lote ${batchIndex + 1}/${totalBatches} (${batch.length} registros)...`);
-      
-      for (const item of batch) {
-        try {
-          const cuenta = normalizeCuenta(item);
-          
-          if (!cuenta) {
-            // Log del primer item sin cuenta para debugging
-            if (skipped === 0) {
-              console.log('⚠️ Primer registro sin cuenta detectado.');
-              console.log('⚠️ Campos disponibles:', Object.keys(item));
-              console.log('⚠️ Valores de los primeros 5 campos:');
-              const firstKeys = Object.keys(item).slice(0, 5);
-              firstKeys.forEach(key => {
-                console.log(`   - "${key}": "${item[key]}"`);
-              });
-              console.log('⚠️ Primer registro completo (primeros 500 caracteres):');
-              console.log(JSON.stringify(item, null, 2).substring(0, 500));
-              
-              // Intentar encontrar cualquier campo que contenga "cuenta"
-              const keysWithCuenta = Object.keys(item).filter(k => 
-                k.toLowerCase().includes('cuenta')
-              );
-              if (keysWithCuenta.length > 0) {
-                console.log('🔍 Campos que contienen "cuenta":', keysWithCuenta);
-                keysWithCuenta.forEach(key => {
-                  console.log(`   - "${key}": "${item[key]}"`);
-                });
+      const batch = docs.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE);
+      const cuentas = batch.map(d => d.cuenta).filter(Boolean);
+
+      const existingDocs = await M1Master.find(
+        { cuenta: { $in: cuentas } },
+        {
+          cuenta: 1,
+          Telefono1: 1,
+          Telefono2: 1,
+          notaContacto: 1,
+          fechaPromesaPago: 1,
+          'Nota Contacto': 1,
+          'Fecha Promesa Pago': 1,
+          fechaCreacion: 1
+        }
+      ).lean();
+
+      const existingByCuenta = new Map(existingDocs.map(d => [d.cuenta, d]));
+
+      const ops = [];
+
+      for (const doc of batch) {
+        const cuenta = doc.cuenta;
+        if (!cuenta) {
+          skipped++;
+          continue;
+        }
+
+        const existing = existingByCuenta.get(cuenta);
+
+        if (existing) {
+          if (!updateExisting) {
+            skipped++;
+            continue;
+          }
+
+          // Preservar teléfono/notas/promesa si ya existen en DB (igual que antes)
+          const updateDoc = {
+            ...doc,
+            Telefono1: existing.Telefono1 || doc.Telefono1 || '',
+            Telefono2: existing.Telefono2 || doc.Telefono2 || '',
+            notaContacto: existing.notaContacto || doc.notaContacto || '',
+            fechaPromesaPago: existing.fechaPromesaPago || doc.fechaPromesaPago || '',
+            'Nota Contacto': existing['Nota Contacto'] || doc['Nota Contacto'] || doc.notaContacto || '',
+            'Fecha Promesa Pago': existing['Fecha Promesa Pago'] || doc['Fecha Promesa Pago'] || doc.fechaPromesaPago || '',
+            fechaCreacion: existing.fechaCreacion || doc.fechaCreacion || new Date(),
+            fechaActualizacion: new Date(),
+            updatedAt: new Date()
+          };
+
+          ops.push({
+            updateOne: {
+              filter: { cuenta },
+              update: { $set: updateDoc }
+            }
+          });
+        } else {
+          ops.push({
+            insertOne: {
+              document: {
+                ...doc,
+                fechaCreacion: doc.fechaCreacion || new Date(),
+                fechaActualizacion: new Date()
               }
             }
-            skipped++;
-            continue;
-          }
-          
-          // Si es reemplazo mensual, no buscar existentes - todos son nuevos
-          let existingM1 = null;
-          if (!replaceAll) {
-            // Solo buscar si NO es reemplazo mensual
-            existingM1 = await M1Master.findOne({
-              $or: [
-                { cuenta },
-                { 'Nº de cuenta': cuenta },
-                { 'Cuenta': cuenta }
-              ]
-            });
-          }
-          
-          const preparedData = prepareDataForUpsert(item, 'm1');
-          
-          if (!preparedData) {
-            skipped++;
-            continue;
-          }
-          
-          // OPTIMIZAR DATOS: Eliminar campos vacíos y normalizar antes de guardar
-          const optimizedData = optimizeDocument(preparedData, 'm1');
-        
-          if (existingM1 && !replaceAll) {
-            // Solo actualizar si NO es reemplazo mensual
-            if (updateExisting) {
-              // Actualizar manteniendo campos importantes (teléfono y notas si existen)
-              await M1Master.findByIdAndUpdate(existingM1._id, {
-                ...optimizedData,
-                // Preservar teléfono actualizado si existe
-                Telefono1: existingM1.Telefono1 || preparedData.Telefono1 || item.Telefono1 || '',
-                Telefono2: existingM1.Telefono2 || preparedData.Telefono2 || item.Telefono2 || '',
-                'Telefono1': existingM1['Telefono1'] || preparedData['Telefono1'] || item['Telefono1'] || '',
-                'Telefono2': existingM1['Telefono2'] || preparedData['Telefono2'] || item['Telefono2'] || '',
-                // Preservar notas y promesas de pago
-                notaContacto: existingM1.notaContacto || preparedData.notaContacto || '',
-                fechaPromesaPago: existingM1.fechaPromesaPago || preparedData.fechaPromesaPago || '',
-                'Nota Contacto': existingM1['Nota Contacto'] || preparedData['Nota Contacto'] || '',
-                'Fecha Promesa Pago': existingM1['Fecha Promesa Pago'] || preparedData['Fecha Promesa Pago'] || '',
-                fechaCreacion: existingM1.fechaCreacion || new Date(),
-                updatedAt: new Date()
-              });
-              updated++;
-            } else {
-              skipped++;
-            }
-          } else {
-            // Nuevo registro (o reemplazo mensual - todos son nuevos)
-            await M1Master.create(optimizedData);
-            created++;
-          }
-        } catch (itemError) {
-          console.error(`❌ Error procesando item (cuenta: ${normalizeCuenta(item) || 'N/A'}):`, itemError.message);
-          console.error('Item completo:', JSON.stringify(item, null, 2).substring(0, 200));
-          errors.push({ 
-            item: { cuenta: normalizeCuenta(item) || 'N/A', ...Object.keys(item).slice(0, 3).reduce((acc, key) => ({ ...acc, [key]: item[key] }), {}) },
-            error: itemError.message 
           });
-          // Continuar con el siguiente item en lugar de fallar todo
         }
       }
-      
-      // Log de progreso cada lote
-      console.log(`✅ Lote ${batchIndex + 1} completado. Progreso: ${created} creados, ${updated} actualizados, ${skipped} omitidos`);
+
+      if (ops.length > 0) {
+        const result = await M1Master.bulkWrite(ops, { ordered: false });
+        created += result.insertedCount || 0;
+        updated += result.modifiedCount || 0;
+      }
+
+      console.log(`✅ Lote ${batchIndex + 1}/${totalBatches} OK. Acumulado: ${created} creados, ${updated} actualizados, ${skipped} omitidos`);
     }
-    
-    console.log(`✅ Procesamiento completo: ${created} creados, ${updated} actualizados, ${skipped} omitidos, ${errors.length} errores`);
-    
-    res.json({ 
-      success: true, 
-      created, 
-      updated, 
+
+    return res.json({
+      success: true,
+      created,
+      updated,
       skipped,
       total: data.length,
+      processed: docs.length,
       errors: errors.length > 0 ? errors : undefined
     });
   } catch (error) {
