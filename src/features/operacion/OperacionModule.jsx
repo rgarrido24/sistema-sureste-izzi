@@ -526,31 +526,33 @@ const getRegionFromHubPlaza = (hub, plaza) => {
 const generateMessageFromTemplate = async (client) => {
   try {
     console.log('🔍 Buscando plantilla para módulo: operacion');
+    const normalize = (v) => String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
     
     // Obtener todas las plantillas activas
     const allTemplates = await api.getTemplates();
     console.log('📋 Plantillas obtenidas:', allTemplates.length);
     
-    // Buscar plantilla que coincida con el módulo "operacion" o "general"
-    let activeTemplate = allTemplates.find(t => 
-      t.isActive && (
-        t.module === 'operacion' || 
-        t.module === 'OPERACION' || 
-        t.module === 'Operacion' ||
-        t.module === 'operación' ||
-        t.module === 'OPERACIÓN' ||
-        t.module === 'Operación'
-      )
-    );
+    // Buscar plantilla que coincida con el módulo "operacion" (match tolerante) o "general"
+    const candidates = new Set([
+      'OPERACION',
+      'OPERACION DEL DIA',
+      'OPERACION DEL DÍA',
+      'GENERAL'
+    ]);
+
+    let activeTemplate = allTemplates.find(t => {
+      if (!t?.isActive) return false;
+      const mod = normalize(t.module);
+      return candidates.has(mod);
+    });
     
-    // Si no se encuentra, buscar plantillas con módulo "general"
+    // Compatibilidad: "generales"
     if (!activeTemplate) {
-      activeTemplate = allTemplates.find(t => 
-        t.isActive && (
-          t.module?.toLowerCase() === 'general' ||
-          t.module?.toLowerCase() === 'generales'
-        )
-      );
+      activeTemplate = allTemplates.find(t => t?.isActive && normalize(t.module) === 'GENERALES');
     }
     
     console.log('✅ Plantilla encontrada:', activeTemplate ? activeTemplate.name : 'NINGUNA');

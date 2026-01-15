@@ -133,9 +133,31 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
 // Función para generar mensaje personalizado desde plantilla
 const generateMessageFromTemplate = async (client, status) => {
   try {
-    // Obtener plantilla activa para el módulo
-    const templates = await api.getTemplates(status);
-    const activeTemplate = templates.find(t => t.isActive && t.module === status);
+    const normalize = (v) => String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    const normStatus = normalize(status);
+    const isCobranza = ['M1', 'M2', 'M3', 'M4'].includes(normStatus);
+
+    // Obtener plantillas activas (sin filtro) y seleccionar con match tolerante
+    const templates = await api.getTemplates();
+
+    const candidates = new Set([normStatus]);
+    if (isCobranza) {
+      candidates.add('COBRANZA');
+      candidates.add('GENERAL');
+      // Si quieres que una plantilla "M1" sirva como fallback general de cobranza
+      candidates.add('M1');
+    }
+
+    const activeTemplate = templates.find(t => {
+      if (!t?.isActive) return false;
+      const mod = normalize(t.module);
+      return candidates.has(mod);
+    });
     
     if (!activeTemplate) {
       // Si no hay plantilla, usar mensaje por defecto
