@@ -6,7 +6,6 @@ import AdminLayout from '../components/admin/AdminLayout.jsx';
 import SalesModule from '../features/sales/SalesModule.jsx';
 import InstallModule from '../features/install/InstallModule.jsx';
 import OperacionModule from '../features/operacion/OperacionModule.jsx';
-import ReportsModule from '../features/reports/ReportsModule.jsx';
 import UsersModule from '../features/users/UsersModule.jsx';
 import PackagesModule from '../features/packages/PackagesModule.jsx';
 import PromocionesModule from '../features/promociones/PromocionesModule.jsx';
@@ -59,7 +58,6 @@ export default function AdminDashboard({ user }) {
       {currentModule === MODULES.INSTALL && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
         <>
           {activeTab === 'operacion' && <OperacionModule />}
-          {activeTab === 'reports' && <ReportsModule />}
           {activeTab === 'packages' && <PackagesModule />}
           {activeTab === 'upload' && <UploadModule currentModule={currentModule} />}
           {activeTab === 'clients' && <InstallModule activeTab={activeTab} />}

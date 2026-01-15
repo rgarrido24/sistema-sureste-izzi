@@ -185,9 +185,113 @@ const OPERACION_DIA_HEADERS = [
   'CODIGO VERIFICACION',
 ];
 
+// --- Mapeo de plazas por código (principalmente cuando el archivo trae códigos cortos) ---
+// Nota: en Operación del Día suele venir Hub/Plaza como códigos (2-3 letras). Para el reporte
+// se requiere la plaza "nombre completo" y la región correspondiente.
+const SURESTE_PLAZAS = [
+  'POZA RICA', 'TIHUATLAN', 'COATZINTLA', 'TUXPAN', 'VALLE HERMOSO',
+  'CD. MENDOZA', 'RIO BLANCO', 'ORIZABA', 'CORDOBA', 'COSOLEACAQUE',
+  'JALTIPAN', 'MINATITLAN', 'COATZACOALCOS', 'NANCHITAL', 'CHOLULA',
+  'SAN MARTIN TEXMELUCAN', 'TLAXCALA', 'TEOLOCHOLCO', 'TEHUACAN',
+  'LERDO DE TEJADA', 'SANTIAGO TUXTLA', 'ALVARADO', 'APIZACO', 'HUAMANTLA',
+  'ATLIXCO', 'TEZIUTLAN', 'PLAYA DEL CARMEN', 'CANCUN', 'MAHUAHUAL',
+  'COZUMEL', 'ISLA MUEJRES', 'TULUM', 'BUCTOTZ', 'CHEMAX', 'ESPITA',
+  'IZAMAL', 'MERIDA', 'MOTUL', 'TIZIMIN', 'VALLADOLID', 'PUERTO PROGRESO',
+  'TEMAX', 'TEMOZON', 'UMAN', 'CAMPECHE', 'TAPACHULA', 'COBA',
+  'CD. DEL CARMEN', 'MACULTEPEC', 'PARRILLA', 'VILLAHERMOSA', 'JALPA',
+  'HUIMANGUILLO', 'MACUSPANA', 'NACAJUCA', 'CUNDUACAN', 'CARDENAS',
+  'COMALCALCO', 'PARAISO', 'CHETUMAL', 'YUCATAN'
+];
+
+const SURESTE_CODES = [
+  'PZ', 'TH', 'CI', 'TXP', 'VHE', 'ORI', 'ORI', 'ORI', 'COR', 'CQ',
+  'JL', 'MN', 'CC', 'NN', 'CHO', 'TLX', 'TLX', 'TLX', 'TEH', 'LET',
+  'SNT', 'ALV', 'API', 'HMA', 'ATX', 'TEZ', 'PC', 'CN', 'MHU', 'CZ',
+  'IM', 'TU', 'BT', 'CX', 'ES', 'IL', 'ME', 'ML', 'TZ', 'VD', 'PR',
+  'TX', 'TM', 'UM', 'CP', 'TAP', 'CB', 'CDC', 'VHA', 'VHA', 'VHA',
+  'JLP', 'HUM', 'MAC', 'NAC', 'CUN', 'CAR', 'CMA', 'PAR', 'CL', 'YUC'
+];
+
+const METROPOLITANA_CODES = ['AB', 'VO', 'ST', 'PL', 'KI', 'TOL', 'ECA', 'CU', 'MEO', 'TZY', 'VA', 'TLA', 'TUL', 'TPR', 'PAC', 'AR', 'CE', 'CA', 'CM', 'IZ', 'RG', 'IX', 'SA', 'TL', 'CT', 'CV', 'YU'];
+const NORESTE_CODES = ['CEL', 'IRA', 'LIN', 'MTE', 'MTM', 'PAS', 'MTH', 'APO', 'CAD', 'CMY', 'CUM', 'ESC', 'GAR', 'GPA', 'HUI', 'JUA', 'LNC', 'LVD', 'SCA', 'SNI', 'VFU', 'NUL', 'QRO', 'BAL', 'RBR', 'REY', 'SLA', 'REP', 'SAS', 'SLP', 'ALT', 'TAM', 'VL', 'CIV'];
+const OCCIDENTE_CODES = ['GDL', 'TJL', 'TLQ', 'TNL', 'ZN', 'ZS', 'MLLO', 'OX', 'CG', 'AC', 'AGS', 'PUV', 'IG'];
+const PACIFICO_CODES = ['CH', 'CJ', 'CO', 'CR', 'DGO', 'DL', 'EN', 'MX', 'MZN', 'MO', 'PA', 'NOG', 'RS', 'SLR', 'TJ', 'TE', 'TPC', 'ZAC'];
+
+const SURESTE_CODE_TO_PLAZA = (() => {
+  const m = {};
+  for (let i = 0; i < SURESTE_CODES.length; i++) {
+    const code = SURESTE_CODES[i];
+    const plaza = SURESTE_PLAZAS[i] || code;
+    // conservar el primer mapeo por si hay duplicados
+    if (!m[code]) m[code] = plaza;
+  }
+  return m;
+})();
+
+function normalizeText(text) {
+  if (!text) return '';
+  return String(text)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+}
+
+function getRegionFromHubPlaza(hub, plaza) {
+  const hubStr = normalizeText(hub);
+  const plazaStr = normalizeText(plaza);
+
+  const maybeCode = plazaStr.match(/^[A-Z]{2,3}$/) ? plazaStr : (hubStr.match(/^[A-Z]{2,3}$/) ? hubStr : '');
+  if (maybeCode) {
+    if (METROPOLITANA_CODES.includes(maybeCode)) return 'METROPOLITANA';
+    if (NORESTE_CODES.includes(maybeCode)) return 'NORESTE';
+    if (OCCIDENTE_CODES.includes(maybeCode)) return 'OCCIDENTE';
+    if (PACIFICO_CODES.includes(maybeCode)) return 'PACIFICO';
+    if (SURESTE_CODES.includes(maybeCode)) return 'SURESTE';
+  }
+
+  // fallback por texto
+  const haystack = plazaStr || hubStr;
+  if (SURESTE_PLAZAS.some(p => haystack.includes(normalizeText(p)))) return 'SURESTE';
+  return '';
+}
+
+function getPlazaFullName(plazaOrCode) {
+  if (!plazaOrCode) return '';
+  const code = normalizeText(plazaOrCode);
+  if (code.match(/^[A-Z]{2,3}$/) && SURESTE_CODE_TO_PLAZA[code]) return SURESTE_CODE_TO_PLAZA[code];
+  // si ya es nombre completo
+  if (code.length > 3) return String(plazaOrCode).trim();
+  return String(plazaOrCode).trim();
+}
+
+function computeRGUFromPaquete(paquete) {
+  const p = normalizeText(paquete);
+  if (!p) return '';
+  // Por prefijo (en el sistema los paquetes se guardan como TI/DI/SI)
+  if (p.startsWith('TI')) return '3';
+  if (p.startsWith('DI') || p.startsWith('DIN')) return '2';
+  if (p.startsWith('SI') || p.startsWith('SP')) return '1';
+  // fallback por texto
+  if (p.includes('TRIPLE')) return '3';
+  if (p.includes('DOBLE')) return '2';
+  if (p.includes('SINGLE')) return '1';
+  return '';
+}
+
 function mapOperacionDiaRow(item) {
-  const fecha = pickFirst(item, ['FECHA', 'Fecha', 'fecha', 'Fecha solicitada', 'Fecha Solicitada', 'createdAt']);
-  const referencia = pickFirst(item, ['REFERENCIA', 'Referencia', 'referencia']);
+  // FECHA: fecha de captura/orden (del archivo de Operación)
+  const fecha = pickFirst(item, [
+    'Fecha de la orden',
+    'Fecha de la Orden',
+    'FECHA DE LA ORDEN',
+    'Fecha Orden',
+    'Fecha orden',
+    'FECHA',
+    'Fecha',
+    'fecha',
+    'createdAt'
+  ]);
 
   const cuenta = pickFirst(item, [
     'CUENTA',
@@ -200,6 +304,9 @@ function mapOperacionDiaRow(item) {
     'Nº de cuenta',
     'N° de cuenta',
   ]);
+
+  // REFERENCIA: igual a CUENTA (mismo valor)
+  const referencia = cuenta ? String(cuenta) : '';
 
   const nOrden = pickFirst(item, ['N° ORDEN', 'Nº de orden', 'N° de orden', 'No. VTS', 'Orden', 'orden']);
 
@@ -222,26 +329,38 @@ function mapOperacionDiaRow(item) {
   const tel2 = tel2Raw || p2;
 
   const mensualidad = pickFirst(item, ['MENSUALIDAD', 'Mensualidad', 'MENSUAL', 'Mensual']);
-  const rgu = pickFirst(item, ['RGU', 'rgu']);
-  const servicios = pickFirst(item, ['SERVICIOS CONTRATADOS', 'Servicios Contratados', 'SERVICIO', 'SERVICIOS', 'Servicios']);
-  const tipoVenta = pickFirst(item, ['TIPO DE VENTA', 'Tipo de venta', 'Tipo Venta', 'TIPO VENTA']);
+
+  // Paquete / servicios contratados (solo si ya fue asignado en el sistema)
+  const paquete = pickFirst(item, ['Paquete', 'paquete', 'SERVICIOS CONTRATADOS', 'Servicios Contratados']);
+  const servicios = paquete ? String(paquete) : '';
+
+  // RGU depende del tipo de paquete (single/doble/triple) y solo existe si hay paquete asignado
+  const rgu = paquete ? computeRGUFromPaquete(paquete) : '';
+
+  // Tipo de venta fijo
+  const tipoVenta = 'VENTA NUEVA';
 
   const estatus = pickFirst(item, ['ESTATUS', 'Estatus', 'Estado', 'estado']);
 
+  // FECH INST.: usar "Fecha solicitada" del archivo de Operación
   const fechInst = pickFirst(item, [
+    'Fecha solicitada',
+    'Fecha Solicitada',
+    'FechaSolicitada',
     'FECH INST.',
     'FECH INST',
-    'Fecha Inst.',
-    'Fecha Instalación',
-    'Fecha Instalacion',
-    'FechaInstalacion',
-    'Fecha de instalación',
-    'Fecha de instalacion',
   ]);
 
-  const division = pickFirst(item, ['DIVISION', 'Division', 'División']);
-  const region = pickFirst(item, ['REGION', 'Region', 'Región']);
-  const plaza = pickFirst(item, ['PLAZA', 'Plaza', 'plaza']);
+  const hub = pickFirst(item, ['HUB', 'Hub', 'hub']);
+  const plazaRaw = pickFirst(item, ['PLAZA', 'Plaza', 'plaza']);
+  const plaza = plazaRaw ? getPlazaFullName(plazaRaw) : (hub ? getPlazaFullName(hub) : '');
+
+  // REGIÓN: si no viene en el registro, calcular por código Hub/Plaza
+  const regionDirect = pickFirst(item, ['REGION', 'Region', 'Región']);
+  const region = regionDirect ? String(regionDirect).trim().toUpperCase() : getRegionFromHubPlaza(hub, plazaRaw);
+
+  // DIVISION: por ahora igual a la región si no viene en el registro
+  const division = pickFirst(item, ['DIVISION', 'Division', 'División']) || region;
 
   const vendedor = pickFirst(item, ['VENDEDOR', 'VendedorAsignado', 'Vendedor Asignado', 'Vendedor', 'Clave Vendedor', 'CVVEN']);
   const puesto = pickFirst(item, ['PUESTO', 'Puesto']);
@@ -249,7 +368,6 @@ function mapOperacionDiaRow(item) {
   const cvven = pickFirst(item, ['CVVEN', 'Clave Vendedor']);
 
   const comentarios = pickFirst(item, ['COMENTARIOS', 'Comentarios', 'Comentario', 'Nota', 'Notas']);
-  const hub = pickFirst(item, ['HUB', 'Hub', 'hub']);
   const rpt = pickFirst(item, ['RPT', 'rpt']);
   const tipoCuenta = pickFirst(item, ['TIPO DE CUENTA', 'Tipo de Cuenta', 'Tipo Cuenta', 'tipoCuenta', 'TipoCuenta']);
 
