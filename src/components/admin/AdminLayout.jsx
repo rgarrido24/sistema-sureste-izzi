@@ -64,14 +64,14 @@ export default function AdminLayout({
                   Instalaciones
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios') && (
+              {/* Administración (Mi Cuenta) disponible para todos los roles de panel */}
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
                 <button 
                   onClick={() => {
                     setModule(MODULES.ADMIN);
-                    // Si es rol 'usuarios', ir directamente a la pestaña de Usuarios
-                    if (user?.role === 'usuarios') {
-                      setActiveTab('users');
-                    }
+                    // Por defecto: Mi Cuenta. Excepción: rol 'usuarios' inicia en Users.
+                    if (user?.role === 'usuarios') setActiveTab('users');
+                    else setActiveTab('account');
                   }}
                   className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
                     currentModule === MODULES.ADMIN 
@@ -230,6 +230,16 @@ export default function AdminLayout({
             {/* Tabs de Administración */}
             {currentModule === MODULES.ADMIN && (
               <>
+                <button 
+                  onClick={() => setActiveTab('account')} 
+                  className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'account' 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                  }`}
+                >
+                  Mi Cuenta
+                </button>
                 {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios') && (
                   <button 
                     onClick={() => setActiveTab('users')} 
@@ -243,7 +253,7 @@ export default function AdminLayout({
                   </button>
                 )}
                 {/* El rol 'usuarios' solo ve la pestaña de Usuarios */}
-                {user?.role !== 'usuarios' && (
+                {user?.role !== 'usuarios' && (user?.role === 'admin' || user?.role === 'admin_general') && (
                   <>
                     <button 
                       onClick={() => setActiveTab('template')} 

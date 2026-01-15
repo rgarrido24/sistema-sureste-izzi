@@ -68,6 +68,16 @@ export default function VendorLayout({
             >
               Asistente IA
             </button>
+            <button 
+              onClick={() => setActiveView('account')} 
+              className={`px-6 py-2 rounded-lg font-bold text-sm ${
+                activeView === 'account' 
+                  ? 'bg-slate-900 text-white' 
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              Mi Cuenta
+            </button>
           </div>
         </div>
 

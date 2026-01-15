@@ -13,6 +13,7 @@ import PromocionesModule from '../features/promociones/PromocionesModule.jsx';
 import UploadModule from '../features/upload/UploadModule.jsx';
 import TemplateModule from '../features/template/TemplateModule.jsx';
 import DashboardModule from '../features/dashboard/DashboardModule.jsx';
+import AccountModule from '../features/account/AccountModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -68,9 +69,10 @@ export default function AdminDashboard({ user }) {
       {/* Módulo de Administración */}
       {currentModule === MODULES.ADMIN && (
         <>
-          {activeTab === 'users' && <UsersModule />}
-          {activeTab === 'template' && <TemplateModule />}
-          {activeTab === 'promociones' && <PromocionesModule />}
+          {activeTab === 'account' && <AccountModule />}
+          {activeTab === 'users' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios') && <UsersModule />}
+          {activeTab === 'template' && (user?.role === 'admin' || user?.role === 'admin_general') && <TemplateModule />}
+          {activeTab === 'promociones' && (user?.role === 'admin' || user?.role === 'admin_general') && <PromocionesModule />}
         </>
       )}
     </AdminLayout>
