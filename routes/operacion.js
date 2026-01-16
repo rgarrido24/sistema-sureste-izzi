@@ -17,6 +17,12 @@ router.use(requireAuth);
 // Obtener todos los registros
 router.get('/', async (req, res) => {
   try {
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+    }
     const { estado, vendedor, limit } = req.query;
     const query = {};
     

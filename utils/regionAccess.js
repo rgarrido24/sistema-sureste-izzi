@@ -11,8 +11,14 @@ function normalizeText(str) {
 export function normalizeRegion(region) {
   const r = normalizeText(region);
   if (!r) return '';
+  if (r === 'SIN DATO' || r === 'SINDATO' || r === 'N/A' || r === 'NA') return '';
   // Normalizaciones comunes
   if (r.includes('METRO')) return 'METROPOLITANA';
+  if (r.includes('METROPOLITANA')) return 'METROPOLITANA';
+  // "MX CENTRO / MX NORTE / MX SUR" también es METROPOLITANA
+  if (r.includes('MX CENTRO') || r.includes('MX NORTE') || r.includes('MX SUR') || (r.includes('CENTRO') && r.includes('MX'))) {
+    return 'METROPOLITANA';
+  }
   if (r.includes('SURESTE')) return 'SURESTE';
   if (r.includes('NORESTE')) return 'NORESTE';
   if (r.includes('OCCIDENTE')) return 'OCCIDENTE';
@@ -24,6 +30,22 @@ export function extractRegionFromRecord(record) {
   if (!record) return '';
   const obj = record.toObject ? record.toObject() : record;
   const candidates = [
+    // Campos típicos en M1/M2/M3/M4
+    obj.SUBREGION,
+    obj['SUBREGION'],
+    obj['Subregion'],
+    obj['Sub Region'],
+    obj['SUB REGION'],
+
+    obj['Region Nueva'],
+    obj['REGION NUEVA'],
+    obj['RegionNueva'],
+    obj['REGIONNUEVA'],
+
+    obj.region,
+    obj['region'],
+
+    // Campos típicos en Operación / otros módulos
     obj.REGION,
     obj.Region,
     obj['Región'],
@@ -31,7 +53,12 @@ export function extractRegionFromRecord(record) {
     obj['DIVISION REGION'],
     obj['DIVISION REGIÓN'],
     obj.DivisionRegion,
-    obj.divisionRegion
+    obj.divisionRegion,
+
+    // A veces la "región" viene en plaza
+    obj.PLAZA,
+    obj['PLAZA'],
+    obj.Plaza
   ];
   for (const c of candidates) {
     const r = normalizeRegion(c);
