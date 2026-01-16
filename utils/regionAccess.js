@@ -36,11 +36,16 @@ export function extractRegionFromRecord(record) {
     obj['Subregion'],
     obj['Sub Region'],
     obj['SUB REGION'],
+    obj['SUBREGIÓN'],
+    obj['Subregión'],
+    obj['SUB REGIÓN'],
 
     obj['Region Nueva'],
     obj['REGION NUEVA'],
     obj['RegionNueva'],
     obj['REGIONNUEVA'],
+    obj['REGIÓN NUEVA'],
+    obj['Región Nueva'],
 
     obj.region,
     obj['region'],
