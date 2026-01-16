@@ -6,8 +6,11 @@ import M1Master from '../models/M1Master.js';
 import OperacionDia from '../models/OperacionDia.js';
 import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js';
 import { optimizeDocument } from '../utils/dataOptimizer.js';
+import { requireAuth } from '../middleware/auth.js';
+import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
 
 const router = express.Router();
+router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   try {
@@ -25,6 +28,13 @@ router.get('/', async (req, res) => {
       ];
     }
     const m4 = await M4Master.find(query).sort({ createdAt: -1 });
+
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      const filtered = applyRegionalFilterInMemory(m4, userRegion);
+      return res.json(filtered);
+    }
+
     res.json(m4);
   } catch (error) {
     console.error('Error obteniendo M4:', error);

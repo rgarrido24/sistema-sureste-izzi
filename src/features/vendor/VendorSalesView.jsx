@@ -259,7 +259,11 @@ const cleanPhoneNumber = (phone) => {
 };
 
 // Función para abrir WhatsApp con mensaje personalizado
-const openWhatsApp = async (phone, client, status) => {
+const openWhatsApp = async (phone, client, status, userRole = null) => {
+  if (userRole === 'director') {
+    alert('El perfil Director no tiene permitido enviar mensajes de WhatsApp.');
+    return;
+  }
   if (!phone) {
     alert('No hay número de teléfono disponible para este cliente');
     return;
@@ -712,7 +716,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {telefono && (
                     <button
-                      onClick={() => openWhatsApp(telefono, item, status)}
+                      onClick={() => openWhatsApp(telefono, item, status, user?.role)}
                       className="bg-green-500 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-green-600 transition-colors"
                     >
                       <MessageCircle size={16} /> WhatsApp

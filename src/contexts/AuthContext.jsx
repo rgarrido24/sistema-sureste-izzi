@@ -8,6 +8,7 @@ const STORAGE_KEY = 'ss_auth_v1';
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [token, setToken] = useState(null);
   const [vendorName, setVendorName] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -19,10 +20,14 @@ export function AuthProvider({ children }) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (parsed?.user?.role) {
+      // A partir del bloqueo en backend, necesitamos token. Si no existe, forzar re-login.
+      if (parsed?.user?.role && parsed?.token) {
         setUser(parsed.user);
         setRole(parsed.user.role);
+        setToken(parsed.token || null);
         setVendorName(parsed.user.name || parsed.user.username || '');
+      } else if (parsed?.user?.role && !parsed?.token) {
+        localStorage.removeItem(STORAGE_KEY);
       }
     } catch (e) {
       // Si está corrupto, limpiar
@@ -87,9 +92,10 @@ export function AuthProvider({ children }) {
       if (result.success) {
         setUser(result.user);
         setRole(result.user.role);
+        setToken(result.token || null);
         setVendorName(result.user.name);
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: result.user }));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: result.user, token: result.token || null }));
         } catch (e) {
           // ignore
         }
@@ -109,6 +115,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setUser(null);
     setRole(null);
+    setToken(null);
     setVendorName('');
     setAuthError(null);
     try {
@@ -121,6 +128,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     role,
+    token,
     vendorName,
     isAuthenticating,
     authError,

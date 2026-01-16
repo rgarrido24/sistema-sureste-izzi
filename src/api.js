@@ -1,18 +1,40 @@
 // Servicio API para comunicarse con el backend MongoDB
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const AUTH_STORAGE_KEY = 'ss_auth_v1';
+
+function getAuthToken() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.token || null;
+  } catch {
+    return null;
+  }
+}
 
 // Función auxiliar para hacer peticiones
 async function apiRequest(endpoint, options = {}) {
   try {
+    const token = getAuthToken();
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
       ...options,
     });
 
     if (!response.ok) {
+      // Si no está autenticado, limpiar sesión local para forzar login
+      if (response.status === 401) {
+        try {
+          localStorage.removeItem(AUTH_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      }
       let errorData;
       try {
         errorData = await response.json();

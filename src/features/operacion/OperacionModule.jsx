@@ -644,7 +644,11 @@ const generateMessageFromTemplate = async (client) => {
 };
 
 // Función para abrir WhatsApp
-const openWhatsApp = async (phone, client) => {
+const openWhatsApp = async (phone, client, userRole = null) => {
+  if (userRole === 'director') {
+    alert('El perfil Director no tiene permitido enviar mensajes de WhatsApp.');
+    return;
+  }
   if (!phone) {
     alert('No hay número de teléfono disponible para este cliente');
     return;
@@ -1747,7 +1751,7 @@ export default function OperacionModule() {
                 <div className="space-y-2 mt-4">
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={() => openWhatsApp(telefono, item)}
+                      onClick={() => openWhatsApp(telefono, item, user?.role)}
                       disabled={!telefono}
                       className="bg-green-50 text-green-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-green-100 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >

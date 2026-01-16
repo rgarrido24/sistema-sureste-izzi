@@ -8,13 +8,16 @@ import M3Master from '../models/M3Master.js';
 import M4Master from '../models/M4Master.js';
 import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js';
 import { optimizeDocument } from '../utils/dataOptimizer.js';
+import { requireAuth } from '../middleware/auth.js';
+import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
 
 const router = express.Router();
+router.use(requireAuth);
 
 // Obtener todos los registros
 router.get('/', async (req, res) => {
   try {
-    const { estado, vendedor } = req.query;
+    const { estado, vendedor, limit } = req.query;
     const query = {};
     
     if (estado) {
@@ -33,7 +36,25 @@ router.get('/', async (req, res) => {
       ];
     }
     
-    const operaciones = await OperacionDia.find(query).sort({ createdAt: -1 });
+    let q = OperacionDia.find(query).sort({ createdAt: -1 });
+
+    // Soporte para export: limit=0 trae todo; si viene un número, cap de seguridad
+    if (limit !== undefined) {
+      const n = Number(limit);
+      if (Number.isFinite(n) && n > 0) {
+        q = q.limit(Math.min(n, 100000));
+      }
+    }
+
+    const operaciones = await q;
+
+    // Bloqueo por región (server-side) para regionales
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      const filtered = applyRegionalFilterInMemory(operaciones, userRegion);
+      return res.json(filtered);
+    }
+
     res.json(operaciones);
   } catch (error) {
     console.error('Error obteniendo operaciones:', error);
@@ -45,6 +66,7 @@ router.get('/', async (req, res) => {
 router.get('/count', async (req, res) => {
   try {
     const count = await OperacionDia.countDocuments();
+    // Nota: este count es total. Si luego quieres count por región, lo ajustamos con agregación.
     res.json({ count });
   } catch (error) {
     console.error('Error obteniendo conteo:', error);

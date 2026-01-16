@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
+import { requireAuth, requireRoles, signAuthToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -26,8 +27,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos' });
     }
     
+    const token = signAuthToken(user);
+
     res.json({
       success: true,
+      token,
       user: {
         id: user._id,
         username: user.username,
@@ -44,7 +48,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Crear usuario
-router.post('/create', async (req, res) => {
+router.post('/create', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
   try {
     const { username, password, name, role, email, region } = req.body;
     const cleanUsername = username.trim().toLowerCase();
@@ -99,7 +103,7 @@ router.post('/create', async (req, res) => {
 });
 
 // Obtener todos los usuarios
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, requireRoles(['admin', 'usuarios', 'mesa_control']), async (req, res) => {
   try {
     const users = await User.find({}, { passwordHash: 0 });
     const usersWithRegion = users.map(user => {
@@ -114,7 +118,7 @@ router.get('/', async (req, res) => {
 });
 
 // Eliminar usuario
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -125,7 +129,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Actualizar contraseña de usuario
-router.put('/:id/password', async (req, res) => {
+router.put('/:id/password', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
   try {
     const { password } = req.body;
     
@@ -145,7 +149,7 @@ router.put('/:id/password', async (req, res) => {
 });
 
 // Actualizar usuario (nombre, role, email)
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
   try {
     const { name, role, email, region } = req.body;
     const updateData = {};
