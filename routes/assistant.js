@@ -23,6 +23,10 @@ const DEFAULT_MODELS = [
   'gemini-1.5-flash-latest',
   'gemini-1.5-pro',
   'gemini-1.5-pro-latest',
+  // 2.x (según disponibilidad por proyecto/región)
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-pro',
   // Legacy (suele estar disponible)
   'gemini-pro'
 ];
@@ -34,6 +38,36 @@ function getModelFallbackList() {
   for (const m of DEFAULT_MODELS) list.push(m);
   // quitar duplicados
   return Array.from(new Set(list));
+}
+
+// Cache de modelos disponibles por API key (ListModels)
+const MODEL_LIST_TTL_MS = 30 * 60 * 1000; // 30 min
+let modelListCache = { updatedAt: 0, models: [] };
+
+async function listAvailableModels() {
+  const now = Date.now();
+  if (modelListCache.models.length > 0 && now - modelListCache.updatedAt < MODEL_LIST_TTL_MS) {
+    return modelListCache.models;
+  }
+
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') return [];
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.error) {
+    // Si no podemos listar, no bloqueamos: seguimos con fallback fijo.
+    return [];
+  }
+
+  const models = Array.isArray(data?.models) ? data.models : [];
+  const usable = models
+    .filter(m => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map(m => String(m.name || '').replace(/^models\//, '').trim())
+    .filter(Boolean);
+
+  modelListCache = { updatedAt: now, models: Array.from(new Set(usable)) };
+  return modelListCache.models;
 }
 
 const KNOWLEDGE_TTL_MS = 5 * 60 * 1000; // 5 min
@@ -225,7 +259,8 @@ async function callGeminiServer(prompt) {
     throw new Error('Falta GEMINI_API_KEY en el backend (Render).');
   }
   let lastErr = null;
-  const models = getModelFallbackList();
+  const dynamicModels = await listAvailableModels();
+  const models = Array.from(new Set([...getModelFallbackList(), ...dynamicModels]));
 
   for (const model of models) {
     try {
@@ -276,7 +311,10 @@ async function callGeminiServer(prompt) {
     }
   }
 
-  throw lastErr || new Error('No se pudo usar ningún modelo de Gemini con esta API key.');
+  // Mejor mensaje de diagnóstico: mostrar algunos modelos detectados
+  const detected = await listAvailableModels();
+  const hint = detected.length ? `Modelos detectados: ${detected.slice(0, 12).join(', ')}${detected.length > 12 ? ', …' : ''}` : 'No se pudieron listar modelos (ListModels falló).';
+  throw lastErr || new Error(`No se pudo usar ningún modelo de Gemini con esta API key. ${hint}`);
 }
 
 function startOfToday() {
