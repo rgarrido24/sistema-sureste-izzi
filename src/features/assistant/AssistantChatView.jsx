@@ -86,7 +86,7 @@ export default function AssistantChatView() {
         <div>
           <div className="font-bold text-slate-800">Asistente IA (Gema de Oferta Comercial)</div>
           <div className="text-xs text-slate-500">
-            Conocimiento: {knowledgeLoading ? 'cargando…' : `paquetes=${knowledgeSummary.packagesCount || 0}, promos=${knowledgeSummary.promosCount || 0}`}
+            Conocimiento: {knowledgeLoading ? 'cargando…' : `paquetes=${knowledgeSummary.packagesCount || 0}, promos=${knowledgeSummary.promosCount || 0}, pdfs=${knowledgeSummary.pdfCount || 0}`}
             {knowledgeError ? ' (error cargando conocimiento)' : ''}
           </div>
           {usageSummary && (

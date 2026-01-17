@@ -171,7 +171,21 @@ function tokenizeQuery(q) {
     .toUpperCase();
   const raw = s.split(/[^A-Z0-9]+/g).filter(Boolean);
   const stop = new Set(['DE', 'LA', 'EL', 'Y', 'EN', 'PARA', 'CON', 'DEL', 'LAS', 'LOS', 'QUE', 'POR', 'UN', 'UNA', 'A']);
-  return raw.filter(t => t.length >= 3 && !stop.has(t)).slice(0, 25);
+  // Reglas:
+  // - Palabras: mínimo 3 chars (evita ruido)
+  // - Números: mínimo 2 chars (permite "60", "80", etc.)
+  // - Evitar stopwords
+  const tokens = [];
+  for (const t of raw) {
+    if (stop.has(t)) continue;
+    const isNumber = /^[0-9]+$/.test(t);
+    if (isNumber) {
+      if (t.length >= 2) tokens.push(t);
+      continue;
+    }
+    if (t.length >= 3) tokens.push(t);
+  }
+  return tokens.slice(0, 30);
 }
 
 function scoreTextByTokens(text, tokens) {
@@ -199,10 +213,20 @@ function retrievePdfSnippets(userMessage, pdfChunks) {
     if (sc > 0) scored.push({ ...c, score: sc });
   }
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 6).map(s => ({
+  const top = scored.slice(0, 6).map(s => ({
     pdfName: s.pdfName,
     text: String(s.text).slice(0, 1400)
   }));
+
+  // Fallback: si no hubo coincidencias, dar contexto mínimo del PDF más reciente
+  if (top.length === 0) {
+    const first = pdfChunks.slice(0, 2).map(s => ({
+      pdfName: s.pdfName,
+      text: String(s.text).slice(0, 1400)
+    }));
+    return first;
+  }
+  return top;
 }
 
 function buildGemPrompt({ user, history, message, knowledgeText }) {
