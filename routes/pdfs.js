@@ -1,7 +1,9 @@
 import express from 'express';
 import KnowledgePDF from '../models/KnowledgePDF.js';
 import multer from 'multer';
-import pdfParse from 'pdf-parse';
+// IMPORTANTE: en Node 22+ (ESM) `pdf-parse` (index.js) entra en modo debug y busca archivos de test.
+// Para evitarlo, importar el parser real directo:
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 
 const router = express.Router();
