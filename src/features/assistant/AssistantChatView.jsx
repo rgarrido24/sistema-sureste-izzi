@@ -82,8 +82,8 @@ export default function AssistantChatView() {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col" style={{ height: '70vh', minHeight: '520px' }}>
       {/* Header */}
-      <div className="border-b p-4 flex items-start justify-between gap-3">
-        <div>
+      <div className="border-b p-3 sm:p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0">
           <div className="font-bold text-slate-800">Asistente IA (Gema de Oferta Comercial)</div>
           <div className="text-xs text-slate-500">
             Conocimiento: {knowledgeLoading ? 'cargando…' : `paquetes=${knowledgeSummary.packagesCount || 0}, promos=${knowledgeSummary.promosCount || 0}, pdfs=${knowledgeSummary.pdfCount || 0}`}
@@ -100,7 +100,7 @@ export default function AssistantChatView() {
         <button
           onClick={refreshKnowledge}
           disabled={knowledgeLoading}
-          className="px-3 py-2 rounded-lg text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 flex items-center gap-2"
+          className="px-3 py-2 rounded-lg text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 flex items-center gap-2 w-full sm:w-auto justify-center"
           title="Actualizar conocimiento (paquetes/promos)"
         >
           <RefreshCw size={16} />
@@ -109,7 +109,7 @@ export default function AssistantChatView() {
       </div>
 
       {/* Chat History */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
         {chatHistory.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
@@ -131,7 +131,7 @@ export default function AssistantChatView() {
       </div>
 
       {/* Input */}
-      <div className="border-t p-4">
+      <div className="border-t p-3 sm:p-4">
         <div className="flex gap-2">
           <input
             type="text"
@@ -139,13 +139,13 @@ export default function AssistantChatView() {
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Ej: arma una oferta para tripleplay y mensaje de WhatsApp para cliente indeciso…"
-            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 min-w-0"
             disabled={loading}
           />
           <button
             onClick={handleSend}
             disabled={loading || !chatInput.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 flex items-center gap-2"
+            className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 flex items-center gap-2 shrink-0"
           >
             <Send size={18} />
           </button>

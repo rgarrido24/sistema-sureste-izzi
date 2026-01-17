@@ -12,11 +12,11 @@ export default function AdminLayout({
   children 
 }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-3 sm:p-6 font-sans">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 bg-white p-4 rounded-2xl shadow-md border border-slate-200">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-4 sm:mb-6 gap-3 bg-white p-3 sm:p-4 rounded-2xl shadow-md border border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
             {/* Logo RGO */}
             <div className="flex items-center gap-3">
               <RGOLogo size={50} showText={false} />
@@ -38,11 +38,11 @@ export default function AdminLayout({
                 )}
               </div>
             </div>
-            <div className="flex bg-gradient-to-r from-slate-100 to-slate-50 p-1 rounded-lg border border-slate-200">
+            <div className="flex bg-gradient-to-r from-slate-100 to-slate-50 p-1 rounded-lg border border-slate-200 overflow-x-auto no-scrollbar w-full sm:w-auto">
               {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
                 <button 
                   onClick={() => setModule(MODULES.SALES)} 
-                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                  className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
                     currentModule === MODULES.SALES 
                       ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
                       : 'text-slate-600 hover:text-[#2563eb]'
@@ -55,7 +55,7 @@ export default function AdminLayout({
               {(user?.role !== 'usuarios' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales')) && (
                 <button 
                   onClick={() => setModule(MODULES.INSTALL)} 
-                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                  className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
                     currentModule === MODULES.INSTALL 
                       ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
                       : 'text-slate-600 hover:text-[#2563eb]'
@@ -73,7 +73,7 @@ export default function AdminLayout({
                     if (user?.role === 'usuarios') setActiveTab('users');
                     else setActiveTab('account');
                   }}
-                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                  className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
                     currentModule === MODULES.ADMIN 
                       ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
                       : 'text-slate-600 hover:text-[#2563eb]'
@@ -95,8 +95,8 @@ export default function AdminLayout({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="bg-white p-4 rounded-2xl shadow-md border border-slate-200 mb-6">
-          <div className="flex flex-wrap gap-2">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-md border border-slate-200 mb-4 sm:mb-6">
+          <div className="flex flex-nowrap gap-2 overflow-x-auto no-scrollbar -mx-3 sm:mx-0 px-3 sm:px-0">
             {/* Asistente IA - Disponible para todos */}
             <button 
               onClick={() => setActiveTab('chat')} 
@@ -104,7 +104,7 @@ export default function AdminLayout({
                 activeTab === 'chat' 
                   ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg' 
                   : 'text-slate-600 hover:text-fuchsia-700 hover:bg-slate-50'
-              }`}
+              } whitespace-nowrap`}
               title="Asistente IA (oferta comercial)"
             >
               Asistente IA
@@ -118,7 +118,7 @@ export default function AdminLayout({
                   activeTab === 'dashboard' 
                     ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-lg' 
                     : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
-                }`}
+                } whitespace-nowrap`}
               >
                 Dashboard
               </button>
