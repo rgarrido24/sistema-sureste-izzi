@@ -18,6 +18,7 @@ import m4Routes from './routes/m4.js';
 import templatesRoutes from './routes/templates.js';
 import statsRoutes from './routes/stats.js';
 import uploadRoutes from './routes/upload.js';
+import assistantRoutes from './routes/assistant.js';
 
 dotenv.config();
 
@@ -69,6 +70,7 @@ app.use('/api/m4', m4Routes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {

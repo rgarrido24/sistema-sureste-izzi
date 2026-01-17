@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Send, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { callGemini } from '../../services/geminiService.js';
-import { buildCommercialKnowledgeText, buildGemPrompt, loadCommercialKnowledge } from './assistantGem.js';
+import * as api from '../../api.js';
 
 export default function AssistantChatView() {
   const { user } = useAuth();
@@ -11,18 +10,16 @@ export default function AssistantChatView() {
   ]);
   const [chatInput, setChatInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [knowledge, setKnowledge] = useState({ packages: [], promos: [] });
+  const [knowledgeSummary, setKnowledgeSummary] = useState({ packagesCount: 0, promosCount: 0, updatedAt: 0 });
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState(null);
-
-  const knowledgeText = useMemo(() => buildCommercialKnowledgeText(knowledge), [knowledge]);
 
   const refreshKnowledge = async () => {
     setKnowledgeLoading(true);
     setKnowledgeError(null);
     try {
-      const data = await loadCommercialKnowledge();
-      setKnowledge(data);
+      const data = await api.assistantKnowledgeRefresh();
+      setKnowledgeSummary(data);
     } catch (e) {
       setKnowledgeError(e);
     } finally {
@@ -31,9 +28,19 @@ export default function AssistantChatView() {
   };
 
   useEffect(() => {
-    // Cargar conocimiento al abrir el chat
-    refreshKnowledge();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Cargar resumen de conocimiento al abrir el chat
+    (async () => {
+      setKnowledgeLoading(true);
+      setKnowledgeError(null);
+      try {
+        const summary = await api.assistantKnowledgeSummary();
+        setKnowledgeSummary(summary);
+      } catch (e) {
+        setKnowledgeError(e);
+      } finally {
+        setKnowledgeLoading(false);
+      }
+    })();
   }, []);
 
   const handleSend = async () => {
@@ -45,15 +52,8 @@ export default function AssistantChatView() {
     setLoading(true);
 
     try {
-      const prompt = buildGemPrompt({
-        userContext: user,
-        history: [...chatHistory, { role: 'user', text: userMessage }],
-        userMessage,
-        knowledgeText
-      });
-
-      const response = await callGemini(prompt);
-      setChatHistory(prev => [...prev, { role: 'assistant', text: response }]);
+      const result = await api.assistantChat(userMessage, [...chatHistory, { role: 'user', text: userMessage }]);
+      setChatHistory(prev => [...prev, { role: 'assistant', text: result?.text || 'Error IA: Respuesta vacía' }]);
     } catch (error) {
       setChatHistory(prev => [
         ...prev,
@@ -65,13 +65,13 @@ export default function AssistantChatView() {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col" style={{ height: '600px' }}>
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col" style={{ height: '70vh', minHeight: '520px' }}>
       {/* Header */}
       <div className="border-b p-4 flex items-start justify-between gap-3">
         <div>
           <div className="font-bold text-slate-800">Asistente IA (Gema de Oferta Comercial)</div>
           <div className="text-xs text-slate-500">
-            Conocimiento: {knowledgeLoading ? 'cargando…' : `paquetes=${knowledge.packages?.length || 0}, promos=${knowledge.promos?.length || 0}`}
+            Conocimiento: {knowledgeLoading ? 'cargando…' : `paquetes=${knowledgeSummary.packagesCount || 0}, promos=${knowledgeSummary.promosCount || 0}`}
             {knowledgeError ? ' (error cargando conocimiento)' : ''}
           </div>
         </div>
@@ -130,7 +130,7 @@ export default function AssistantChatView() {
         </div>
         {knowledgeError && (
           <div className="mt-2 text-xs text-amber-700">
-            No pude cargar paquetes/promos del sistema. El asistente puede responder, pero sin conocimiento actualizado.
+            No pude cargar/actualizar el conocimiento en el backend. Verifica el deploy de Render y la variable GEMINI_API_KEY.
           </div>
         )}
       </div>

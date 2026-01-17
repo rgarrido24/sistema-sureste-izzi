@@ -14,6 +14,7 @@ import TemplateModule from '../features/template/TemplateModule.jsx';
 import DashboardModule from '../features/dashboard/DashboardModule.jsx';
 import AccountModule from '../features/account/AccountModule.jsx';
 import AssistantChatView from '../features/assistant/AssistantChatView.jsx';
+import KnowledgeModule from '../features/knowledge/KnowledgeModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -75,6 +76,7 @@ export default function AdminDashboard({ user }) {
           {activeTab === 'users' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios') && <UsersModule />}
           {activeTab === 'template' && (user?.role === 'admin' || user?.role === 'admin_general') && <TemplateModule />}
           {activeTab === 'promociones' && (user?.role === 'admin' || user?.role === 'admin_general') && <PromocionesModule />}
+          {activeTab === 'knowledge' && (user?.role === 'admin' || user?.role === 'admin_general') && <KnowledgeModule />}
         </>
       )}
     </AdminLayout>

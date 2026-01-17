@@ -526,3 +526,58 @@ export async function deleteTemplate(id) {
   });
 }
 
+
+// ========== ASISTENTE IA (GEMA CENTRAL) ==========
+export async function assistantKnowledgeSummary() {
+  return apiRequest('/assistant/knowledge/summary');
+}
+
+export async function assistantKnowledgeRefresh() {
+  return apiRequest('/assistant/knowledge/refresh', { method: 'POST' });
+}
+
+export async function assistantChat(message, history = []) {
+  return apiRequest('/assistant/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message, history })
+  });
+}
+
+// ========== CONOCIMIENTO (PDF) ==========
+export async function uploadKnowledgePDF(file, name = '', description = '') {
+  const token = (() => {
+    try {
+      const raw = localStorage.getItem('ss_auth_v1');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.token || null;
+    } catch { return null; }
+  })();
+
+  const form = new FormData();
+  form.append('pdf', file);
+  if (name) form.append('name', name);
+  if (description) form.append('description', description);
+
+  const res = await fetch(`${API_BASE_URL}/pdfs/upload`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: form
+  });
+
+  if (!res.ok) {
+    let err;
+    try { err = await res.json(); } catch { err = null; }
+    throw new Error(err?.error || `Error ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function updatePDF(id, updates) {
+  return apiRequest(`/pdfs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates)
+  });
+}

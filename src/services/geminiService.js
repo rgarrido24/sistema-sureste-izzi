@@ -4,11 +4,11 @@ import { GEMINI_API_KEY, GEMINI_MODELS } from '../utils/constants.js';
  * Llama a la API de Gemini para obtener respuestas de IA
  */
 export async function callGemini(prompt, pdfUrls = []) {
-  // No loguear API keys (seguridad). Solo indicar si está presente.
-  console.log('Gemini API Key:', GEMINI_API_KEY ? 'Presente' : 'Falta');
-  
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'TU_API_KEY_AQUI' || GEMINI_API_KEY.trim() === '') {
-    return "Falta API Key de IA. Por favor configura VITE_GEMINI_API_KEY en las variables de entorno o en el código.";
+  // Compatibilidad: el sistema ahora usa /api/assistant en backend.
+  // Si por alguna razón este servicio se usa, guiar al usuario a configurar backend.
+  console.log('Gemini (legacy) - API Key en frontend:', GEMINI_API_KEY ? 'Presente' : 'Falta');
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') {
+    return "La IA ahora corre desde el backend. Configura GEMINI_API_KEY en Render y usa el módulo Asistente IA.";
   }
   
   try {
