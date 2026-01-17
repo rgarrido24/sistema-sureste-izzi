@@ -1,7 +1,9 @@
 // Constantes globales de la aplicación
 export const APP_ID = 'sales-master-production';
 
-export const GEMINI_API_KEY = 'AIzaSyAZDsPBqR6geJAYIla42y0hnJCM7Ztix2E';
+// Preferir variable de entorno en Vercel: VITE_GEMINI_API_KEY
+// Fallback temporal al valor anterior si no está configurada.
+export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyAZDsPBqR6geJAYIla42y0hnJCM7Ztix2E';
 
 export const GEMINI_MODELS = [
   'gemini-1.5-flash',

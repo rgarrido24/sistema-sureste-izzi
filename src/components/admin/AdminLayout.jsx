@@ -97,6 +97,19 @@ export default function AdminLayout({
         {/* Navigation Tabs */}
         <div className="bg-white p-4 rounded-2xl shadow-md border border-slate-200 mb-6">
           <div className="flex flex-wrap gap-2">
+            {/* Asistente IA - Disponible para todos */}
+            <button 
+              onClick={() => setActiveTab('chat')} 
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'chat' 
+                  ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg' 
+                  : 'text-slate-600 hover:text-fuchsia-700 hover:bg-slate-50'
+              }`}
+              title="Asistente IA (oferta comercial)"
+            >
+              Asistente IA
+            </button>
+
             {/* Dashboard - Visible excepto para rol 'usuarios' */}
             {user?.role !== 'usuarios' && (
               <button 

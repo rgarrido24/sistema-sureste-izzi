@@ -13,6 +13,7 @@ import UploadModule from '../features/upload/UploadModule.jsx';
 import TemplateModule from '../features/template/TemplateModule.jsx';
 import DashboardModule from '../features/dashboard/DashboardModule.jsx';
 import AccountModule from '../features/account/AccountModule.jsx';
+import AssistantChatView from '../features/assistant/AssistantChatView.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -41,6 +42,9 @@ export default function AdminDashboard({ user }) {
       setActiveTab={setActiveTab}
       onLogout={logout}
     >
+      {/* Asistente IA - Disponible para todos los roles */}
+      {activeTab === 'chat' && <AssistantChatView />}
+
       {/* Dashboard - No disponible para rol 'usuarios' */}
       {activeTab === 'dashboard' && user?.role !== 'usuarios' && <DashboardModule currentModule={currentModule} />}
       

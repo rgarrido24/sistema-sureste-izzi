@@ -42,7 +42,7 @@ export default function VendorDashboard({ user, myName }) {
         <VendorOperacionView myName={myName} />
       )}
       {activeView === 'reports' && <VendorReportsView myName={myName} />}
-      {activeView === 'chat' && <VendorChatView myName={myName} />}
+      {activeView === 'chat' && <VendorChatView />}
       {activeView === 'account' && <AccountModule />}
     </VendorLayout>
   );
