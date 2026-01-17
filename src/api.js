@@ -526,7 +526,6 @@ export async function deleteTemplate(id) {
   });
 }
 
-
 // ========== ASISTENTE IA (GEMA CENTRAL) ==========
 export async function assistantKnowledgeSummary() {
   return apiRequest('/assistant/knowledge/summary');
@@ -541,6 +540,10 @@ export async function assistantChat(message, history = []) {
     method: 'POST',
     body: JSON.stringify({ message, history })
   });
+}
+
+export async function assistantUsageSummary() {
+  return apiRequest('/assistant/usage/summary');
 }
 
 // ========== CONOCIMIENTO (PDF) ==========
@@ -572,6 +575,7 @@ export async function uploadKnowledgePDF(file, name = '', description = '') {
     try { err = await res.json(); } catch { err = null; }
     throw new Error(err?.error || `Error ${res.status}`);
   }
+
   return await res.json();
 }
 

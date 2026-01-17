@@ -13,6 +13,7 @@ export default function AssistantChatView() {
   const [knowledgeSummary, setKnowledgeSummary] = useState({ packagesCount: 0, promosCount: 0, updatedAt: 0 });
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState(null);
+  const [usageSummary, setUsageSummary] = useState(null);
 
   const refreshKnowledge = async () => {
     setKnowledgeLoading(true);
@@ -42,6 +43,20 @@ export default function AssistantChatView() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    // Solo admins/mesa_control ven el “dashboard” de consumo.
+    const role = user?.role;
+    if (!['admin', 'admin_general', 'mesa_control'].includes(role)) return;
+    (async () => {
+      try {
+        const u = await api.assistantUsageSummary();
+        setUsageSummary(u);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [user?.role]);
 
   const handleSend = async () => {
     if (!chatInput.trim() || loading) return;
@@ -74,6 +89,13 @@ export default function AssistantChatView() {
             Conocimiento: {knowledgeLoading ? 'cargando…' : `paquetes=${knowledgeSummary.packagesCount || 0}, promos=${knowledgeSummary.promosCount || 0}`}
             {knowledgeError ? ' (error cargando conocimiento)' : ''}
           </div>
+          {usageSummary && (
+            <div className="text-xs text-slate-500 mt-1">
+              Uso IA hoy: {usageSummary?.today?.requests || 0}
+              {usageSummary?.dailyLimit ? ` / ${usageSummary.dailyLimit}` : ''} solicitudes
+              {usageSummary?.today?.tokens ? ` • tokens hoy: ${usageSummary.today.tokens}` : ''}
+            </div>
+          )}
         </div>
         <button
           onClick={refreshKnowledge}

@@ -2,13 +2,39 @@ import express from 'express';
 import IzziPackage from '../models/IzziPackage.js';
 import IzziPromocion from '../models/IzziPromocion.js';
 import KnowledgePDF from '../models/KnowledgePDF.js';
+import AiUsage from '../models/AiUsage.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+// Puedes fijar un modelo con GEMINI_MODEL o una lista con GEMINI_MODELS (separada por comas).
+// Render/Google a veces no habilitan todos los modelos en todos los proyectos; usamos fallback.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || '';
+const GEMINI_MODELS = (process.env.GEMINI_MODELS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+const DEFAULT_MODELS = [
+  // Nuevos (si están disponibles en tu proyecto)
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro',
+  'gemini-1.5-pro-latest',
+  // Legacy (suele estar disponible)
+  'gemini-pro'
+];
+
+function getModelFallbackList() {
+  const list = [];
+  if (GEMINI_MODEL) list.push(GEMINI_MODEL);
+  for (const m of GEMINI_MODELS) list.push(m);
+  for (const m of DEFAULT_MODELS) list.push(m);
+  // quitar duplicados
+  return Array.from(new Set(list));
+}
 
 const KNOWLEDGE_TTL_MS = 5 * 60 * 1000; // 5 min
 let knowledgeCache = {
@@ -198,27 +224,122 @@ async function callGeminiServer(prompt) {
   if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') {
     throw new Error('Falta GEMINI_API_KEY en el backend (Render).');
   }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048
+  let lastErr = null;
+  const models = getModelFallbackList();
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048
+          }
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.error) {
+        const msg = data?.error?.message || `Error Gemini (${response.status})`;
+        // Si el modelo no existe/no soporta generateContent, intentar el siguiente.
+        if (
+          /not found/i.test(msg) ||
+          /not supported/i.test(msg) ||
+          /does not exist/i.test(msg)
+        ) {
+          lastErr = new Error(`${model}: ${msg}`);
+          continue;
+        }
+        throw new Error(msg);
       }
-    })
-  });
-  const data = await response.json();
-  if (!response.ok || data?.error) {
-    const msg = data?.error?.message || `Error Gemini (${response.status})`;
-    throw new Error(msg);
+
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Error IA: No se recibió respuesta';
+      const usage = data?.usageMetadata || {};
+      return {
+        text,
+        model,
+        usage: {
+          promptTokenCount: Number(usage.promptTokenCount || 0),
+          candidatesTokenCount: Number(usage.candidatesTokenCount || 0),
+          totalTokenCount: Number(usage.totalTokenCount || 0)
+        }
+      };
+    } catch (e) {
+      lastErr = e;
+      continue;
+    }
   }
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Error IA: No se recibió respuesta';
+
+  throw lastErr || new Error('No se pudo usar ningún modelo de Gemini con esta API key.');
 }
+
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+async function enforceDailyLimit() {
+  const raw = process.env.ASSISTANT_DAILY_REQUEST_LIMIT;
+  if (!raw) return;
+  const limit = Number(raw);
+  if (!Number.isFinite(limit) || limit <= 0) return;
+
+  const since = startOfToday();
+  const used = await AiUsage.countDocuments({ endpoint: 'assistant/chat', createdAt: { $gte: since }, success: true });
+  if (used >= limit) {
+    const err = new Error(`Límite diario de IA alcanzado (${used}/${limit}). Intenta mañana o aumenta el límite.`);
+    err.statusCode = 429;
+    throw err;
+  }
+}
+
+// Resumen de consumo (para monitorear plan gratuito)
+router.get('/usage/summary', async (req, res) => {
+  try {
+    // Solo roles de administración
+    const role = req.user?.role;
+    if (!['admin', 'admin_general', 'mesa_control'].includes(role)) {
+      return res.status(403).json({ error: 'Sin permisos' });
+    }
+
+    const now = new Date();
+    const sinceToday = startOfToday();
+    const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [today, last7d, last30d] = await Promise.all([
+      AiUsage.aggregate([
+        { $match: { createdAt: { $gte: sinceToday }, endpoint: 'assistant/chat', success: true } },
+        { $group: { _id: null, requests: { $sum: 1 }, tokens: { $sum: '$totalTokenCount' } } }
+      ]),
+      AiUsage.aggregate([
+        { $match: { createdAt: { $gte: since7d }, endpoint: 'assistant/chat', success: true } },
+        { $group: { _id: null, requests: { $sum: 1 }, tokens: { $sum: '$totalTokenCount' } } }
+      ]),
+      AiUsage.aggregate([
+        { $match: { createdAt: { $gte: since30d }, endpoint: 'assistant/chat', success: true } },
+        { $group: { _id: null, requests: { $sum: 1 }, tokens: { $sum: '$totalTokenCount' } } }
+      ])
+    ]);
+
+    const dailyLimitRaw = process.env.ASSISTANT_DAILY_REQUEST_LIMIT || '';
+    res.json({
+      today: today?.[0] || { requests: 0, tokens: 0 },
+      last7d: last7d?.[0] || { requests: 0, tokens: 0 },
+      last30d: last30d?.[0] || { requests: 0, tokens: 0 },
+      dailyLimit: dailyLimitRaw ? Number(dailyLimitRaw) : null
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Error del servidor' });
+  }
+});
 
 // Resumen de conocimiento (para UI)
 router.get('/knowledge/summary', async (req, res) => {
@@ -259,6 +380,8 @@ router.post('/chat', async (req, res) => {
     if (!msg) return res.status(400).json({ error: 'Mensaje vacío' });
     if (msg.length > 5000) return res.status(400).json({ error: 'Mensaje demasiado largo' });
 
+    await enforceDailyLimit();
+
     const k = await getKnowledge({ force: false });
     const snippets = retrievePdfSnippets(msg, k.pdfChunks);
     const snippetsText = snippets.length
@@ -272,8 +395,39 @@ router.post('/chat', async (req, res) => {
       knowledgeText: k.text
     }).replace('__PDF_SNIPPETS__', snippetsText);
 
-    const text = await callGeminiServer(prompt);
-    res.json({ text });
+    const userMeta = req.user || {};
+    const usageDoc = {
+      userId: userMeta.id || '',
+      username: userMeta.username || '',
+      role: userMeta.role || '',
+      endpoint: 'assistant/chat',
+      model: '',
+      promptChars: prompt.length,
+      responseChars: 0,
+      promptTokenCount: 0,
+      candidatesTokenCount: 0,
+      totalTokenCount: 0,
+      success: false,
+      errorMessage: ''
+    };
+
+    try {
+      const result = await callGeminiServer(prompt);
+      usageDoc.model = result.model || '';
+      usageDoc.responseChars = (result.text || '').length;
+      usageDoc.promptTokenCount = result.usage?.promptTokenCount || 0;
+      usageDoc.candidatesTokenCount = result.usage?.candidatesTokenCount || 0;
+      usageDoc.totalTokenCount = result.usage?.totalTokenCount || 0;
+      usageDoc.success = true;
+      await AiUsage.create(usageDoc);
+      return res.json({ text: result.text });
+    } catch (err) {
+      usageDoc.errorMessage = err?.message ? String(err.message) : 'Error';
+      usageDoc.success = false;
+      await AiUsage.create(usageDoc);
+      const status = err?.statusCode && Number.isFinite(err.statusCode) ? err.statusCode : 500;
+      return res.status(status).json({ error: usageDoc.errorMessage });
+    }
   } catch (e) {
     console.error('Error assistant/chat:', e);
     res.status(500).json({ error: e.message || 'Error del servidor' });
