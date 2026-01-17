@@ -90,6 +90,23 @@ export function AuthProvider({ children }) {
       const result = await api.loginUser(username, password);
       
       if (result.success) {
+        // Desde que el backend está protegido, el token es obligatorio.
+        // Si no viene, significa que el backend aún no está actualizado o hubo un error.
+        if (!result.token) {
+          const err = new Error('Login incompleto: el servidor no devolvió token. (Verifica deploy del backend)');
+          setAuthError(err);
+          // Asegurar estado limpio
+          setUser(null);
+          setRole(null);
+          setToken(null);
+          setVendorName('');
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch (e) {
+            // ignore
+          }
+          return { success: false, error: err.message };
+        }
         setUser(result.user);
         setRole(result.user.role);
         setToken(result.token || null);
