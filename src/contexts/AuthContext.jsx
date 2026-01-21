@@ -14,6 +14,24 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState(null);
   const [backendError, setBackendError] = useState(null);
 
+  // Manejar 401 global para evitar estados "medio logueados"
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+      setRole(null);
+      setToken(null);
+      setVendorName('');
+      setAuthError(new Error('Tu sesión expiró. Por favor inicia sesión de nuevo.'));
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        // ignore
+      }
+    };
+    window.addEventListener('ss:unauthorized', handler);
+    return () => window.removeEventListener('ss:unauthorized', handler);
+  }, []);
+
   // Restaurar sesión desde localStorage (para que al refrescar no se pierda)
   useEffect(() => {
     try {

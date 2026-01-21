@@ -295,6 +295,22 @@ const openWhatsApp = async (phone, client, status, userRole = null) => {
     // Usar api.whatsapp.com en lugar de wa.me para mejor compatibilidad
     // Este formato mantiene mejor el mensaje al abrir WhatsApp Web
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`;
+
+    // Registrar evento (no bloquear si falla)
+    try {
+      const cuenta =
+        client?.cuenta ||
+        client?.CUENTA ||
+        client?.Cuenta ||
+        client?.['Nº de cuenta'] ||
+        client?.['N° de cuenta'] ||
+        client?.Referencia ||
+        client?.['Referencia'] ||
+        '';
+      await api.logWhatsAppEvent({ module: 'cobranza', status, cuenta, phone: phoneNumber });
+    } catch (e) {
+      // ignore
+    }
     
     console.log('Abriendo WhatsApp con URL:', whatsappUrl.replace(/&text=.*/, '&text=[mensaje codificado]'));
     console.log('Mensaje original:', message);

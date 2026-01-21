@@ -347,6 +347,22 @@ const openWhatsApp = async (phone, client, status, userRole = null) => {
     // Usar api.whatsapp.com en lugar de wa.me para mejor compatibilidad
     // Este formato mantiene mejor el mensaje al abrir WhatsApp Web
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`;
+
+    // Registrar evento (no bloquear si falla)
+    try {
+      const cuenta =
+        client?.cuenta ||
+        client?.CUENTA ||
+        client?.Cuenta ||
+        client?.['Nº de cuenta'] ||
+        client?.['N° de cuenta'] ||
+        client?.Referencia ||
+        client?.['Referencia'] ||
+        '';
+      await api.logWhatsAppEvent({ module: 'cobranza', status, cuenta, phone: phoneNumber });
+    } catch (e) {
+      // ignore
+    }
     
     console.log('Abriendo WhatsApp con URL:', whatsappUrl.replace(/&text=.*/, '&text=[mensaje codificado]'));
     console.log('Mensaje original:', message);
@@ -490,6 +506,20 @@ export default function SalesStatusView({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [mesInstalacion, setMesInstalacion] = useState(null);
+  const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
+
+  // Cargar "última actualización" de cobranza (para todos los usuarios)
+  useEffect(() => {
+    const loadLastUpdate = async () => {
+      try {
+        const result = await api.getCobranzaLastUpdate();
+        setCobranzaLastUploads(result?.cobranzaLastUploads || []);
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadLastUpdate();
+  }, []);
 
   // Cargar datos solo cuando este componente se monta (pestaña M1, M2, etc.)
   useEffect(() => {
@@ -953,6 +983,20 @@ export default function SalesStatusView({
             : `Total de clientes: ${count}`
           }
         </p>
+        {Array.isArray(cobranzaLastUploads) && (status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+          (() => {
+            const key = status.toLowerCase();
+            const row = cobranzaLastUploads.find(r => String(r?._id || '').toLowerCase() === key);
+            if (!row?.lastAt) return null;
+            const when = new Date(row.lastAt).toLocaleString('es-MX');
+            return (
+              <p className="text-xs text-slate-500 mt-2">
+                Última actualización de archivo {status}: <span className="font-semibold">{when}</span>
+                {row.byUsername ? <span> (por {row.byUsername})</span> : null}
+              </p>
+            );
+          })()
+        )}
       </div>
 
       {/* Estadísticas por Región (para M1, M2, M3, M4) */}

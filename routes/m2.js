@@ -6,6 +6,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
+import ActivityEvent from '../models/ActivityEvent.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -269,6 +270,21 @@ router.post('/bulk', async (req, res) => {
       }
     }
     
+    // Auditoría: registrar upload
+    try {
+      await ActivityEvent.create({
+        type: 'upload',
+        module: 'm2',
+        userId: req.user?.id,
+        username: req.user?.username || '',
+        role: req.user?.role || '',
+        region: req.user?.region || '',
+        meta: { created, updated, skipped, total: data.length, replaceAll: false },
+      });
+    } catch (e) {
+      console.warn('⚠️ No se pudo registrar ActivityEvent upload (m2):', e?.message || e);
+    }
+
     res.json({ success: true, created, updated, skipped, total: data.length });
   } catch (error) {
     console.error('Error en bulk M2:', error);

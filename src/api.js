@@ -34,6 +34,12 @@ async function apiRequest(endpoint, options = {}) {
         } catch {
           // ignore
         }
+        try {
+          // Permite que AuthContext fuerce logout y evite estados "medio logueados"
+          window.dispatchEvent(new Event('ss:unauthorized'));
+        } catch {
+          // ignore
+        }
       }
       let errorData;
       try {
@@ -303,6 +309,22 @@ export async function deletePDF(id) {
 // ========== HEALTH CHECK ==========
 export async function checkHealth() {
   return apiRequest('/health');
+}
+
+// ========== ACTIVIDAD / AUDITORÍA ==========
+export async function getCobranzaLastUpdate() {
+  return apiRequest('/activity/cobranza/last-update');
+}
+
+export async function getAdminActivitySummary() {
+  return apiRequest('/activity/admin/summary');
+}
+
+export async function logWhatsAppEvent({ module = 'cobranza', status = '', cuenta = '', phone = '' } = {}) {
+  return apiRequest('/activity/whatsapp', {
+    method: 'POST',
+    body: JSON.stringify({ module, status, cuenta, phone }),
+  });
 }
 
 // ========== M1 MASTER ==========

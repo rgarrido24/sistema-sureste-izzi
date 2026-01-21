@@ -1,7 +1,10 @@
 import express from 'express';
 import SalesMaster from '../models/SalesMaster.js';
+import { requireAuth } from '../middleware/auth.js';
+import ActivityEvent from '../models/ActivityEvent.js';
 
 const router = express.Router();
+router.use(requireAuth);
 
 // Obtener todos los registros
 router.get('/', async (req, res) => {
@@ -65,7 +68,22 @@ router.post('/bulk', async (req, res) => {
         created++;
       }
     }
-    
+
+    // Auditoría: registrar upload
+    try {
+      await ActivityEvent.create({
+        type: 'upload',
+        module: 'sales',
+        userId: req.user?.id,
+        username: req.user?.username || '',
+        role: req.user?.role || '',
+        region: req.user?.region || '',
+        meta: { created, updated, total: data.length },
+      });
+    } catch (e) {
+      console.warn('⚠️ No se pudo registrar ActivityEvent upload (sales):', e?.message || e);
+    }
+
     res.json({ success: true, created, updated, total: data.length });
   } catch (error) {
     console.error('Error en bulk sales:', error);

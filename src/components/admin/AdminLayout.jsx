@@ -289,6 +289,17 @@ export default function AdminLayout({
                     >
                       Conocimiento
                     </button>
+                    <button
+                      onClick={() => setActiveTab('actividad')}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                        activeTab === 'actividad'
+                          ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md'
+                          : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                      }`}
+                      title="Dashboard de actividad (último login, cargas y WhatsApp)"
+                    >
+                      Actividad
+                    </button>
                   </>
                 )}
               </>

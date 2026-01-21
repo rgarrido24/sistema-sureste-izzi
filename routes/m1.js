@@ -5,6 +5,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
+import ActivityEvent from '../models/ActivityEvent.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -171,6 +172,21 @@ router.post('/bulk', async (req, res) => {
         console.log(`✅ Insertados ${Math.min(i + INSERT_BATCH, docs.length)}/${docs.length}`);
       }
 
+      // Auditoría: registrar upload
+      try {
+        await ActivityEvent.create({
+          type: 'upload',
+          module: 'm1',
+          userId: req.user?.id,
+          username: req.user?.username || '',
+          role: req.user?.role || '',
+          region: req.user?.region || '',
+          meta: { created, updated: 0, skipped, total: data.length, processed: docs.length, replaceAll: true },
+        });
+      } catch (e) {
+        console.warn('⚠️ No se pudo registrar ActivityEvent upload (m1):', e?.message || e);
+      }
+
       return res.json({
         success: true,
         created,
@@ -264,6 +280,21 @@ router.post('/bulk', async (req, res) => {
       }
 
       console.log(`✅ Lote ${batchIndex + 1}/${totalBatches} OK. Acumulado: ${created} creados, ${updated} actualizados, ${skipped} omitidos`);
+    }
+
+    // Auditoría: registrar upload
+    try {
+      await ActivityEvent.create({
+        type: 'upload',
+        module: 'm1',
+        userId: req.user?.id,
+        username: req.user?.username || '',
+        role: req.user?.role || '',
+        region: req.user?.region || '',
+        meta: { created, updated, skipped, total: data.length, processed: docs.length, replaceAll: false },
+      });
+    } catch (e) {
+      console.warn('⚠️ No se pudo registrar ActivityEvent upload (m1):', e?.message || e);
     }
 
     return res.json({

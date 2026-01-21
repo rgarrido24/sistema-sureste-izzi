@@ -2,6 +2,7 @@ import express from 'express';
 import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import { requireAuth, requireRoles, signAuthToken } from '../middleware/auth.js';
+import ActivityEvent from '../models/ActivityEvent.js';
 
 const router = express.Router();
 
@@ -26,6 +27,27 @@ router.post('/login', async (req, res) => {
     if (user.passwordHash !== passwordHash) {
       return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos' });
     }
+
+    // Registrar último login (y evento)
+    try {
+      user.lastLoginAt = new Date();
+      await user.save();
+      await ActivityEvent.create({
+        type: 'login',
+        module: 'auth',
+        userId: user._id,
+        username: user.username,
+        role: user.role,
+        region: user.region || '',
+        meta: {
+          ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '',
+          userAgent: req.headers['user-agent'] || '',
+        },
+      });
+    } catch (e) {
+      // No bloquear login por un fallo de auditoría
+      console.warn('⚠️ No se pudo registrar evento de login:', e?.message || e);
+    }
     
     const token = signAuthToken(user);
 
@@ -38,7 +60,8 @@ router.post('/login', async (req, res) => {
         name: user.name,
         role: user.role,
         email: user.email || '',
-        region: user.region || ''
+        region: user.region || '',
+        lastLoginAt: user.lastLoginAt || null,
       }
     });
   } catch (error) {
@@ -48,7 +71,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Crear usuario
-router.post('/create', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
+router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
     const { username, password, name, role, email, region } = req.body;
     const cleanUsername = username.trim().toLowerCase();
@@ -103,7 +126,7 @@ router.post('/create', requireAuth, requireRoles(['admin', 'usuarios']), async (
 });
 
 // Obtener todos los usuarios
-router.get('/', requireAuth, requireRoles(['admin', 'usuarios', 'mesa_control']), async (req, res) => {
+router.get('/', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios', 'mesa_control']), async (req, res) => {
   try {
     const users = await User.find({}, { passwordHash: 0 });
     const usersWithRegion = users.map(user => {
@@ -118,7 +141,7 @@ router.get('/', requireAuth, requireRoles(['admin', 'usuarios', 'mesa_control'])
 });
 
 // Eliminar usuario
-router.delete('/:id', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
+router.delete('/:id', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.json({ success: true });
@@ -129,7 +152,7 @@ router.delete('/:id', requireAuth, requireRoles(['admin', 'usuarios']), async (r
 });
 
 // Actualizar contraseña de usuario
-router.put('/:id/password', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
+router.put('/:id/password', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
     const { password } = req.body;
     
@@ -149,7 +172,7 @@ router.put('/:id/password', requireAuth, requireRoles(['admin', 'usuarios']), as
 });
 
 // Actualizar usuario (nombre, role, email)
-router.put('/:id', requireAuth, requireRoles(['admin', 'usuarios']), async (req, res) => {
+router.put('/:id', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
     const { name, role, email, region } = req.body;
     const updateData = {};

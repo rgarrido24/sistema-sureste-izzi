@@ -15,6 +15,19 @@ export default function SalesListView({
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dbCount, setDbCount] = useState(0);
+  const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
+
+  useEffect(() => {
+    const loadLastUpdate = async () => {
+      try {
+        const result = await api.getCobranzaLastUpdate();
+        setCobranzaLastUploads(result?.cobranzaLastUploads || []);
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadLastUpdate();
+  }, []);
 
   // Cargar datos solo cuando esta vista se monta (pestaña "Ver BD")
   useEffect(() => {
@@ -89,6 +102,19 @@ export default function SalesListView({
         <p className="text-sm text-slate-600 mt-2">
           Mostrando {filteredData.length} de {dbCount} clientes
         </p>
+        {Array.isArray(cobranzaLastUploads) && (
+          (() => {
+            const row = cobranzaLastUploads.find(r => String(r?._id || '').toLowerCase() === 'sales');
+            if (!row?.lastAt) return null;
+            const when = new Date(row.lastAt).toLocaleString('es-MX');
+            return (
+              <p className="text-xs text-slate-500 mt-1">
+                Última actualización de Cobranza (BD): <span className="font-semibold">{when}</span>
+                {row.byUsername ? <span> (por {row.byUsername})</span> : null}
+              </p>
+            );
+          })()
+        )}
       </div>
 
       {/* Lista de clientes */}
