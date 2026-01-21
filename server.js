@@ -26,6 +26,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Evita que Mongoose "bufferice" queries cuando la DB no está conectada (causa timeouts/502 en Render)
+mongoose.set('bufferCommands', false);
+
 // Middleware
 app.use(cors({
   origin: true,
@@ -38,7 +41,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // Conectar a MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/sistema-sureste';
 
-mongoose.connect(MONGODB_URI)
+mongoose.connect(MONGODB_URI, {
+  serverSelectionTimeoutMS: 8000,
+  connectTimeoutMS: 8000,
+})
   .then(() => {
     console.log('✅ Conectado a MongoDB');
   })

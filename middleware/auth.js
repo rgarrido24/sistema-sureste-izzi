@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import mongoose from 'mongoose';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret-change-me';
 
@@ -17,6 +18,14 @@ export function signAuthToken(user) {
 
 export async function requireAuth(req, res, next) {
   try {
+    // Si la DB no está lista, responder rápido (evita que Render/Cloudflare termine en 502)
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Base de datos no disponible',
+        message: 'El servidor no puede validar tu sesión porque MongoDB no está conectado. Revisa MONGODB_URI en Render.',
+      });
+    }
+
     const header = req.headers.authorization || '';
     const [type, token] = header.split(' ');
     if (type !== 'Bearer' || !token) {

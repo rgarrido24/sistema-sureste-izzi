@@ -65,7 +65,7 @@ async function apiRequest(endpoint, options = {}) {
     
     // Si es un error de red, agregar más información
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error('No se pudo conectar al servidor. Verifica que el backend esté corriendo en http://localhost:3001');
+      throw new Error('No se pudo conectar al servidor. Verifica que el backend esté en línea y accesible.');
     }
     
     throw error;
