@@ -60,17 +60,30 @@ router.post('/bulk', async (req, res) => {
 
     const normalizeOrdenKey = (orden) => String(orden || '').trim().replace(/\s+/g, '');
 
+    const stripBadKeys = (obj) => {
+      if (!obj || typeof obj !== 'object') return {};
+      const out = {};
+      for (const [k0, v] of Object.entries(obj)) {
+        const k = String(k0 || '').trim();
+        if (!k) continue; // evita key vacía
+        if (k.startsWith('$')) continue;
+        out[k] = v;
+      }
+      return out;
+    };
+
     // Deduplicar por ordenKey (último gana)
     const byOrden = new Map();
     for (const item of data) {
+      const safeItem = stripBadKeys(item);
       const orden = extractOrden(item);
       const ordenKey = normalizeOrdenKey(orden);
       if (!ordenKey) continue;
       byOrden.set(ordenKey, {
-        ...item,
+        ...safeItem,
         ordenKey,
-        Orden: item?.Orden || item?.['Orden'] || orden,
-        'Nº de orden': item?.['Nº de orden'] || item?.['N° de orden'] || item?.['No. de orden'] || orden,
+        Orden: safeItem?.Orden || safeItem?.['Orden'] || orden,
+        'Nº de orden': safeItem?.['Nº de orden'] || safeItem?.['N° de orden'] || safeItem?.['No. de orden'] || orden,
       });
     }
 

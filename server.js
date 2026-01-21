@@ -26,6 +26,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Loguear errores fatales para diagnosticar fallas tipo exit 134 en Render
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('❌ uncaughtException:', err);
+  // Salir para que Render reinicie el proceso con logs claros
+  process.exit(1);
+});
+
 // Evita que Mongoose "bufferice" queries cuando la DB no está conectada (causa timeouts/502 en Render)
 mongoose.set('bufferCommands', false);
 
@@ -82,7 +92,13 @@ app.use('/api/activity', activityRoutes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'API funcionando correctamente' });
+  res.json({
+    status: 'ok',
+    message: 'API funcionando correctamente',
+    mongo: {
+      readyState: mongoose.connection.readyState, // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+    },
+  });
 });
 
 // Iniciar servidor - Escuchar en todas las interfaces de red (0.0.0.0)

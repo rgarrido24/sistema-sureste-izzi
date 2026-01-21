@@ -98,6 +98,9 @@ export default function UploadModule({ currentModule }) {
             headers.forEach((header, index) => {
               // Limpiar el nombre del header (quitar espacios, caracteres especiales)
               const cleanHeader = String(header || '').trim();
+              // CRÍTICO: Si el header está vacío, NO guardar la columna.
+              // Si se guarda como key "", Mongo truena con: "An empty update path is not valid" (code 56)
+              if (!cleanHeader || cleanHeader === 'undefined' || cleanHeader === 'null') return;
               const value = row[index] !== undefined && row[index] !== null ? String(row[index]).trim() : '';
               obj[cleanHeader] = value;
               

@@ -134,9 +134,12 @@ export function prepareDataForUpsert(item, origen = 'operacion') {
   // Limpiar el objeto para evitar campos undefined
   const cleanedItem = {};
   for (const key in item) {
-    if (item[key] !== undefined && item[key] !== null) {
-      cleanedItem[key] = item[key];
-    }
+    const k = String(key || '').trim();
+    // CRÍTICO: no permitir keys vacías (Mongo falla en $set con "ruta vacía")
+    if (!k) continue;
+    // Seguridad básica: evitar keys inválidas en Mongo updates
+    if (k.startsWith('$')) continue;
+    if (item[key] !== undefined && item[key] !== null) cleanedItem[k] = item[key];
   }
   
   return {
