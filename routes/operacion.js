@@ -93,311 +93,120 @@ router.post('/bulk', async (req, res) => {
     let updated = 0;
     let skipped = 0;
     const errors = [];
-    
+
+    // 1) Preparar + deduplicar por cuenta (último gana)
+    const byCuenta = new Map();
     for (const item of data) {
       try {
-        // Log para debugging (solo los primeros 5 registros)
-        if (created + updated + skipped < 5) {
-          console.log('🔍 Operación - Item:', created + updated + skipped + 1);
-          console.log('   - Keys del item:', Object.keys(item));
-          console.log('   - Buscando campo "Nº de cuenta":', item['Nº de cuenta']);
-          console.log('   - Buscando campo "N° de cuenta":', item['N° de cuenta']);
-          console.log('   - Buscando campo "Cuenta":', item['Cuenta']);
-          console.log('   - Buscando campo "CUENTA":', item['CUENTA']);
-          console.log('   - Item completo (primeros campos):', Object.keys(item).slice(0, 10).reduce((acc, key) => {
-            acc[key] = item[key];
-            return acc;
-          }, {}));
-        }
-        
-        // Intentar obtener cuenta directamente primero (prioridad para operación)
-        let cuenta = '';
-        
-        // DEBUG: Mostrar TODOS los campos del item para identificar el nombre exacto
-        if (created + updated + skipped < 3) {
-          console.log('   - 🔍 TODOS los campos del item:', Object.keys(item));
-          console.log('   - 🔍 Valores de campos relacionados con cuenta:');
-          Object.keys(item).forEach(key => {
-            const keyLower = key.toLowerCase();
-            if (keyLower.includes('cuenta') || keyLower.includes('facturacion') || keyLower.includes('facturación')) {
-              console.log(`      "${key}": "${item[key]}"`);
-            }
-          });
-        }
-        
-        // Buscar en todas las variaciones posibles de "Cuenta de facturación" (columna AT)
-        const cuentaFacturacionVariations = [
-          'Cuenta de facturación',
-          'Cuenta de Facturación',
-          'CUENTA DE FACTURACIÓN',
-          'cuenta de facturación',
-          'Cuenta De Facturación',
-          'CUENTA DE FACTURACION',  // Sin tilde
-          'Cuenta de Facturacion',   // Sin tilde
-          'Cuenta de facturacion',  // Sin tilde minúsculas
-          'CUENTA DE FACTURACION',  // Sin tilde mayúsculas
-          'Cuenta De Facturacion'   // Sin tilde
-        ];
-        
-        for (const field of cuentaFacturacionVariations) {
-          const value = item[field];
-          if (value !== undefined && value !== null && value !== '' && String(value).trim() !== '') {
-            const valueStr = String(value).trim();
-            // Aceptar cualquier valor que no sea solo espacios
-            if (valueStr && valueStr !== 'undefined' && valueStr !== 'null') {
-              cuenta = valueStr;
-              if (created + updated + skipped < 3) {
-                console.log(`   - ✅ Cuenta encontrada en "${field}":`, cuenta);
-              }
-              break;
-            }
-          }
-        }
-        
-        // Si no se encontró, buscar "Nº de cuenta" (columna BQ)
+        // Reusar la lógica existente: si normalizeCuenta falla, prepareDataForUpsert suele rellenar
+        // Nota: normalizeCuenta ya contempla varias variantes
+        let cuenta = normalizeCuenta(item) || '';
+        // Si viene cuenta de facturación o Nº de cuenta en crudo, dejar que el normalizador extraiga dígitos
         if (!cuenta) {
-          const cuentaNumVariations = [
-            'Nº de cuenta',
-            'N° de cuenta',
-            'Nº Cuenta',
-            'N° Cuenta',
-            'No. de cuenta',
-            'No. Cuenta',
-            'Nº DE CUENTA',
-            'N° DE CUENTA',
-            'NO. DE CUENTA'
-          ];
-          
-          for (const field of cuentaNumVariations) {
-            const value = item[field];
-            if (value !== undefined && value !== null && value !== '' && String(value).trim() !== '') {
-              const valueStr = String(value).trim();
-              // Aceptar si es numérico (incluso con espacios o caracteres especiales que se puedan limpiar)
-              const numericValue = valueStr.replace(/[^\d]/g, '');
-              if (numericValue && numericValue.length >= 3) {
-                cuenta = numericValue;
-                if (created + updated + skipped < 3) {
-                  console.log(`   - ✅ Cuenta encontrada en "${field}":`, cuenta, '(original:', valueStr + ')');
-                }
-                break;
-              }
-            }
-          }
+          const direct = item?.['Nº de cuenta'] || item?.['N° de cuenta'] || item?.['Cuenta de facturación'] || item?.['Cuenta'] || item?.['CUENTA'] || '';
+          const numeric = String(direct || '').trim().replace(/[^\d]/g, '');
+          cuenta = numeric || String(direct || '').trim().replace(/\s+/g, '');
         }
-        
-        // Si aún no se encontró, buscar en TODOS los campos que contengan "cuenta" o "facturacion"
-        if (!cuenta) {
-          Object.keys(item).forEach(key => {
-            if (!cuenta) {
-              const keyLower = key.toLowerCase();
-              if ((keyLower.includes('cuenta') || keyLower.includes('facturacion') || keyLower.includes('facturación')) && 
-                  !keyLower.includes('nocuenta') && !keyLower.includes('no cuenta') && 
-                  !keyLower.includes('vendedor') && !keyLower.includes('clave')) {
-                const value = item[key];
-                if (value !== undefined && value !== null && value !== '' && String(value).trim() !== '') {
-                  const valueStr = String(value).trim();
-                  // Si el campo es "Cuenta de facturación", aceptar cualquier valor
-                  if (keyLower.includes('facturacion') || keyLower.includes('facturación')) {
-                    cuenta = valueStr;
-                    if (created + updated + skipped < 3) {
-                      console.log(`   - ✅ Cuenta encontrada en campo "${key}":`, cuenta);
-                    }
-                    return; // Salir del forEach
-                  }
-                  // Para otros campos, solo aceptar si es numérico
-                  const numericValue = valueStr.replace(/[^\d]/g, '');
-                  if (numericValue && numericValue.length >= 3) {
-                    cuenta = numericValue;
-                    if (created + updated + skipped < 3) {
-                      console.log(`   - ✅ Cuenta encontrada en campo "${key}":`, cuenta, '(original:', valueStr + ')');
-                    }
-                    return; // Salir del forEach
-                  }
-                }
-              }
-            }
-          });
-        }
-        
-        // Si aún no se encontró, usar normalizeCuenta como fallback
-        if (!cuenta) {
-          cuenta = normalizeCuenta(item);
-          if (created + updated + skipped < 3) {
-            console.log('   - 🔍 Usando normalizeCuenta como fallback:', cuenta);
-            if (!cuenta) {
-              console.log('   - ❌ normalizeCuenta tampoco encontró cuenta');
-              // Último intento: buscar cualquier campo que tenga un valor numérico largo
-              Object.keys(item).forEach(key => {
-                if (!cuenta) {
-                  const value = item[key];
-                  if (value !== undefined && value !== null) {
-                    const valueStr = String(value).trim();
-                    const numericOnly = valueStr.replace(/[^\d]/g, '');
-                    // Si tiene al menos 6 dígitos, probablemente es una cuenta
-                    if (numericOnly && numericOnly.length >= 6) {
-                      cuenta = numericOnly;
-                      if (created + updated + skipped < 3) {
-                        console.log(`   - ⚠️ Cuenta encontrada en campo genérico "${key}":`, cuenta);
-                      }
-                    }
-                  }
-                }
-              });
-            }
-          }
-        }
-        
-        // Limpiar y normalizar el valor - extraer solo números si es necesario
-        if (cuenta) {
-          // Si la cuenta tiene caracteres no numéricos, intentar extraer solo números
-          const numericOnly = String(cuenta).replace(/[^\d]/g, '');
-          if (numericOnly && numericOnly.length >= 3) {
-            cuenta = numericOnly;
-          } else {
-            // Si no tiene suficientes números, usar el valor original limpio
-            cuenta = String(cuenta).trim().replace(/\s+/g, '');
-          }
-        } else {
-          cuenta = '';
-        }
-        
-        if (created + updated + skipped < 3) {
-          console.log('   - Cuenta final obtenida:', cuenta);
-          console.log('   - Primeros 20 campos del item:', Object.keys(item).slice(0, 20));
-        }
-        
-        // CRÍTICO: Solo rechazar si realmente no hay cuenta
-        // Aceptar cualquier valor que tenga al menos 3 caracteres (numéricos o alfanuméricos)
-        if (!cuenta || cuenta === 'undefined' || cuenta === 'null' || cuenta === '' || cuenta.length < 3) {
-          if (created + updated + skipped < 3) {
-            console.log('   - ❌ Cuenta vacía o inválida, saltando registro');
-            console.log('   - Item completo (primeros campos):', Object.keys(item).slice(0, 15).reduce((acc, key) => {
-              acc[key] = item[key];
-              return acc;
-            }, {}));
-          }
+        const cuentaKey = String(cuenta || '').trim().replace(/\s+/g, '');
+        if (!cuentaKey || cuentaKey.length < 3 || cuentaKey === 'undefined' || cuentaKey === 'null') {
           skipped++;
           continue;
         }
-        
-        // CRÍTICO: Buscar por número de cuenta (clave única)
-        // Si el número de cuenta es el mismo, solo actualizar (no duplicar)
-        // Normalizar la cuenta para búsqueda (eliminar espacios, convertir a string)
-        const cuentaNormalizada = String(cuenta).trim().replace(/\s+/g, '');
-        
-        if (!cuentaNormalizada || cuentaNormalizada === 'undefined' || cuentaNormalizada === 'null') {
-          if (created + updated + skipped < 5) {
-            console.log(`   - ⚠️ Cuenta vacía o inválida, saltando registro`);
-          }
-          skipped++;
-          continue;
-        }
-        
-        // BÚSQUEDA OPTIMIZADA Y ROBUSTA:
-        // 1. Buscar primero en el campo 'cuenta' normalizado (índice principal) - MÁS RÁPIDO
-        let existing = await OperacionDia.findOne({ cuenta: cuentaNormalizada });
-        
-        // 2. Si no se encontró, buscar en otros campos usando regex (más flexible)
-        if (!existing) {
-          // Buscar en 'Nº de cuenta' normalizando con regex
-          existing = await OperacionDia.findOne({
-            $or: [
-              { 'Nº de cuenta': cuentaNormalizada },
-              { 'Nº de cuenta': { $regex: `^\\s*${cuentaNormalizada.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, $options: 'i' } }
-            ]
-          });
-        }
-        
-        // 3. Si aún no se encontró, buscar en 'Cuenta de facturación'
-        if (!existing) {
-          existing = await OperacionDia.findOne({
-            $or: [
-              { 'Cuenta de facturación': cuentaNormalizada },
-              { 'Cuenta de facturación': { $regex: `^\\s*${cuentaNormalizada.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, $options: 'i' } }
-            ]
-          });
-        }
-        
-        // 4. Si aún no se encontró, buscar en 'Cuenta'
-        if (!existing) {
-          existing = await OperacionDia.findOne({
-            $or: [
-              { 'Cuenta': cuentaNormalizada },
-              { 'Cuenta': { $regex: `^\\s*${cuentaNormalizada.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, $options: 'i' } }
-            ]
-          });
-        }
-        
-        // Log para debugging
-        if (created + updated + skipped < 5) {
-          console.log(`   - 🔍 Buscando cuenta normalizada: "${cuentaNormalizada}"`);
-          console.log(`   - 🔍 Registro existente encontrado:`, existing ? 'SÍ' : 'NO');
-          if (existing) {
-            console.log(`   - 🔍 ID del existente:`, existing._id);
-            console.log(`   - 🔍 Cuenta del existente:`, existing.cuenta || existing['Nº de cuenta'] || existing['Cuenta de facturación']);
-          }
-        }
-        
+
         const preparedData = prepareDataForUpsert(item, 'operacion');
-        
-        // Si no tiene estado, establecer por defecto
         if (!preparedData.estado) {
           preparedData.estado = item['Estado'] || item.Estado || 'Abierta';
         }
-        
-        // OPTIMIZAR DATOS: Eliminar campos vacíos y normalizar antes de guardar
-        const optimizedData = optimizeDocument({
-          ...preparedData,
-          cuenta: cuentaNormalizada,
-          'Nº de cuenta': cuentaNormalizada,
-          'Cuenta de facturación': cuentaNormalizada
-        }, 'operacion');
-        
-        if (existing) {
-          if (updateExisting) {
-            // CRÍTICO: Si el número de cuenta es el mismo, ACTUALIZAR (no crear duplicado)
-            // Mantener la última versión como estatus definitivo
-            const updateResult = await OperacionDia.findByIdAndUpdate(existing._id, {
-              ...optimizedData,
-              fechaCreacion: existing.fechaCreacion || existing.createdAt || new Date(),
-              updatedAt: new Date()
-            }, { new: true });
-            
-            if (created + updated + skipped < 5) {
-              console.log(`   - ✅ Registro ACTUALIZADO (ID: ${existing._id})`);
-            }
-            updated++;
-          } else {
-            if (created + updated + skipped < 5) {
-              console.log(`   - ⏭️ Registro existente omitido (updateExisting=false)`);
-            }
-            skipped++;
-          }
-        } else {
-          // Nuevo registro (número de cuenta diferente)
-          const newRecord = await OperacionDia.create(optimizedData);
-          
-          if (created + updated + skipped < 5) {
-            console.log(`   - ✅ Nuevo registro CREADO (ID: ${newRecord._id})`);
-          }
-          created++;
-        }
+
+        const optimizedData = optimizeDocument(
+          {
+            ...preparedData,
+            cuenta: cuentaKey,
+            'Nº de cuenta': cuentaKey,
+            'Cuenta de facturación': cuentaKey,
+          },
+          'operacion'
+        );
+
+        byCuenta.set(cuentaKey, optimizedData);
       } catch (itemError) {
         errors.push({ item, error: itemError.message });
       }
     }
-    
-    res.json({ 
-      success: true, 
-      created, 
-      updated, 
-      skipped,
+
+    const docs = Array.from(byCuenta.values());
+    if (docs.length === 0) {
+      return res.json({ success: true, created: 0, updated: 0, skipped: data.length, total: data.length, errors: errors.length ? errors : undefined });
+    }
+
+    // 2) Procesar en lotes con bulkWrite
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+      const batch = docs.slice(i, i + BATCH_SIZE);
+      const cuentas = batch.map(d => d.cuenta).filter(Boolean);
+
+      const existingDocs = await OperacionDia.find(
+        { cuenta: { $in: cuentas } },
+        { _id: 1, cuenta: 1, VendedorAsignado: 1, Vendedor: 1, fechaCreacion: 1, createdAt: 1 }
+      ).lean();
+      const existingByCuenta = new Map(existingDocs.map(d => [String(d.cuenta), d]));
+
+      const ops = [];
+      for (const doc of batch) {
+        const cuenta = doc.cuenta;
+        if (!cuenta) continue;
+        const existing = existingByCuenta.get(String(cuenta));
+        if (existing && !updateExisting) {
+          skipped++;
+          continue;
+        }
+
+        const vendorKeep = existing?.VendedorAsignado || existing?.Vendedor || '';
+        const docVendor = doc?.VendedorAsignado || doc?.Vendedor || '';
+
+        const toSet = {
+          ...doc,
+          // Preservar vendedor si ya estaba asignado y el nuevo viene vacío
+          ...(vendorKeep && !docVendor ? { VendedorAsignado: existing.VendedorAsignado || existing.Vendedor } : {}),
+          updatedAt: new Date(),
+        };
+
+        ops.push({
+          updateOne: {
+            filter: { cuenta },
+            update: {
+              $set: toSet,
+              $setOnInsert: { fechaCreacion: new Date() },
+            },
+            upsert: true,
+          },
+        });
+      }
+
+      if (ops.length > 0) {
+        const result = await OperacionDia.bulkWrite(ops, { ordered: false });
+        created += result.upsertedCount || 0;
+        updated += result.modifiedCount || 0;
+      }
+    }
+
+    res.json({
+      success: true,
+      created,
+      updated,
+      skipped: skipped + (data.length - docs.length),
       total: data.length,
-      errors: errors.length > 0 ? errors : undefined
+      processed: docs.length,
+      errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
     console.error('Error en bulk operaciones:', error);
-    res.status(500).json({ error: 'Error del servidor' });
+    res.status(500).json({
+      error: 'Error del servidor',
+      message: error.message || 'Error desconocido',
+      type: error.name || 'Error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
   }
 });
 

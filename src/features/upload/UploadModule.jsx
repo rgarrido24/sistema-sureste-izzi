@@ -231,6 +231,10 @@ export default function UploadModule({ currentModule }) {
           
           if (error.message) {
             errorMessage = error.message;
+            // Si viene un detalle del backend, anexarlo (api.js adjunta error.details)
+            if (error.details?.message && error.details.message !== error.message) {
+              errorMessage = `${error.message} (${error.details.message})`;
+            }
           } else if (error.error) {
             errorMessage = error.error;
           } else if (typeof error === 'string') {
