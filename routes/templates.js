@@ -1,7 +1,12 @@
 import express from 'express';
 import Template from '../models/Template.js';
+import { requireAuth, requireRoles } from '../middleware/auth.js';
 
 const router = express.Router();
+router.use(requireAuth);
+
+const ADMIN_ROLES = new Set(['admin', 'admin_general']);
+const isAdmin = (req) => ADMIN_ROLES.has(req.user?.role);
 
 // Obtener todas las plantillas
 router.get('/', async (req, res) => {
@@ -10,10 +15,11 @@ router.get('/', async (req, res) => {
     
     // Si se especifica un módulo, buscar con coincidencia flexible
     let query = {};
+    const admin = isAdmin(req);
     
-    // Si no se especifica módulo, obtener todas las plantillas activas
+    // Si no se especifica módulo, para usuarios normales solo plantillas activas
     if (!module) {
-      query = { isActive: true };
+      query = admin ? {} : { isActive: true, visibility: 'all' };
     } else {
       // Búsqueda flexible: coincidencia exacta o case-insensitive
       query.$or = [
@@ -60,7 +66,13 @@ router.get('/', async (req, res) => {
         );
       }
     }
-    
+
+    // Para no-admin: siempre filtrar a visibles y activas
+    if (!admin) {
+      query.isActive = true;
+      query.visibility = 'all';
+    }
+
     const templates = await Template.find(query).sort({ createdAt: -1 });
     console.log(`📋 Plantillas encontradas: ${templates.length} para módulo: ${module || 'todos'}`);
     res.json(templates);
@@ -79,6 +91,9 @@ router.get('/:id', async (req, res) => {
     if (!template) {
       return res.status(404).json({ error: 'Plantilla no encontrada' });
     }
+    if (!isAdmin(req) && template.visibility === 'admin_only') {
+      return res.status(403).json({ error: 'Sin permisos' });
+    }
     res.json(template);
   } catch (error) {
     console.error('Error obteniendo plantilla:', error);
@@ -87,9 +102,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // Crear plantilla
-router.post('/', async (req, res) => {
+router.post('/', requireRoles(['admin', 'admin_general']), async (req, res) => {
   try {
-    const { name, module, content, videoUrl, variables, isActive, createdBy } = req.body;
+    const { name, module, content, videoUrl, variables, isActive, createdBy, visibility } = req.body;
     
     console.log('📝 Creando plantilla con datos:', { name, module, content: content?.substring(0, 50) + '...', videoUrl, variables, isActive });
     
@@ -105,7 +120,8 @@ router.post('/', async (req, res) => {
       videoUrl: videoUrl || '',
       variables: variables || [],
       isActive: isActive !== undefined ? isActive : true,
-      createdBy: createdBy || 'admin'
+      createdBy: createdBy || req.user?.username || 'admin',
+      visibility: visibility === 'admin_only' ? 'admin_only' : 'all'
     });
     
     const savedTemplate = await template.save();
@@ -125,9 +141,9 @@ router.post('/', async (req, res) => {
 });
 
 // Actualizar plantilla
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRoles(['admin', 'admin_general']), async (req, res) => {
   try {
-    const { name, module, content, videoUrl, variables, isActive } = req.body;
+    const { name, module, content, videoUrl, variables, isActive, visibility } = req.body;
     
     console.log('📝 Actualizando plantilla:', req.params.id);
     console.log('Datos recibidos:', { name, module, content: content?.substring(0, 50) + '...', videoUrl, variables, isActive });
@@ -145,7 +161,8 @@ router.put('/:id', async (req, res) => {
         content,
         videoUrl: videoUrl || '',
         variables: variables || [],
-        isActive: isActive !== undefined ? isActive : true
+        isActive: isActive !== undefined ? isActive : true,
+        visibility: visibility === 'admin_only' ? 'admin_only' : 'all'
       },
       { new: true, runValidators: true }
     );
@@ -165,7 +182,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Eliminar plantilla
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRoles(['admin', 'admin_general']), async (req, res) => {
   try {
     const template = await Template.findByIdAndDelete(req.params.id);
     if (!template) {

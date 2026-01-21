@@ -131,13 +131,58 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
 }
 
 // Función para generar mensaje personalizado desde plantilla
-const generateMessageFromTemplate = async (client, status) => {
+const COB_RECO_MODULE = 'COBRANZA_RECOMENDACION_FPD_CORRIENTE';
+
+const generateMessageFromTemplate = async (client, status, options = {}) => {
   try {
     console.log('🔍 Buscando plantilla para módulo:', status);
+    const { recommendation = false } = options || {};
     
     // Obtener todas las plantillas activas (sin filtrar por módulo primero)
     const allTemplates = await api.getTemplates();
     console.log('📋 Plantillas obtenidas:', allTemplates.length);
+
+    const normalize = (v) => String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+
+    // PRIORIDAD: recomendación (solo admin) para FPD CORRIENTE
+    if (recommendation) {
+      const reco = allTemplates.find(t => t?.isActive && normalize(t?.module) === normalize(COB_RECO_MODULE));
+      if (reco?.content) {
+        let message = reco.content;
+        const nombre = client.Cliente || client['Cliente'] || client.nombre || client.Nombre || 'Cliente';
+        const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || client['Nº de cuenta'] || client['N° de cuenta'] || client.Referencia || client['Referencia'] || 'N/A';
+        const monto = client['Saldo Total'] || client['SaldoTotal'] || client.saldoTotal || client['Total Adeudo'] || client.totalAdeudo || 0;
+        const porVencer = client['Por Vencer'] || client['PorVencer'] || client.porVencer || 0;
+        const vencido = client['Vencido'] || client.vencido || 0;
+        const vendedor = client.Vendedor || client['Vendedor'] || client.vendedor || 'N/A';
+        const plaza = client.PLAZA || client['PLAZA'] || client.Plaza || client.plaza || 'N/A';
+        const estatus = status || 'N/A';
+
+        const formatCurrency = (value) => {
+          if (!value) return '$0.00';
+          const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g, '')) : value;
+          if (isNaN(num)) return '$0.00';
+          return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(num);
+        };
+
+        message = message
+          .replace(/{nombre}/g, nombre)
+          .replace(/{cuenta}/g, cuenta)
+          .replace(/{monto}/g, formatCurrency(monto))
+          .replace(/{porVencer}/g, formatCurrency(porVencer))
+          .replace(/{vencido}/g, formatCurrency(vencido))
+          .replace(/{vendedor}/g, vendedor)
+          .replace(/{plaza}/g, plaza)
+          .replace(/{estatus}/g, estatus);
+
+        if (reco.videoUrl) message += `\n\n📹 Video tutorial: ${reco.videoUrl}`;
+        return message;
+      }
+    }
     
     // Buscar plantilla que coincida con el módulo
     // Intentar coincidencia exacta primero
@@ -311,7 +356,7 @@ const cleanPhoneNumber = (phone) => {
 };
 
 // Función para abrir WhatsApp con mensaje personalizado
-const openWhatsApp = async (phone, client, status, userRole = null) => {
+const openWhatsApp = async (phone, client, status, userRole = null, isFpdCorriente = false) => {
   if (userRole === 'director') {
     alert('El perfil Director no tiene permitido enviar mensajes de WhatsApp.');
     return;
@@ -339,7 +384,9 @@ const openWhatsApp = async (phone, client, status, userRole = null) => {
   
   try {
     // Generar mensaje personalizado desde plantilla
-    const message = await generateMessageFromTemplate(client, status);
+    const message = await generateMessageFromTemplate(client, status, {
+      recommendation: (userRole === 'admin' || userRole === 'admin_general') && isFpdCorriente
+    });
     
     // Codificar el mensaje para URL (usar encodeURIComponent para caracteres especiales)
     const encodedMessage = encodeURIComponent(message);
@@ -1135,6 +1182,7 @@ export default function SalesStatusView({
             
             // Determinar el estatus principal basado en FPD
             const estatusPrincipal = getEstatusFPD(item);
+            const isFpdCorriente = String(estatusPrincipal || '').toUpperCase().trim() === 'FPD CORRIENTE';
             
             // Leer saldos correctamente - probar diferentes nombres de columna
             const parseMoney = (val) => {
@@ -1310,7 +1358,7 @@ export default function SalesStatusView({
                 {/* Botones de acción */}
                 <div className="grid grid-cols-2 gap-2 mt-4">
                   <button
-                    onClick={() => openWhatsApp(telefono, item, status, user?.role)}
+                    onClick={() => openWhatsApp(telefono, item, status, user?.role, isFpdCorriente)}
                     disabled={!telefono}
                     className="bg-green-50 text-green-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-green-100 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >

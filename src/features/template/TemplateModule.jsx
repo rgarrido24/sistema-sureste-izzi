@@ -13,7 +13,8 @@ export default function TemplateModule() {
     content: '',
     videoUrl: '',
     variables: [],
-    isActive: true
+    isActive: true,
+    visibility: 'all'
   });
 
   // Variables disponibles para usar en plantillas
@@ -61,7 +62,8 @@ export default function TemplateModule() {
           formData.content,
           formData.videoUrl || '',
           formData.variables || [],
-          formData.isActive
+          formData.isActive,
+          formData.visibility || 'all'
         );
       } else {
         await api.createTemplate(
@@ -70,7 +72,9 @@ export default function TemplateModule() {
           formData.content,
           formData.videoUrl || '',
           formData.variables || [],
-          formData.isActive
+          formData.isActive,
+          'admin',
+          formData.visibility || 'all'
         );
       }
       await loadTemplates();
@@ -91,7 +95,8 @@ export default function TemplateModule() {
       content: template.content,
       videoUrl: template.videoUrl || '',
       variables: template.variables || [],
-      isActive: template.isActive !== undefined ? template.isActive : true
+      isActive: template.isActive !== undefined ? template.isActive : true,
+      visibility: template.visibility || 'all'
     });
     setEditingId(template._id);
     setShowForm(true);
@@ -115,7 +120,8 @@ export default function TemplateModule() {
       content: '',
       videoUrl: '',
       variables: [],
-      isActive: true
+      isActive: true,
+      visibility: 'all'
     });
     setEditingId(null);
     setShowForm(false);
@@ -145,7 +151,12 @@ export default function TemplateModule() {
     }
   };
 
-  const modules = ['M1', 'M2', 'M3', 'M4', 'operacion', 'general'];
+  const modules = [
+    'M1', 'M2', 'M3', 'M4',
+    'COBRANZA', 'general',
+    'operacion',
+    'COBRANZA_RECOMENDACION_FPD_CORRIENTE'
+  ];
 
   if (loading) {
     return (
@@ -221,6 +232,18 @@ export default function TemplateModule() {
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="tplVisibilityAdminOnly"
+                type="checkbox"
+                checked={(formData.visibility || 'all') === 'admin_only'}
+                onChange={(e) => setFormData({ ...formData, visibility: e.target.checked ? 'admin_only' : 'all' })}
+              />
+              <label htmlFor="tplVisibilityAdminOnly" className="text-sm text-slate-700">
+                Solo visible para Administrador (recomendación interna)
+              </label>
             </div>
 
             <div>

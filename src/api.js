@@ -532,17 +532,17 @@ export async function getTemplate(id) {
   return apiRequest(`/templates/${id}`);
 }
 
-export async function createTemplate(name, module, content, videoUrl = '', variables = [], isActive = true, createdBy = 'admin') {
+export async function createTemplate(name, module, content, videoUrl = '', variables = [], isActive = true, createdBy = 'admin', visibility = 'all') {
   return apiRequest('/templates', {
     method: 'POST',
-    body: JSON.stringify({ name, module, content, videoUrl, variables, isActive, createdBy }),
+    body: JSON.stringify({ name, module, content, videoUrl, variables, isActive, createdBy, visibility }),
   });
 }
 
-export async function updateTemplate(id, name, module, content, videoUrl = '', variables = [], isActive = true) {
+export async function updateTemplate(id, name, module, content, videoUrl = '', variables = [], isActive = true, visibility = 'all') {
   return apiRequest(`/templates/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ name, module, content, videoUrl, variables, isActive }),
+    body: JSON.stringify({ name, module, content, videoUrl, variables, isActive, visibility }),
   });
 }
 

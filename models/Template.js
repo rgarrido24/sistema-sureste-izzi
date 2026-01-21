@@ -28,6 +28,11 @@ const templateSchema = new mongoose.Schema({
   createdBy: {
     type: String,
     default: 'admin'
+  },
+  visibility: {
+    type: String,
+    enum: ['all', 'admin_only'],
+    default: 'all'
   }
 }, {
   timestamps: true
