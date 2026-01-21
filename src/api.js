@@ -316,6 +316,10 @@ export async function getCobranzaLastUpdate() {
   return apiRequest('/activity/cobranza/last-update');
 }
 
+export async function getInstallLastUpdate() {
+  return apiRequest('/activity/install/last-update');
+}
+
 export async function getAdminActivitySummary() {
   return apiRequest('/activity/admin/summary');
 }

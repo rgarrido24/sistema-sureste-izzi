@@ -15,6 +15,20 @@ export default function InstallListView({
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [dbCount, setDbCount] = useState(0);
+  const [installLastUpdate, setInstallLastUpdate] = useState(null);
+
+  const pickFirst = (obj, keys = []) => {
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return '';
+  };
+
+  const getCliente = (item) => pickFirst(item, ['Cliente', 'CLIENTE', 'Nombre', 'NOMBRE', 'Nombre Cliente', 'Cliente Nombre']);
+  const getCuenta = (item) => pickFirst(item, ['Cuenta', 'CUENTA', 'Nº de cuenta', 'N° de cuenta', 'No. de cuenta', 'NoCuenta', 'Referencia', 'REFERENCIA']);
+  const getCiudad = (item) => pickFirst(item, ['Ciudad', 'CIUDAD', 'Plaza', 'PLAZA', 'Hub', 'HUB']);
+  const getEstatus = (item) => pickFirst(item, ['Estatus', 'ESTATUS', 'Estado', 'ESTADO', 'status']);
 
   // Cargar datos solo cuando esta vista se monta
   useEffect(() => {
@@ -38,6 +52,19 @@ export default function InstallListView({
     loadData();
   }, [user]);
 
+  useEffect(() => {
+    const loadLastUpdate = async () => {
+      if (!user) return;
+      try {
+        const result = await api.getInstallLastUpdate();
+        setInstallLastUpdate(result?.installLastUpdate || null);
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadLastUpdate();
+  }, [user]);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
@@ -46,15 +73,15 @@ export default function InstallListView({
     );
   }
 
-  const ciudades = [...new Set(data.map(item => item.Ciudad || item.Plaza).filter(Boolean))].sort();
+  const ciudades = [...new Set(data.map(item => getCiudad(item)).filter(Boolean))].sort();
 
   const filteredData = data.filter(item => {
     const matchesSearch = !searchTerm || 
-      (item.Cliente || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.Cuenta || '').includes(searchTerm);
+      String(getCliente(item) || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(getCuenta(item) || '').includes(searchTerm);
     
     const matchesCiudad = !filterCiudad || 
-      (item.Ciudad || item.Plaza) === filterCiudad;
+      getCiudad(item) === filterCiudad;
     
     return matchesSearch && matchesCiudad;
   });
@@ -88,6 +115,12 @@ export default function InstallListView({
         <p className="text-sm text-slate-600 mt-2">
           Mostrando {filteredData.length} de {dbCount} instalaciones
         </p>
+        {installLastUpdate?.lastAt && (
+          <p className="text-xs text-slate-500 mt-1">
+            Última actualización de Instalaciones: <span className="font-semibold">{new Date(installLastUpdate.lastAt).toLocaleString('es-MX')}</span>
+            {installLastUpdate.byUsername ? <span> (por {installLastUpdate.byUsername})</span> : null}
+          </p>
+        )}
       </div>
 
       {/* Lista */}
@@ -112,10 +145,10 @@ export default function InstallListView({
               ) : (
                 filteredData.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 text-sm">{item.Cliente || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{item.Cuenta || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{item.Ciudad || item.Plaza || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{item.Estatus || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{getCliente(item) || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{getCuenta(item) || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{getCiudad(item) || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{getEstatus(item) || '-'}</td>
                   </tr>
                 ))
               )}

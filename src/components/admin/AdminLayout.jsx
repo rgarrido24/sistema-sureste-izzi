@@ -227,6 +227,16 @@ export default function AdminLayout({
                     Cargar
                   </button>
                 )}
+                <button
+                  onClick={() => setActiveTab('clients')}
+                  className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'clients'
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md'
+                      : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                  }`}
+                >
+                  Ver BD
+                </button>
               </>
             )}
 

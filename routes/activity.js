@@ -7,6 +7,7 @@ import M2Master from '../models/M2Master.js';
 import M3Master from '../models/M3Master.js';
 import M4Master from '../models/M4Master.js';
 import SalesMaster from '../models/SalesMaster.js';
+import InstallMaster from '../models/InstallMaster.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -32,6 +33,12 @@ async function fallbackCobranzaLastUploads() {
     results.push({ _id: s.module, lastAt, byUsername: '', byRole: '', meta: { inferred: true } });
   }
   return results;
+}
+
+async function fallbackInstallLastUpdate() {
+  const doc = await InstallMaster.findOne({}, { updatedAt: 1, createdAt: 1 }).sort({ updatedAt: -1, createdAt: -1 }).lean();
+  const lastAt = doc?.updatedAt || doc?.createdAt || null;
+  return { lastAt, inferred: true };
 }
 
 // Log de WhatsApp (se llama desde frontend antes de abrir el link)
@@ -181,6 +188,32 @@ router.get('/cobranza/last-update', async (req, res) => {
     res.json({ cobranzaLastUploads: lastUploadByModule });
   } catch (error) {
     console.error('Error obteniendo last-update cobranza:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Para mostrar "Última actualización" de Instalaciones (visible para todos)
+router.get('/install/last-update', async (req, res) => {
+  try {
+    const last = await ActivityEvent.findOne({ type: 'upload', module: 'install' })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!last) {
+      const inferred = await fallbackInstallLastUpdate();
+      return res.json({ installLastUpdate: { lastAt: inferred.lastAt, byUsername: '', byRole: '', meta: { inferred: true } } });
+    }
+
+    res.json({
+      installLastUpdate: {
+        lastAt: last.createdAt,
+        byUsername: last.username || '',
+        byRole: last.role || '',
+        meta: last.meta || {},
+      },
+    });
+  } catch (error) {
+    console.error('Error obteniendo last-update instalaciones:', error);
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
