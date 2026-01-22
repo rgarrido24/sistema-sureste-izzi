@@ -20,22 +20,34 @@ export function normalizeCuenta(item) {
     
     // Buscar variaciones de "cuenta" - incluir "nocuenta", "referencia" y "nº de cuenta" como alternativas
     // Priorizar "nº de cuenta" para operación del día
-    if (keyNormalized === 'nºdecuenta' ||  // Nº de cuenta (sin espacios) - PRIORIDAD ALTA
-        keyNormalized === 'n°decuenta' ||
-        keyNormalized === 'cuenta' || 
-        keyNormalized === 'nocuenta' ||  // Agregado: NoCuenta
-        keyNormalized === 'numerodecuenta' ||
-        keyNormalized === 'númerodecuenta' ||
-        keyNormalized === 'nºcuenta' ||
-        keyNormalized === 'n°cuenta' ||
-        keyNormalized.includes('cuenta') ||
-        keyNormalized.includes('nocuenta')) {
+    const isStrongMatch =
+      keyNormalized === 'cuentadefacturacion' ||
+      keyNormalized === 'cuentadefacturación' ||
+      keyNormalized === 'nºdecuenta' ||
+      keyNormalized === 'n°decuenta' ||
+      keyNormalized === 'nocuenta' ||
+      keyNormalized === 'cuenta';
+
+    const isWeakMatch =
+      keyNormalized.includes('cuenta') ||
+      keyNormalized.includes('nocuenta') ||
+      keyNormalized.includes('facturacion') ||
+      keyNormalized.includes('facturación');
+
+    if (isStrongMatch || isWeakMatch) {
       const value = item[key];
-      // Solo usar si el valor no está vacío
-      if (value !== undefined && value !== null && value !== '') {
-        cuenta = value;
-        break;
+      if (value === undefined || value === null || value === '') continue;
+      const raw = String(value).trim();
+      if (!raw || raw === 'undefined' || raw === 'null') continue;
+
+      // Para matches débiles, SOLO aceptar si trae dígitos suficientes.
+      if (!isStrongMatch) {
+        const digits = raw.replace(/[^\d]/g, '');
+        if (!digits || digits.length < 3) continue;
       }
+
+      cuenta = raw;
+      break;
     }
   }
   
