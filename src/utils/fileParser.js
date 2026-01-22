@@ -10,13 +10,48 @@ export function parseCSV(text) {
     text = text.slice(1);
   }
   
-  // Detectar separador: primero intentar tabulador, luego punto y coma, luego coma
-  let separator = ',';
-  if (text.includes('\t')) {
-    separator = '\t';
-  } else if (text.includes(';')) {
-    separator = ';';
-  }
+  // Detectar separador de forma robusta (cuenta delimitadores fuera de comillas)
+  const detectSeparator = (raw) => {
+    const candidates = ['\t', ';', ','];
+    const lines = raw.split(/\r?\n/).slice(0, 20);
+
+    const countDelimsOutsideQuotes = (line, delim) => {
+      let inQuotes = false;
+      let count = 0;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        const next = line[i + 1];
+        if (ch === '"') {
+          if (inQuotes && next === '"') {
+            i++; // skip escaped quote
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (!inQuotes && ch === delim) {
+          count++;
+        }
+      }
+      return count;
+    };
+
+    // Promedio de delimitadores por línea (solo líneas con contenido)
+    const scores = candidates.map((d) => {
+      let total = 0;
+      let used = 0;
+      for (const line of lines) {
+        if (!line || !line.trim()) continue;
+        total += countDelimsOutsideQuotes(line, d);
+        used++;
+      }
+      return { delim: d, score: used ? total / used : 0 };
+    });
+
+    scores.sort((a, b) => b.score - a.score);
+    // Si todos son 0, default coma
+    return scores[0]?.score > 0 ? scores[0].delim : ',';
+  };
+
+  const separator = detectSeparator(text);
   
   const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
   

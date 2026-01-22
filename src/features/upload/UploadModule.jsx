@@ -42,6 +42,7 @@ export default function UploadModule({ currentModule }) {
       reader.onload = async (e) => {
         try {
           let rows = [];
+          const fileNameLower = file.name.toLowerCase();
 
           if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
             // Para CSV/TXT, el resultado ya es texto, no necesita decodificación
@@ -98,6 +99,7 @@ export default function UploadModule({ currentModule }) {
           
           // DEBUG: Mostrar los primeros encabezados
           console.log('📋 DEBUG - Total de filas:', rows.length);
+          console.log('📋 DEBUG - HeaderRowIndex detectado:', headerRowIndex);
           console.log('📋 DEBUG - Encabezados del archivo:', headers.slice(0, 10));
           console.log('📋 DEBUG - TODOS los encabezados:', headers);
           console.log('📋 DEBUG - Longitud de headers:', headers.length);
@@ -116,6 +118,17 @@ export default function UploadModule({ currentModule }) {
           
           console.log('📋 DEBUG - Índice de "Cuenta de facturación":', cuentaFacturacionIndex);
           console.log('📋 DEBUG - Índice de "Nº de cuenta":', cuentaNumIndex);
+
+          // Si no encontramos columna de cuenta, alertar antes de subir (evita miles de omitidos)
+          if (fileNameLower.includes('operacion') || fileNameLower.includes('output')) {
+            if (cuentaNumIndex === -1 && cuentaFacturacionIndex === -1) {
+              alert(
+                '⚠️ No se detectó la columna de cuenta ("Nº de cuenta" o "Cuenta de facturación") en el archivo.\n' +
+                'Esto normalmente pasa por un CSV con separador incorrecto o encabezados desfasados.\n\n' +
+                'Sugerencia: vuelve a exportar como CSV UTF-8 y reintenta.'
+              );
+            }
+          }
           
           const data = rows.slice(headerRowIndex + 1).map((row, rowIndex) => {
             const obj = {};
@@ -135,6 +148,65 @@ export default function UploadModule({ currentModule }) {
             });
             return obj;
           });
+
+          // Validación fuerte para Operación del Día: ¿realmente viene "Nº de cuenta" con valores?
+          const extractCuentaLike = (obj) => {
+            if (!obj || typeof obj !== 'object') return '';
+            const candidates = [
+              obj['Nº de cuenta'],
+              obj['N° de cuenta'],
+              obj['No. de cuenta'],
+              obj['Cuenta de facturación'],
+              obj['Cuenta de Facturación'],
+              obj['CUENTA DE FACTURACIÓN'],
+              obj['CUENTA'],
+              obj['Cuenta'],
+              obj['Referencia'],
+              obj['REFERENCIA'],
+            ];
+            for (const v of candidates) {
+              const raw = String(v ?? '').trim();
+              if (!raw) continue;
+              const digits = raw.replace(/[^\d]/g, '');
+              if (digits.length >= 3) return digits;
+              if (raw.length >= 3 && raw !== 'undefined' && raw !== 'null') return raw;
+            }
+            return '';
+          };
+
+          const isOperacionFile = fileNameLower.includes('operacion') || fileNameLower.includes('output');
+          if (isOperacionFile) {
+            const total = data.length;
+            const sample = data.slice(0, 5);
+            const found = data.reduce((acc, obj) => acc + (extractCuentaLike(obj) ? 1 : 0), 0);
+            const headerCuentaDetected = cuentaNumIndex !== -1 || cuentaFacturacionIndex !== -1;
+
+            console.log('📋 VALIDACIÓN OPERACIÓN - headerCuentaDetected:', headerCuentaDetected);
+            console.log('📋 VALIDACIÓN OPERACIÓN - foundCuentaCount:', found, 'de', total);
+            console.log('📋 VALIDACIÓN OPERACIÓN - sampleCuenta:', sample.map(s => ({
+              cuenta: extractCuentaLike(s),
+              keys: Object.keys(s).filter(k => k.toLowerCase().includes('cuenta') || k.toLowerCase().includes('factur')),
+            })));
+
+            // Si encontramos muy pocas cuentas, es casi seguro que el archivo no trae esa columna con valores
+            if (total > 0 && found / total < 0.2) {
+              const proceed = confirm(
+                `⚠️ ALERTA: El archivo parece NO traer números de cuenta en "Nº de cuenta".\n\n` +
+                `Detectadas con cuenta: ${found} de ${total}.\n` +
+                `Si continúas, se omitirán casi todas las filas.\n\n` +
+                `Sugerencias:\n` +
+                `- Asegura que estás exportando el reporte correcto de Operación del Día (con columna BQ "Nº de cuenta").\n` +
+                `- Revisa que la columna no sea fórmula vacía.\n` +
+                `- En Bloc de notas, usa Ctrl+F y busca un número de cuenta conocido.\n\n` +
+                `¿Quieres continuar de todos modos?`
+              );
+              if (!proceed) {
+                setUploading(false);
+                setProgress('');
+                return;
+              }
+            }
+          }
           
           // DEBUG: Mostrar el primer registro convertido
           if (data.length > 0) {
@@ -184,8 +256,6 @@ export default function UploadModule({ currentModule }) {
 
           // Subir datos según el módulo y tipo de archivo
           // Detectar si es M1, M2, M3, M4 por el nombre del archivo o contenido
-          const fileNameLower = file.name.toLowerCase();
-          
           let result;
           // Determinar si es M1, M2, M3, M4 para aplicar reemplazo mensual si está activado
           const isM1M2M3M4 = fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
