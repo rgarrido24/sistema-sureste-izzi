@@ -4,6 +4,7 @@ import { MODULES } from '../../utils/constants.js';
 import { BarChart3, Users, CheckCircle, MapPin } from 'lucide-react';
 import * as api from '../../api.js';
 import { filterByVendor, matchVendorName } from '../../utils/vendorFilter.js';
+import { getRegionFromHubPlaza as getRegionFromHubPlazaOperacion } from '../../utils/regionHubPlaza.js';
 
 // Función para normalizar texto sin acentos (para comparación flexible)
 const normalizeText = (text) => {
@@ -784,7 +785,8 @@ export default function DashboardModule({ currentModule }) {
             )) {
               plazaFinal = hub || ''; // Si plaza es genérica, usar solo hub
             }
-            const region = getRegionFromHubPlaza(hub, plazaFinal) || 'METROPOLITANA';
+            // Usar la MISMA lógica de región que Operación del Día para que los conteos coincidan
+            const region = getRegionFromHubPlazaOperacion(hub, plazaFinal) || 'METROPOLITANA';
             
             // Log para TODAS las plazas de METROPOLITANA para debugging
             const plazaUpper = plazaFinal ? plazaFinal.toUpperCase() : '';
