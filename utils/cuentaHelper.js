@@ -15,7 +15,8 @@ export function normalizeCuenta(item) {
   
   for (const key of keys) {
     // Normalizar la clave: quitar espacios, convertir a minúsculas
-    const keyNormalized = String(key || '').trim().toLowerCase().replace(/\s+/g, '');
+    // Incluir NBSP (\u00A0) porque muchos CSV/Excel lo traen invisible
+    const keyNormalized = String(key || '').trim().toLowerCase().replace(/[\s\u00A0]+/g, '');
     
     // Buscar variaciones de "cuenta" - incluir "nocuenta", "referencia" y "nº de cuenta" como alternativas
     // Priorizar "nº de cuenta" para operación del día
@@ -83,11 +84,18 @@ export function normalizeCuenta(item) {
   let normalized = String(cuenta || '').trim();
   
   // Quitar espacios internos
-  normalized = normalized.replace(/\s+/g, '');
+  normalized = normalized.replace(/[\s\u00A0]+/g, '');
   
   // Si está vacío después de normalizar, retornar vacío
   if (!normalized || normalized === 'undefined' || normalized === 'null' || normalized === '') {
     return '';
+  }
+
+  // Si contiene dígitos, preferir SOLO dígitos (las cuentas son numéricas)
+  // Esto arregla casos como "12345.0", "  00123 ", "Nº 12345", etc.
+  const digits = normalized.replace(/[^\d]/g, '');
+  if (digits && digits.length >= 3) {
+    return digits;
   }
   
   return normalized;

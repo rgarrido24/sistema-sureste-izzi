@@ -70,7 +70,31 @@ export default function UploadModule({ currentModule }) {
             return;
           }
           
-          const headers = rows[0];
+          // A veces los CSV/Excel traen 1-3 filas “extra” antes del header real.
+          // Detectar la fila de encabezados buscando una fila que contenga "cuenta" / "Nº de cuenta".
+          const normalizeHeaderCell = (v) => String(v || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[\s\u00A0]+/g, ' ')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+
+          const isHeaderRow = (row) => {
+            if (!Array.isArray(row)) return false;
+            const cells = row.map(normalizeHeaderCell).filter(Boolean);
+            if (cells.length < 5) return false;
+            return cells.some(c => c.includes('nº de cuenta') || c.includes('n° de cuenta') || c.includes('no. de cuenta') || (c.includes('cuenta') && c.includes('de')) || c === 'cuenta');
+          };
+
+          let headerRowIndex = 0;
+          for (let i = 0; i < Math.min(5, rows.length); i++) {
+            if (isHeaderRow(rows[i])) {
+              headerRowIndex = i;
+              break;
+            }
+          }
+
+          const headers = rows[headerRowIndex];
           
           // DEBUG: Mostrar los primeros encabezados
           console.log('📋 DEBUG - Total de filas:', rows.length);
@@ -93,11 +117,11 @@ export default function UploadModule({ currentModule }) {
           console.log('📋 DEBUG - Índice de "Cuenta de facturación":', cuentaFacturacionIndex);
           console.log('📋 DEBUG - Índice de "Nº de cuenta":', cuentaNumIndex);
           
-          const data = rows.slice(1).map((row, rowIndex) => {
+          const data = rows.slice(headerRowIndex + 1).map((row, rowIndex) => {
             const obj = {};
             headers.forEach((header, index) => {
               // Limpiar el nombre del header (quitar espacios, caracteres especiales)
-              const cleanHeader = String(header || '').trim();
+              const cleanHeader = String(header || '').trim().replace(/[\u00A0]+/g, ' ');
               // CRÍTICO: Si el header está vacío, NO guardar la columna.
               // Si se guarda como key "", Mongo truena con: "An empty update path is not valid" (code 56)
               if (!cleanHeader || cleanHeader === 'undefined' || cleanHeader === 'null') return;
