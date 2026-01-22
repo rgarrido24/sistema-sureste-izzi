@@ -6,6 +6,53 @@ import { filterByVendor } from '../../utils/vendorFilter.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { exportOperacionDiaToExcel } from '../../utils/exporters.js';
 
+// Fallback de paquetes IZZI (histórico): si el catálogo aún no está cargado en BD,
+// se siguen mostrando estas opciones como antes.
+const FALLBACK_IZZI_PACKAGES = [
+  // TRIPLE
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI60M', name: 'IZZI 60 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI80M', name: 'IZZI 80 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI100M2', name: 'IZZI 100 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI150M', name: 'IZZI 150 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI200M2', name: 'IZZI 200 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI500M2', name: 'IZZI 500 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI1000M2', name: 'IZZI 1000 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG30', name: 'IZZI NEGOCIOS 30 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG40', name: 'IZZI NEGOCIOS 40 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG50', name: 'IZZI NEGOCIOS 50 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG60', name: 'IZZI NEGOCIOS 60 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG80', name: 'IZZI NEGOCIOS 80 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG100', name: 'IZZI NEGOCIOS 100 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG125', name: 'IZZI NEGOCIOS 125 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG150', name: 'IZZI NEGOCIOS 150 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG200', name: 'IZZI NEGOCIOS 200 MEGAS + IZZI TV HD' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG500', name: 'IZZI NEGOCIOS 500 MEGAS + IZZI TV HD' },
+  // DOBLE
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI60M', name: 'IZZI 60 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI80M', name: 'IZZI 80 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI100M', name: 'IZZI 100 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI150M', name: 'IZZI 150 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI200M', name: 'IZZI 200 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI500M', name: 'IZZI 500 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI1000M', name: 'IZZI 1000 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN40M', name: 'IZZI NEGOCIOS 40 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN60M', name: 'IZZI NEGOCIOS 60 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN80M', name: 'IZZI NEGOCIOS 80 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN100M', name: 'IZZI NEGOCIOS 100 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN150M', name: 'IZZI NEGOCIOS 150 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN200M', name: 'IZZI NEGOCIOS 200 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN500M', name: 'IZZI NEGOCIOS 500 MEGAS' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN1000M', name: 'IZZI NEGOCIOS 1000 MEGAS' },
+  // SINGLE
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVL', name: 'IZZI TV LIGHT' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SPTVM', name: 'PACK TV MINI' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVP', name: 'IZZI TV +' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVPB', name: 'IZZI TV + BÁSICO' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVPP', name: 'IZZI TV + PREMIUM' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SPTVP', name: 'PACK TV PLUS' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SIHD', name: 'IZZI TV HD' },
+];
+
 // Función para limpiar y validar número de teléfono (elige el primer número válido si vienen varios)
 const cleanPhoneNumber = (phone) => {
   if (!phone) return null;
@@ -1732,7 +1779,11 @@ export default function OperacionModule() {
                       const normTipo = (t) => String(t || '').toUpperCase().trim();
                       const byGroup = new Map();
 
-                      (packageCatalog || []).forEach(p => {
+                      const source = (packageCatalog && packageCatalog.length > 0)
+                        ? packageCatalog
+                        : FALLBACK_IZZI_PACKAGES;
+
+                      source.forEach(p => {
                         const marca = normMarca(p.marca);
                         const tipo = normTipo(p.tipo) || 'OTROS';
                         const key = `${tipo}||${marca}`;

@@ -76,6 +76,7 @@ export default function AdminDashboard({ user }) {
           {activeTab === 'account' && <AccountModule />}
           {activeTab === 'users' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios') && <UsersModule />}
           {activeTab === 'template' && (user?.role === 'admin' || user?.role === 'admin_general') && <TemplateModule />}
+          {activeTab === 'packages' && (user?.role === 'admin' || user?.role === 'admin_general') && <PackagesModule />}
           {activeTab === 'promociones' && (user?.role === 'admin' || user?.role === 'admin_general') && <PromocionesModule />}
           {activeTab === 'knowledge' && (user?.role === 'admin' || user?.role === 'admin_general') && <KnowledgeModule />}
           {activeTab === 'actividad' && (user?.role === 'admin' || user?.role === 'admin_general') && <AdminActivityDashboard />}
