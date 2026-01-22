@@ -390,135 +390,76 @@ router.put('/:id/vendedor', async (req, res) => {
   }
 });
 
-// Función auxiliar para extraer vendedores de un registro
-function extractVendorsFromRecord(record) {
-  const vendors = new Set();
-  const recordObj = record.toObject ? record.toObject() : record;
-  
-  // Campos conocidos de vendedor
-  const vendorFields = [
-    'Vendedor', 'VendedorAsignado', 'Vendedor Asignado',
-    'Clave Vendedor', 'CVVEN', 'VENDEDOR', 'VENDEDORASIGNADO'
-  ];
-  
-  vendorFields.forEach(field => {
-    if (recordObj[field] && String(recordObj[field]).trim() !== '') {
-      const value = String(recordObj[field]).trim();
-      // Excluir valores inválidos
-      if (value.toLowerCase() !== 'sin dato' && 
-          value.toLowerCase() !== 'sin datos' &&
-          value.toLowerCase() !== 'n/a' &&
-          value.toLowerCase() !== 'na' &&
-          value.length > 2) {
-        // Capitalizar correctamente
-        const capitalized = value.split(' ').map(word => 
-          word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        ).join(' ');
-        vendors.add(capitalized);
-      }
-    }
-  });
-  
-  // Buscar en todos los campos que contengan "vendedor"
-  Object.keys(recordObj).forEach(key => {
-    const keyUpper = key.toUpperCase();
-    if ((keyUpper.includes('VENDEDOR') || keyUpper.includes('VENDOR')) && 
-        recordObj[key] && String(recordObj[key]).trim() !== '') {
-      const value = String(recordObj[key]).trim();
-      // Excluir valores inválidos y códigos cortos
-      if (value.toLowerCase() !== 'sin dato' && 
-          value.toLowerCase() !== 'sin datos' &&
-          value.toLowerCase() !== 'n/a' &&
-          value.toLowerCase() !== 'na' &&
-          value.length > 3 && 
-          !value.match(/^[A-Z0-9]{1,3}$/)) { // No códigos de 1-3 caracteres
-        const capitalized = value.split(' ').map(word => 
-          word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        ).join(' ');
-        vendors.add(capitalized);
-      }
-    }
-  });
-  
-  return vendors;
+// Cache simple en memoria para evitar re-calcular en cada request (Render free)
+let vendorsCache = { at: 0, vendors: [] };
+const VENDORS_CACHE_MS = 10 * 60 * 1000;
+
+function normalizeVendorKey(value) {
+  return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
 }
 
-// Obtener lista de vendedores únicos de TODAS las colecciones
+function isValidVendorValue(value) {
+  const v = String(value || '').trim();
+  if (!v) return false;
+  const low = v.toLowerCase();
+  if (low === 'sin dato' || low === 'sin datos' || low === 'n/a' || low === 'na') return false;
+  if (v.length < 3) return false;
+  return true;
+}
+
+async function collectDistinct(model, fields = []) {
+  const out = [];
+  for (const field of fields) {
+    try {
+      const vals = await model.distinct(field);
+      if (Array.isArray(vals)) out.push(...vals);
+    } catch (e) {
+      // algunos campos pueden no existir en colecciones → ignorar
+    }
+  }
+  return out;
+}
+
+// Obtener lista de vendedores únicos (rápido) para asignación en Operación
 router.get('/vendors', async (req, res) => {
   try {
-    const allVendorsSet = new Set();
-    
-    console.log('🔍 Buscando vendedores en todas las colecciones...');
-    
-    // 1. Buscar en M1Master
-    console.log('   - Buscando en M1Master...');
-    const allM1 = await M1Master.find({}).limit(50000);
-    allM1.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - M1Master: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // 2. Buscar en M2Master
-    console.log('   - Buscando en M2Master...');
-    const allM2 = await M2Master.find({}).limit(50000);
-    allM2.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - M2Master: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // 3. Buscar en M3Master
-    console.log('   - Buscando en M3Master...');
-    const allM3 = await M3Master.find({}).limit(50000);
-    allM3.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - M3Master: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // 4. Buscar en M4Master
-    console.log('   - Buscando en M4Master...');
-    const allM4 = await M4Master.find({}).limit(50000);
-    allM4.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - M4Master: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // 5. Buscar en SalesMaster
-    console.log('   - Buscando en SalesMaster...');
-    const allSales = await SalesMaster.find({}).limit(50000);
-    allSales.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - SalesMaster: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // 6. Buscar en InstallMaster
-    console.log('   - Buscando en InstallMaster...');
-    const allInstalls = await InstallMaster.find({}).limit(50000);
-    allInstalls.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - InstallMaster: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // 7. Buscar en OperacionDia
-    console.log('   - Buscando en OperacionDia...');
-    const allOperaciones = await OperacionDia.find({}).limit(50000);
-    allOperaciones.forEach(record => {
-      const vendors = extractVendorsFromRecord(record);
-      vendors.forEach(v => allVendorsSet.add(v));
-    });
-    console.log(`   - OperacionDia: ${allVendorsSet.size} vendedores únicos hasta ahora`);
-    
-    // Convertir a array y ordenar
-    const allVendors = Array.from(allVendorsSet).sort();
-    
-    console.log(`✅ Total vendedores únicos encontrados: ${allVendors.length}`);
-    
-    res.json({ vendors: allVendors });
+    const now = Date.now();
+    if (vendorsCache.vendors.length > 0 && now - vendorsCache.at < VENDORS_CACHE_MS) {
+      return res.json({ vendors: vendorsCache.vendors, cached: true });
+    }
+
+    // Campos relevantes: conservar tal cual (sin "capitalizar") para que salgan claves tipo CVVEN...
+    const vendorFields = [
+      'Vendedor',
+      'VendedorAsignado',
+      'Vendedor Asignado',
+      'Clave Vendedor',
+      'CVVEN',
+      'VENDEDOR',
+      'VENDEDORASIGNADO',
+      'Clave vendedor',
+      'Cvven',
+    ];
+
+    const allValues = [];
+    // Para que coincida con Cobranza, priorizamos M1-M4 + SalesMaster y luego OperacionDia
+    allValues.push(...await collectDistinct(M1Master, vendorFields));
+    allValues.push(...await collectDistinct(M2Master, vendorFields));
+    allValues.push(...await collectDistinct(M3Master, vendorFields));
+    allValues.push(...await collectDistinct(M4Master, vendorFields));
+    allValues.push(...await collectDistinct(SalesMaster, vendorFields));
+    allValues.push(...await collectDistinct(OperacionDia, vendorFields));
+
+    const byKey = new Map();
+    for (const v of allValues) {
+      if (!isValidVendorValue(v)) continue;
+      const key = normalizeVendorKey(v);
+      if (!byKey.has(key)) byKey.set(key, String(v).trim());
+    }
+
+    const vendors = Array.from(byKey.values()).sort((a, b) => normalizeVendorKey(a).localeCompare(normalizeVendorKey(b)));
+    vendorsCache = { at: now, vendors };
+    res.json({ vendors, cached: false });
   } catch (error) {
     console.error('Error obteniendo vendedores:', error);
     res.status(500).json({ error: 'Error del servidor' });
