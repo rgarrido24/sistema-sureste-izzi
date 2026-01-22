@@ -94,16 +94,29 @@ router.post('/bulk', async (req, res) => {
     let skipped = 0;
     const errors = [];
 
+    const stripBadKeys = (obj) => {
+      if (!obj || typeof obj !== 'object') return {};
+      const out = {};
+      for (const [k0, v] of Object.entries(obj)) {
+        const k = String(k0 || '').trim();
+        if (!k) continue;
+        if (k.startsWith('$')) continue;
+        out[k] = v;
+      }
+      return out;
+    };
+
     // 1) Preparar + deduplicar por cuenta (último gana)
     const byCuenta = new Map();
     for (const item of data) {
       try {
+        const safeItem = stripBadKeys(item);
         // Reusar la lógica existente: si normalizeCuenta falla, prepareDataForUpsert suele rellenar
         // Nota: normalizeCuenta ya contempla varias variantes
-        let cuenta = normalizeCuenta(item) || '';
+        let cuenta = normalizeCuenta(safeItem) || '';
         // Si viene cuenta de facturación o Nº de cuenta en crudo, dejar que el normalizador extraiga dígitos
         if (!cuenta) {
-          const direct = item?.['Nº de cuenta'] || item?.['N° de cuenta'] || item?.['Cuenta de facturación'] || item?.['Cuenta'] || item?.['CUENTA'] || '';
+          const direct = safeItem?.['Nº de cuenta'] || safeItem?.['N° de cuenta'] || safeItem?.['Cuenta de facturación'] || safeItem?.['Cuenta'] || safeItem?.['CUENTA'] || '';
           const numeric = String(direct || '').trim().replace(/[^\d]/g, '');
           cuenta = numeric || String(direct || '').trim().replace(/\s+/g, '');
         }
@@ -113,9 +126,9 @@ router.post('/bulk', async (req, res) => {
           continue;
         }
 
-        const preparedData = prepareDataForUpsert(item, 'operacion');
+        const preparedData = prepareDataForUpsert(safeItem, 'operacion');
         if (!preparedData.estado) {
-          preparedData.estado = item['Estado'] || item.Estado || 'Abierta';
+          preparedData.estado = safeItem['Estado'] || safeItem.Estado || 'Abierta';
         }
 
         const optimizedData = optimizeDocument(
@@ -127,6 +140,12 @@ router.post('/bulk', async (req, res) => {
           },
           'operacion'
         );
+
+        // CRÍTICO: No dejar fechaCreacion en $set, porque en upsert se define en $setOnInsert
+        // Si va en ambos, Mongo lanza: "would create a conflict at 'fechaCreacion'"
+        if ('fechaCreacion' in optimizedData) {
+          delete optimizedData.fechaCreacion;
+        }
 
         byCuenta.set(cuentaKey, optimizedData);
       } catch (itemError) {
@@ -170,6 +189,9 @@ router.post('/bulk', async (req, res) => {
           ...(vendorKeep && !docVendor ? { VendedorAsignado: existing.VendedorAsignado || existing.Vendedor } : {}),
           updatedAt: new Date(),
         };
+        // Evitar conflictos de upsert: fechaCreacion solo en $setOnInsert
+        if ('fechaCreacion' in toSet) delete toSet.fechaCreacion;
+        if ('createdAt' in toSet) delete toSet.createdAt;
 
         ops.push({
           updateOne: {
