@@ -700,6 +700,7 @@ export default function OperacionModule() {
   const [vendors, setVendors] = useState([]); // Lista de vendedores
   const [assigningVendor, setAssigningVendor] = useState(null); // ID del item al que se está asignando vendedor
   const [vendorInput, setVendorInput] = useState(''); // Nombre del vendedor asignado (manual o lista)
+  const [packageCatalog, setPackageCatalog] = useState([]); // Catálogo de paquetes (IZZI/WIZZ) desde BD
   const [currentPage, setCurrentPage] = useState(1); // Página actual
   const [itemsPerPage, setItemsPerPage] = useState(25); // Items por página (25, 50, 75, 100)
   const [notas, setNotas] = useState({}); // Notas locales por item ID
@@ -845,6 +846,19 @@ export default function OperacionModule() {
     if (user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control')) {
       loadVendors();
     }
+  }, [user]);
+
+  // Cargar catálogo de paquetes (para selector Paquete Contratado)
+  useEffect(() => {
+    const loadPackagesCatalog = async () => {
+      try {
+        const pkgs = await api.getPackages();
+        setPackageCatalog((pkgs || []).map(p => ({ id: p._id || p.id, ...p })));
+      } catch (e) {
+        console.error('Error cargando catálogo de paquetes:', e);
+      }
+    };
+    if (user) loadPackagesCatalog();
   }, [user]);
 
   // Función para guardar notas
@@ -1713,51 +1727,58 @@ export default function OperacionModule() {
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
                   >
                     <option value="">Seleccionar paquete...</option>
-                    <optgroup label="PLANES TRIPLES">
-                      <option value="TI60M">IZZI 60 MEGAS + IZZI TV HD</option>
-                      <option value="TI80M">IZZI 80 MEGAS + IZZI TV HD</option>
-                      <option value="TI100M2">IZZI 100 MEGAS + IZZI TV HD</option>
-                      <option value="TI150M">IZZI 150 MEGAS + IZZI TV HD</option>
-                      <option value="TI200M2">IZZI 200 MEGAS + IZZI TV HD</option>
-                      <option value="TI500M2">IZZI 500 MEGAS + IZZI TV HD</option>
-                      <option value="TI1000M2">IZZI 1000 MEGAS + IZZI TV HD</option>
-                      <option value="TIG30">IZZI NEGOCIOS 30 MEGAS + IZZI TV HD</option>
-                      <option value="TIG40">IZZI NEGOCIOS 40 MEGAS + IZZI TV HD</option>
-                      <option value="TIG50">IZZI NEGOCIOS 50 MEGAS + IZZI TV HD</option>
-                      <option value="TIG60">IZZI NEGOCIOS 60 MEGAS + IZZI TV HD</option>
-                      <option value="TIG80">IZZI NEGOCIOS 80 MEGAS + IZZI TV HD</option>
-                      <option value="TIG100">IZZI NEGOCIOS 100 MEGAS + IZZI TV HD</option>
-                      <option value="TIG125">IZZI NEGOCIOS 125 MEGAS + IZZI TV HD</option>
-                      <option value="TIG150">IZZI NEGOCIOS 150 MEGAS + IZZI TV HD</option>
-                      <option value="TIG200">IZZI NEGOCIOS 200 MEGAS + IZZI TV HD</option>
-                      <option value="TIG500">IZZI NEGOCIOS 500 MEGAS + IZZI TV HD</option>
-                    </optgroup>
-                    <optgroup label="PLANES DOBLES">
-                      <option value="DI60M">IZZI 60 MEGAS</option>
-                      <option value="DI80M">IZZI 80 MEGAS</option>
-                      <option value="DI100M">IZZI 100 MEGAS</option>
-                      <option value="DI150M">IZZI 150 MEGAS</option>
-                      <option value="DI200M">IZZI 200 MEGAS</option>
-                      <option value="DI500M">IZZI 500 MEGAS</option>
-                      <option value="DI1000M">IZZI 1000 MEGAS</option>
-                      <option value="DIN40M">IZZI NEGOCIOS 40 MEGAS</option>
-                      <option value="DIN60M">IZZI NEGOCIOS 60 MEGAS</option>
-                      <option value="DIN80M">IZZI NEGOCIOS 80 MEGAS</option>
-                      <option value="DIN100M">IZZI NEGOCIOS 100 MEGAS</option>
-                      <option value="DIN150M">IZZI NEGOCIOS 150 MEGAS</option>
-                      <option value="DIN200M">IZZI NEGOCIOS 200 MEGAS</option>
-                      <option value="DIN500M">IZZI NEGOCIOS 500 MEGAS</option>
-                      <option value="DIN1000M">IZZI NEGOCIOS 1000 MEGAS</option>
-                    </optgroup>
-                    <optgroup label="PLANES SINGLES">
-                      <option value="SITVL">IZZI TV LIGHT</option>
-                      <option value="SPTVM">PACK TV MINI</option>
-                      <option value="SITVP">IZZI TV +</option>
-                      <option value="SITVPB">IZZI TV + BÁSICO</option>
-                      <option value="SITVPP">IZZI TV + PREMIUM</option>
-                      <option value="SPTVP">PACK TV PLUS</option>
-                      <option value="SIHD">IZZI TV HD</option>
-                    </optgroup>
+                    {(() => {
+                      const normMarca = (m) => String(m || 'IZZI').toUpperCase().trim();
+                      const normTipo = (t) => String(t || '').toUpperCase().trim();
+                      const byGroup = new Map();
+
+                      (packageCatalog || []).forEach(p => {
+                        const marca = normMarca(p.marca);
+                        const tipo = normTipo(p.tipo) || 'OTROS';
+                        const key = `${tipo}||${marca}`;
+                        if (!byGroup.has(key)) byGroup.set(key, []);
+                        byGroup.get(key).push(p);
+                      });
+
+                      const orderTipo = ['TRIPLE', 'DOBLE', 'SINGLE', 'OTROS'];
+                      const orderMarca = ['IZZI', 'WIZZ'];
+                      const keys = Array.from(byGroup.keys()).sort((a, b) => {
+                        const [tA, mA] = a.split('||');
+                        const [tB, mB] = b.split('||');
+                        const tIdxA = orderTipo.indexOf(tA);
+                        const tIdxB = orderTipo.indexOf(tB);
+                        const tCmp = (tIdxA === -1 ? 999 : tIdxA) - (tIdxB === -1 ? 999 : tIdxB);
+                        if (tCmp !== 0) return tCmp;
+                        const mIdxA = orderMarca.indexOf(mA);
+                        const mIdxB = orderMarca.indexOf(mB);
+                        return (mIdxA === -1 ? 999 : mIdxA) - (mIdxB === -1 ? 999 : mIdxB);
+                      });
+
+                      return keys.map(k => {
+                        const [tipo, marca] = k.split('||');
+                        const label = `${tipo === 'OTROS' ? 'OTROS' : `PLANES ${tipo}S`} ${marca}`;
+                        const list = (byGroup.get(k) || [])
+                          .slice()
+                          .sort((a, b) => String(a.codigo || a.name || '').localeCompare(String(b.codigo || b.name || '')));
+
+                        return (
+                          <optgroup key={k} label={label}>
+                            {list.map(pkg => {
+                              const valueKey = (pkg.codigo || pkg.name || '').trim();
+                              if (!valueKey) return null;
+                              const display = pkg.codigo
+                                ? `${pkg.codigo} - ${pkg.name}`
+                                : pkg.name;
+                              return (
+                                <option key={pkg.id || valueKey} value={valueKey}>
+                                  {display}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        );
+                      });
+                    })()}
                   </select>
                 </div>
 

@@ -250,10 +250,10 @@ export async function getPackages() {
   return apiRequest('/packages');
 }
 
-export async function createPackage(name, price, description = '', codigo = '', tipo = '') {
+export async function createPackage(name, price, description = '', codigo = '', tipo = '', marca = 'IZZI') {
   return apiRequest('/packages', {
     method: 'POST',
-    body: JSON.stringify({ name, price, description, codigo, tipo }),
+    body: JSON.stringify({ name, price, description, codigo, tipo, marca }),
   });
 }
 
