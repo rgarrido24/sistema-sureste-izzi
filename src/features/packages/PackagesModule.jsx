@@ -2,6 +2,52 @@ import { useState, useEffect } from 'react';
 import { usePackages } from '../../hooks/usePackages.js';
 import * as api from '../../api.js';
 
+// Catálogo base IZZI (histórico). Sirve para cargar de golpe lo que antes estaba "hardcodeado".
+const IZZI_BASE_PACKAGES = [
+  // TRIPLE
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI60M', name: 'IZZI 60 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI80M', name: 'IZZI 80 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI100M2', name: 'IZZI 100 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI150M', name: 'IZZI 150 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI200M2', name: 'IZZI 200 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI500M2', name: 'IZZI 500 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TI1000M2', name: 'IZZI 1000 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG30', name: 'IZZI NEGOCIOS 30 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG40', name: 'IZZI NEGOCIOS 40 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG50', name: 'IZZI NEGOCIOS 50 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG60', name: 'IZZI NEGOCIOS 60 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG80', name: 'IZZI NEGOCIOS 80 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG100', name: 'IZZI NEGOCIOS 100 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG125', name: 'IZZI NEGOCIOS 125 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG150', name: 'IZZI NEGOCIOS 150 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG200', name: 'IZZI NEGOCIOS 200 MEGAS + IZZI TV HD', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'TRIPLE', codigo: 'TIG500', name: 'IZZI NEGOCIOS 500 MEGAS + IZZI TV HD', price: 0, description: '' },
+  // DOBLE
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI60M', name: 'IZZI 60 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI80M', name: 'IZZI 80 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI100M', name: 'IZZI 100 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI150M', name: 'IZZI 150 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI200M', name: 'IZZI 200 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI500M', name: 'IZZI 500 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DI1000M', name: 'IZZI 1000 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN40M', name: 'IZZI NEGOCIOS 40 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN60M', name: 'IZZI NEGOCIOS 60 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN80M', name: 'IZZI NEGOCIOS 80 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN100M', name: 'IZZI NEGOCIOS 100 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN150M', name: 'IZZI NEGOCIOS 150 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN200M', name: 'IZZI NEGOCIOS 200 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN500M', name: 'IZZI NEGOCIOS 500 MEGAS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'DOBLE', codigo: 'DIN1000M', name: 'IZZI NEGOCIOS 1000 MEGAS', price: 0, description: '' },
+  // SINGLE
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVL', name: 'IZZI TV LIGHT', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SPTVM', name: 'PACK TV MINI', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVP', name: 'IZZI TV +', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVPB', name: 'IZZI TV + BÁSICO', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SITVPP', name: 'IZZI TV + PREMIUM', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SPTVP', name: 'PACK TV PLUS', price: 0, description: '' },
+  { marca: 'IZZI', tipo: 'SINGLE', codigo: 'SIHD', name: 'IZZI TV HD', price: 0, description: '' },
+];
+
 function normalizeSpaces(s) {
   return String(s || '').replace(/\s+/g, ' ').trim();
 }
@@ -106,6 +152,75 @@ function parseWizzPaste(text) {
   });
 }
 
+function parseIzziPaste(text) {
+  const lines = String(text || '')
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  let tipo = null;
+  const out = [];
+
+  for (const line of lines) {
+    const upper = line.toUpperCase();
+    if (upper.startsWith('TRIPLES')) { tipo = 'TRIPLE'; continue; }
+    if (upper.startsWith('DOBLES')) { tipo = 'DOBLE'; continue; }
+    if (upper.startsWith('SINGLES')) { tipo = 'SINGLE'; continue; }
+    if (!tipo) continue;
+
+    const cleaned = normalizeSpaces(line.replace(/^(TRIPLES|DOBLES|SINGLES)\s+/i, ''));
+    if (!cleaned) continue;
+
+    // Formatos aceptados:
+    // - "TI60M\tIZZI 60 MEGAS + IZZI TV HD"
+    // - "TI60M - IZZI 60 MEGAS + IZZI TV HD"
+    // - "TI60M IZZI 60 MEGAS + IZZI TV HD"
+    let codigo = '';
+    let name = cleaned;
+
+    const tabParts = cleaned.split('\t').map(s => s.trim()).filter(Boolean);
+    if (tabParts.length >= 2 && /^[A-Z]{1,4}\d{1,4}[A-Z0-9+]*$/i.test(tabParts[0])) {
+      codigo = tabParts[0].toUpperCase();
+      name = tabParts.slice(1).join(' ');
+    } else {
+      const dashParts = cleaned.split(/\s-\s/).map(s => s.trim()).filter(Boolean);
+      if (dashParts.length >= 2 && /^[A-Z]{1,4}\d{1,4}[A-Z0-9+]*$/i.test(dashParts[0])) {
+        codigo = dashParts[0].toUpperCase();
+        name = dashParts.slice(1).join(' ');
+      } else {
+        const m = cleaned.match(/^([A-Z]{1,4}\d{1,4}[A-Z0-9+]*)\s+(.+)$/i);
+        if (m) {
+          codigo = String(m[1]).toUpperCase();
+          name = String(m[2]).trim();
+        }
+      }
+    }
+
+    // Si no trae código, lo generamos básico para no bloquear la carga.
+    if (!codigo) {
+      const base = slugLetters(name).replace(/\s+/g, '').slice(0, 10) || 'PKG';
+      codigo = `IZ${base}`;
+    }
+
+    out.push({
+      marca: 'IZZI',
+      tipo,
+      codigo,
+      name,
+      price: 0,
+      description: '',
+    });
+  }
+
+  const seen = new Set();
+  return out.filter(p => {
+    const key = `${p.marca}::${p.tipo}::${p.codigo}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export default function PackagesModule() {
   // Solo carga cuando esta pestaña está activa
   const { packages, loading, loadPackages } = usePackages(true);
@@ -118,6 +233,7 @@ export default function PackagesModule() {
   const [bulkText, setBulkText] = useState('');
   const [bulkPreview, setBulkPreview] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkMarca, setBulkMarca] = useState('WIZZ');
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -149,8 +265,8 @@ export default function PackagesModule() {
     }
   };
 
-  const handleBuildWizzPreview = () => {
-    const parsed = parseWizzPaste(bulkText);
+  const handleBuildBulkPreview = () => {
+    const parsed = bulkMarca === 'IZZI' ? parseIzziPaste(bulkText) : parseWizzPaste(bulkText);
     setBulkPreview(parsed);
     if (parsed.length === 0) {
       alert('No pude detectar paquetes. Pega el texto con secciones TRIPLES / DOBLES / SINGLES como el que me enviaste.');
@@ -159,7 +275,7 @@ export default function PackagesModule() {
 
   const handleBulkUpload = async () => {
     if (!bulkPreview.length) {
-      handleBuildWizzPreview();
+      handleBuildBulkPreview();
       return;
     }
     setBulkLoading(true);
@@ -171,6 +287,19 @@ export default function PackagesModule() {
       await loadPackages();
     } catch (e) {
       alert('Error en carga masiva: ' + (e?.message || 'Error'));
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleSeedIzziBase = async () => {
+    setBulkLoading(true);
+    try {
+      const resp = await api.bulkCreatePackages(IZZI_BASE_PACKAGES);
+      alert(`✅ IZZI cargado. Creados: ${resp.created} | Omitidos: ${resp.skipped} | Total: ${resp.total}`);
+      await loadPackages();
+    } catch (e) {
+      alert('Error cargando IZZI base: ' + (e?.message || 'Error'));
     } finally {
       setBulkLoading(false);
     }
@@ -237,14 +366,47 @@ export default function PackagesModule() {
         </form>
       </div>
 
-      {/* Carga masiva WIZZ */}
+      {/* Carga masiva (IZZI/WIZZ) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <h2 className="text-xl font-bold">Carga masiva (WIZZ)</h2>
-          <button
-            type="button"
-            onClick={() => {
-              setBulkText(`TRIPLES\tWIZZ 10 + WIZZ TV 2.0
+          <h2 className="text-xl font-bold">Carga masiva (IZZI / WIZZ)</h2>
+          <div className="flex gap-2 flex-wrap items-center">
+            <select
+              value={bulkMarca}
+              onChange={(e) => {
+                setBulkMarca(e.target.value);
+                setBulkPreview([]);
+              }}
+              className="px-3 py-2 border rounded-lg text-sm"
+            >
+              <option value="WIZZ">WIZZ</option>
+              <option value="IZZI">IZZI</option>
+            </select>
+            {bulkMarca === 'IZZI' && (
+              <button
+                type="button"
+                disabled={bulkLoading}
+                onClick={handleSeedIzziBase}
+                className="px-4 py-2 bg-emerald-50 text-emerald-800 rounded-lg font-semibold hover:bg-emerald-100 border border-emerald-200 disabled:opacity-60"
+                title="Carga en un clic la lista base de IZZI (la que antes estaba hardcodeada)"
+              >
+                Cargar IZZI base (1 clic)
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (bulkMarca === 'IZZI') {
+                  setBulkText(`TRIPLES\tTI60M\tIZZI 60 MEGAS + IZZI TV HD
+\tTI80M\tIZZI 80 MEGAS + IZZI TV HD
+\tTI100M2\tIZZI 100 MEGAS + IZZI TV HD
+
+DOBLES\tDI60M\tIZZI 60 MEGAS
+\tDI80M\tIZZI 80 MEGAS
+
+SINGLES\tSITVL\tIZZI TV LIGHT`);
+                } else {
+                  setBulkText(`TRIPLES\tWIZZ 10 + WIZZ TV 2.0
 \tWIZZ 20 + WIZZ TV 2.0
 \tWIZZ 50 + WIZZ TV 2.0
 \tWIZZ 100 + WIZZ TV 2.0
@@ -270,30 +432,36 @@ SINGLES\tWIZZ TV
 \tTV BASICO
 \tIZZI TV+
 \tIZZI TV LIGHT`);
-              setBulkPreview([]);
-            }}
-            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200"
-          >
-            Pegar ejemplo
-          </button>
+                }
+                setBulkPreview([]);
+              }}
+              className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200"
+            >
+              Pegar ejemplo
+            </button>
+          </div>
         </div>
 
         <p className="text-sm text-slate-600 mb-3">
           Pega tu lista con secciones <strong>TRIPLES</strong>, <strong>DOBLES</strong>, <strong>SINGLES</strong>.
-          El sistema asigna <strong>marca=WIZZ</strong>, detecta el tipo y genera una <strong>clave</strong> automática.
+          {bulkMarca === 'WIZZ' ? (
+            <> El sistema asigna <strong>marca=WIZZ</strong>, detecta el tipo y genera una <strong>clave</strong> automática.</>
+          ) : (
+            <> Para IZZI, puedes pegar con código y nombre (tabulados) o usar <strong>"Cargar IZZI base"</strong> (recomendado).</>
+          )}
         </p>
 
         <textarea
           value={bulkText}
           onChange={(e) => setBulkText(e.target.value)}
-          placeholder="Pega aquí la lista WIZZ…"
+          placeholder={bulkMarca === 'IZZI' ? 'Pega aquí la lista IZZI…' : 'Pega aquí la lista WIZZ…'}
           className="w-full min-h-[160px] px-4 py-3 border border-slate-300 rounded-lg font-mono text-xs"
         />
 
         <div className="flex gap-3 mt-3 flex-wrap">
           <button
             type="button"
-            onClick={handleBuildWizzPreview}
+            onClick={handleBuildBulkPreview}
             className="px-5 py-2 bg-blue-50 text-blue-700 rounded-lg font-bold hover:bg-blue-100 border border-blue-200"
           >
             Previsualizar
