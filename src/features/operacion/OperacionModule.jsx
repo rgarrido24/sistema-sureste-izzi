@@ -699,7 +699,7 @@ export default function OperacionModule() {
   const [showStats, setShowStats] = useState(true); // Mostrar estadísticas por defecto
   const [vendors, setVendors] = useState([]); // Lista de vendedores
   const [assigningVendor, setAssigningVendor] = useState(null); // ID del item al que se está asignando vendedor
-  const [vendorInput, setVendorInput] = useState(''); // Input para vendedor manual
+  const [vendorInput, setVendorInput] = useState(''); // Nombre del vendedor asignado (manual o lista)
   const [currentPage, setCurrentPage] = useState(1); // Página actual
   const [itemsPerPage, setItemsPerPage] = useState(25); // Items por página (25, 50, 75, 100)
   const [notas, setNotas] = useState({}); // Notas locales por item ID
@@ -1535,9 +1535,17 @@ export default function OperacionModule() {
                            item.Teléfono || item.Telefono || item['Tel'] || item.Tel || '';
             
             // CVVEN: Columna AM "Clave Vendedor"
-            const cvven = item['Clave Vendedor'] || item['Clave vendedor'] || item['Clave Vendedor'] || 
-                         item['CVVEN'] || item.CVVEN || item['Cvven'] || 
-                         item.VendedorAsignado || item['VendedorAsignado'] || item.Vendedor || item['Vendedor'] || 'N/A';
+            const cvven = item['Clave Vendedor'] || item['Clave vendedor'] || 
+                         item['CVVEN'] || item.CVVEN || item['Cvven'] || 'N/A';
+
+            // Nombre de vendedor asignado (NO debe sustituir el CVVEN)
+            const vendedorAsignado =
+              item.VendedorAsignado ||
+              item['VendedorAsignado'] ||
+              item['Vendedor Asignado'] ||
+              item.Vendedor ||
+              item['Vendedor'] ||
+              '';
             
             // Fecha: Columna CF "Fecha solicitada" (sin hora)
             let fechaSolicitada = item['Fecha solicitada'] || item['Fecha Solicitada'] || item['FechaSolicitada'] || 
@@ -1623,6 +1631,12 @@ export default function OperacionModule() {
                     <div className="flex items-center gap-2">
                       <User size={12} className="text-slate-400" />
                       <span>CVVEN: {cvven}</span>
+                    </div>
+                  )}
+                  {vendedorAsignado && (
+                    <div className="flex items-center gap-2">
+                      <User size={12} className="text-slate-400" />
+                      <span>Vendedor asignado: <strong className="text-slate-700">{vendedorAsignado}</strong></span>
                     </div>
                   )}
                   {/* Mostrar usuario que modificó por última vez */}
@@ -1772,18 +1786,19 @@ export default function OperacionModule() {
                     <div>
                       {assigningVendor === item.id ? (
                         <div className="bg-blue-50 p-2 rounded-lg border border-blue-200">
+                          <div className="text-[10px] text-slate-600 mb-2">
+                            CVVEN se conserva: <strong>{cvven !== 'N/A' ? cvven : 'Sin CVVEN'}</strong>
+                          </div>
                           <div className="flex gap-2 mb-2">
                             <select
-                              value={vendorInput}
-                              onChange={(e) => setVendorInput(e.target.value)}
-                              className="flex-1 px-2 py-1.5 text-xs border border-blue-300 rounded focus:outline-none focus:border-blue-500"
-                              onFocus={(e) => {
-                                if (!vendorInput && vendors.length > 0) {
-                                  setVendorInput(vendors[0].name || vendors[0].username);
-                                }
+                              value=""
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v) setVendorInput(v);
                               }}
+                              className="flex-1 px-2 py-1.5 text-xs border border-blue-300 rounded focus:outline-none focus:border-blue-500"
                             >
-                              <option value="">Seleccionar vendedor...</option>
+                              <option value="">Seleccionar de lista…</option>
                               {vendors.map(v => (
                                 <option key={v.id} value={v.name || v.username}>
                                   {v.name || v.username}
@@ -1794,7 +1809,7 @@ export default function OperacionModule() {
                               type="text"
                               value={vendorInput}
                               onChange={(e) => setVendorInput(e.target.value)}
-                              placeholder="O escribir manualmente"
+                              placeholder="O escribir manualmente (nombre)"
                               className="flex-1 px-2 py-1.5 text-xs border border-blue-300 rounded focus:outline-none focus:border-blue-500"
                             />
                           </div>
@@ -1820,12 +1835,12 @@ export default function OperacionModule() {
                         <button
                           onClick={() => {
                             setAssigningVendor(item.id);
-                            setVendorInput(cvven !== 'N/A' ? cvven : '');
+                            setVendorInput(vendedorAsignado || '');
                           }}
                           className="w-full bg-blue-50 text-blue-700 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-blue-200 hover:bg-blue-100 transition-colors"
                         >
                           <UserPlus size={14} />
-                          {cvven !== 'N/A' ? `Vendedor: ${cvven}` : 'Asignar Vendedor'}
+                          {vendedorAsignado ? `Vendedor: ${vendedorAsignado}` : 'Asignar Vendedor'}
                         </button>
                       )}
                     </div>
