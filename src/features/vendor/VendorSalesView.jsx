@@ -453,6 +453,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstatus, setFilterEstatus] = useState('');
   const [mesInstalacion, setMesInstalacion] = useState(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -504,7 +505,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     loadData();
     const interval = setInterval(loadData, 30000); // Cada 30 segundos
     return () => clearInterval(interval);
-  }, [myName, user, status]);
+  }, [myName, user, status, refreshNonce]);
 
   // Filtrar por búsqueda y estatus
   const filteredData = data.filter(item => {
@@ -709,8 +710,8 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                   notaContacto={item.notaContacto || item['Nota Contacto'] || ''}
                   fechaPromesaPago={item.fechaPromesaPago || item['Fecha Promesa Pago'] || ''}
                   onUpdate={() => {
-                    // Recargar datos después de actualizar
-                    window.location.reload();
+                    // Refrescar sin reiniciar la app (evita lag/reload)
+                    setRefreshNonce(n => n + 1);
                   }}
                 />
 

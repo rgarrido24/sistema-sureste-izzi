@@ -5,6 +5,9 @@ import SalesStatusView from './SalesStatusView.jsx';
 export default function SalesModule({ activeTab }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterVendor, setFilterVendor] = useState('');
+  // Filtro para distinguir registros con/sin vendedor asignado
+  // Valores: '' | 'assigned' | 'unassigned'
+  const [filterVendorAssigned, setFilterVendorAssigned] = useState('');
   const [filterEstatus, setFilterEstatus] = useState(null);
   const [filterPlaza, setFilterPlaza] = useState('');
 
@@ -18,6 +21,8 @@ export default function SalesModule({ activeTab }) {
         setSearchTerm={setSearchTerm}
         filterVendor={filterVendor}
         setFilterVendor={setFilterVendor}
+        filterVendorAssigned={filterVendorAssigned}
+        setFilterVendorAssigned={setFilterVendorAssigned}
         filterEstatus={filterEstatus}
         setFilterEstatus={setFilterEstatus}
         filterPlaza={filterPlaza}
@@ -32,6 +37,8 @@ export default function SalesModule({ activeTab }) {
       setSearchTerm={setSearchTerm}
       filterVendor={filterVendor}
       setFilterVendor={setFilterVendor}
+      filterVendorAssigned={filterVendorAssigned}
+      setFilterVendorAssigned={setFilterVendorAssigned}
       filterPlaza={filterPlaza}
       setFilterPlaza={setFilterPlaza}
     />

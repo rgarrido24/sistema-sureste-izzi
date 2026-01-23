@@ -746,6 +746,9 @@ export default function OperacionModule() {
   const [filterFechaFin, setFilterFechaFin] = useState('');
   const [filterRegion, setFilterRegion] = useState('');
   const [filterPlaza, setFilterPlaza] = useState('');
+  // Filtro para distinguir órdenes con/sin vendedor asignado (Operación del Día)
+  // Valores: '' | 'assigned' | 'unassigned'
+  const [filterVendorAssigned, setFilterVendorAssigned] = useState('');
   const [showStats, setShowStats] = useState(true); // Mostrar estadísticas por defecto
   const [vendors, setVendors] = useState([]); // Lista de vendedores
   const [assigningVendor, setAssigningVendor] = useState(null); // ID del item al que se está asignando vendedor
@@ -1095,6 +1098,25 @@ export default function OperacionModule() {
   const canAudit = !!user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'mesa_control');
   const canAssignVendor = !!user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control' || user.role === 'regionales');
 
+  const isOperacionVendorAssigned = (item) => {
+    const raw = String(
+      item?.VendedorAsignado ||
+      item?.['VendedorAsignado'] ||
+      item?.['Vendedor Asignado'] ||
+      item?.Vendedor ||
+      item?.['Vendedor'] ||
+      ''
+    ).trim();
+    if (!raw) return false;
+    const up = raw.toUpperCase();
+    if (up === 'SIN DATO' || up === 'SINDATO' || up === 'N/A' || up === 'NA' || up === '-' || up === '0') return false;
+    // Evitar que códigos (CVVEN...) cuenten como "vendedor asignado"
+    if (up.includes('CVVEN')) return false;
+    // Si es un token largo sin espacios (probable código), tratar como no asignado
+    if (!raw.includes(' ') && /^[A-Z0-9]{8,}$/i.test(raw)) return false;
+    return true;
+  };
+
   // Filtrar datos
   const filteredData = data.filter(item => {
     // Obtener campos para búsqueda
@@ -1149,8 +1171,15 @@ export default function OperacionModule() {
       const plazaDisplayName = getPlazaFullName(plazaKey);
       matchesPlaza = plazaDisplayName === filterPlaza;
     }
+
+    // Filtro por con/sin vendedor asignado
+    const assigned = isOperacionVendorAssigned(item);
+    const matchesVendorAssigned =
+      !filterVendorAssigned ||
+      (filterVendorAssigned === 'assigned' && assigned) ||
+      (filterVendorAssigned === 'unassigned' && !assigned);
     
-    return matchesSearch && matchesEstado && matchesFecha && matchesRegion && matchesPlaza;
+    return matchesSearch && matchesEstado && matchesFecha && matchesRegion && matchesPlaza && matchesVendorAssigned;
   });
   
   // Paginación: calcular índices
@@ -1162,7 +1191,7 @@ export default function OperacionModule() {
   // Resetear a página 1 cuando cambian los filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterEstado, filterFechaInicio, filterFechaFin, filterRegion, filterPlaza, itemsPerPage]);
+  }, [searchTerm, filterEstado, filterFechaInicio, filterFechaFin, filterRegion, filterPlaza, filterVendorAssigned, itemsPerPage]);
   
   // Si el filtro es "Completa" o "Instalada", mostrar datos de allData filtrados
   const filteredDataWithCompletas = filterEstado && 
@@ -1211,7 +1240,13 @@ export default function OperacionModule() {
           matchesPlaza = plazaDisplayName === filterPlaza;
         }
 
-        return matchesEstado && matchesSearch && matchesFecha && matchesRegion && matchesPlaza;
+        const assigned = isOperacionVendorAssigned(item);
+        const matchesVendorAssigned =
+          !filterVendorAssigned ||
+          (filterVendorAssigned === 'assigned' && assigned) ||
+          (filterVendorAssigned === 'unassigned' && !assigned);
+
+        return matchesEstado && matchesSearch && matchesFecha && matchesRegion && matchesPlaza && matchesVendorAssigned;
       })
     : filteredData;
 
@@ -1680,6 +1715,17 @@ export default function OperacionModule() {
               {plazasUnicas.map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
+            </select>
+
+            {/* Filtro por con/sin vendedor asignado */}
+            <select
+              value={filterVendorAssigned}
+              onChange={(e) => setFilterVendorAssigned(e.target.value)}
+              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[220px]"
+            >
+              <option value="">Con/Sin vendedor</option>
+              <option value="unassigned">Sin vendedor asignado</option>
+              <option value="assigned">Con vendedor asignado</option>
             </select>
             
             {/* Selector de items por página */}

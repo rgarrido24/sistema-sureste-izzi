@@ -10,6 +10,8 @@ export default function SalesListView({
   setSearchTerm, 
   filterVendor, 
   setFilterVendor,
+  filterVendorAssigned,
+  setFilterVendorAssigned,
   filterPlaza,
   setFilterPlaza
 }) {
@@ -18,6 +20,15 @@ export default function SalesListView({
   const [loading, setLoading] = useState(false);
   const [dbCount, setDbCount] = useState(0);
   const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
+
+  const isVendorAssigned = (item) => {
+    const raw = String(item?.Vendedor || item?.['Vendedor'] || '').trim();
+    if (!raw) return false;
+    const up = raw.toUpperCase();
+    if (up === 'SIN DATO' || up === 'SINDATO' || up === 'N/A' || up === 'NA' || up === '-' || up === '0') return false;
+    if (up.includes('CVVEN')) return false;
+    return true;
+  };
 
   useEffect(() => {
     const loadLastUpdate = async () => {
@@ -82,8 +93,14 @@ export default function SalesListView({
 
     const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
     const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
+
+    const assigned = isVendorAssigned(item);
+    const matchesVendorAssigned =
+      !filterVendorAssigned ||
+      (filterVendorAssigned === 'assigned' && assigned) ||
+      (filterVendorAssigned === 'unassigned' && !assigned);
     
-    return matchesSearch && matchesVendor && matchesPlaza;
+    return matchesSearch && matchesVendor && matchesPlaza && matchesVendorAssigned;
   });
 
   return (
@@ -110,6 +127,15 @@ export default function SalesListView({
             {vendors.map(vendor => (
               <option key={vendor} value={vendor}>{vendor}</option>
             ))}
+          </select>
+          <select
+            value={filterVendorAssigned || ''}
+            onChange={(e) => setFilterVendorAssigned(e.target.value)}
+            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Con/Sin vendedor</option>
+            <option value="unassigned">Sin vendedor asignado</option>
+            <option value="assigned">Con vendedor asignado</option>
           </select>
           <select
             value={filterPlaza || ''}

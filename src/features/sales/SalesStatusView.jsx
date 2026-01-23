@@ -543,6 +543,8 @@ export default function SalesStatusView({
   setSearchTerm, 
   filterVendor, 
   setFilterVendor,
+  filterVendorAssigned,
+  setFilterVendorAssigned,
   filterEstatus,
   setFilterEstatus,
   filterPlaza,
@@ -556,6 +558,17 @@ export default function SalesStatusView({
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [mesInstalacion, setMesInstalacion] = useState(null);
   const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  const isVendorAssigned = (item) => {
+    const raw = String(item?.Vendedor || item?.['Vendedor'] || '').trim();
+    if (!raw) return false;
+    const up = raw.toUpperCase();
+    if (up === 'SIN DATO' || up === 'SINDATO' || up === 'N/A' || up === 'NA' || up === '-' || up === '0') return false;
+    // Evitar códigos tipo "CVVEN..."
+    if (up.includes('CVVEN')) return false;
+    return true;
+  };
 
   // Cargar "última actualización" de cobranza (para todos los usuarios)
   useEffect(() => {
@@ -618,7 +631,7 @@ export default function SalesStatusView({
     };
 
     loadStatusData();
-  }, [status, user]);
+  }, [status, user, refreshNonce]);
 
   if (loading) {
     return (
@@ -1011,6 +1024,13 @@ export default function SalesStatusView({
 
     const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
     const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
+
+    // Filtro por "con/sin vendedor asignado"
+    const assigned = isVendorAssigned(item);
+    const matchesVendorAssigned =
+      !filterVendorAssigned ||
+      (filterVendorAssigned === 'assigned' && assigned) ||
+      (filterVendorAssigned === 'unassigned' && !assigned);
     
     // Filtrar por estatus (para M1, M2, M3, M4)
     let matchesEstatus = true;
@@ -1019,7 +1039,7 @@ export default function SalesStatusView({
       matchesEstatus = itemEstatus === filterEstatus;
     }
     
-    return matchesSearch && matchesVendor && matchesPlaza && matchesEstatus;
+    return matchesSearch && matchesVendor && matchesPlaza && matchesVendorAssigned && matchesEstatus;
   });
 
   // Paginación
@@ -1149,6 +1169,18 @@ export default function SalesStatusView({
             {vendors.map(vendor => (
               <option key={vendor} value={vendor}>{vendor}</option>
             ))}
+          </select>
+          <select
+            value={filterVendorAssigned || ''}
+            onChange={(e) => {
+              setFilterVendorAssigned(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Con/Sin vendedor</option>
+            <option value="unassigned">Sin vendedor asignado</option>
+            <option value="assigned">Con vendedor asignado</option>
           </select>
           <select
             value={filterPlaza || ''}
@@ -1366,8 +1398,8 @@ export default function SalesStatusView({
                   notaContacto={item.notaContacto || item['Nota Contacto'] || ''}
                   fechaPromesaPago={item.fechaPromesaPago || item['Fecha Promesa Pago'] || ''}
                   onUpdate={() => {
-                    // Recargar datos después de actualizar
-                    window.location.reload();
+                    // Refrescar sin reiniciar la app (evita lag/reload)
+                    setRefreshNonce(n => n + 1);
                   }}
                 />
                 
