@@ -73,8 +73,9 @@ export function AuthProvider({ children }) {
     let intervalId = null;
 
     const tick = async () => {
-      // Evitar pings cuando la pestaña no está visible (reduce ruido)
-      if (document.visibilityState !== 'visible') return;
+      // Mantener vivo Render Free incluso si cambias de pestaña.
+      // Solo aplicar cuando hay sesión activa.
+      if (!token) return;
       try {
         await api.checkHealth();
         setBackendError(null);
@@ -85,13 +86,13 @@ export function AuthProvider({ children }) {
       }
     };
 
-    // Cada 8 minutos (Render suele dormir ~15 min de inactividad)
-    intervalId = setInterval(tick, 8 * 60 * 1000);
+    // Cada 6 minutos (Render suele dormir ~15 min de inactividad)
+    intervalId = setInterval(tick, 6 * 60 * 1000);
 
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, []);
+  }, [token]);
 
   const login = async (username, password) => {
     setIsAuthenticating(true);

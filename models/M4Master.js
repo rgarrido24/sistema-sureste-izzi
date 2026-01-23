@@ -29,6 +29,10 @@ const m4MasterSchema = new mongoose.Schema({
 m4MasterSchema.index({ cuenta: 1, estado: 1 });
 m4MasterSchema.index({ 'Nº de cuenta': 1 });
 m4MasterSchema.index({ 'Cuenta': 1 });
+// Optimiza listados (sort por createdAt/updatedAt) y cruces por cuenta
+m4MasterSchema.index({ createdAt: -1 });
+m4MasterSchema.index({ updatedAt: -1 });
+m4MasterSchema.index({ cuenta: 1, createdAt: -1 });
 
 export default mongoose.model('M4Master', m4MasterSchema, 'm4_master');
 

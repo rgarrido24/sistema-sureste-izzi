@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
         return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
       }
     }
-    const { estado, vendedor, limit } = req.query;
+    const { estado, vendedor, limit, lite } = req.query;
     const query = {};
     
     if (estado) {
@@ -44,6 +44,58 @@ router.get('/', async (req, res) => {
     
     let q = OperacionDia.find(query).sort({ createdAt: -1 });
 
+    // Modo "lite": reduce payload y acelera respuesta para la UI (no export)
+    const isLite = String(lite || '').trim() === '1' || String(lite || '').toLowerCase() === 'true';
+    if (isLite) {
+      q = q.select({
+        _id: 1,
+        id: 1,
+        cuenta: 1,
+        'Nº de cuenta': 1,
+        'N° de cuenta': 1,
+        'Cuenta de facturación': 1,
+        'Cuenta de facturacion': 1,
+        'Cuenta': 1,
+        'NoCuenta': 1,
+        'Referencia': 1,
+        'Compañia': 1,
+        'Compañía': 1,
+        'Cliente': 1,
+        'Estado': 1,
+        estado: 1,
+        'Teléfonos': 1,
+        'Teléfono': 1,
+        'Telefonos': 1,
+        'Telefono': 1,
+        'Clave Vendedor': 1,
+        CVVEN: 1,
+        VendedorAsignado: 1,
+        'Vendedor Asignado': 1,
+        Vendedor: 1,
+        'Fecha solicitada': 1,
+        'Fecha Solicitada': 1,
+        'FechaSolicitada': 1,
+        'Fecha Instalacion': 1,
+        'Fecha Instalación': 1,
+        'FechaInstalacion': 1,
+        Hub: 1,
+        HUB: 1,
+        Plaza: 1,
+        PLAZA: 1,
+        Paquete: 1,
+        paquete: 1,
+        Nota: 1,
+        Notas: 1,
+        VendedorModificadoPorNombre: 1,
+        UsuarioModificadoPorNombre: 1,
+        PaqueteModificadoPorNombre: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        fechaActualizacion: 1,
+        fechaCreacion: 1,
+      });
+    }
+
     // Soporte para export: limit=0 trae todo; si viene un número, cap de seguridad
     if (limit !== undefined) {
       const n = Number(limit);
@@ -52,7 +104,8 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const operaciones = await q;
+    // lean() reduce overhead de Mongoose (más rápido y menos RAM)
+    const operaciones = await q.lean();
 
     // Bloqueo por región (server-side) para regionales
     if (req.user?.role === 'regionales') {

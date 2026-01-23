@@ -42,6 +42,10 @@ operacionDiaSchema.index({ cuenta: 1, estado: 1 });
 operacionDiaSchema.index({ 'Nº de cuenta': 1 });
 operacionDiaSchema.index({ 'Cuenta': 1 });
 operacionDiaSchema.index({ estado: 1 });
+// Optimiza listados (sort por createdAt/updatedAt) y cruces por cuenta
+operacionDiaSchema.index({ createdAt: -1 });
+operacionDiaSchema.index({ updatedAt: -1 });
+operacionDiaSchema.index({ cuenta: 1, createdAt: -1 });
 
 export default mongoose.model('OperacionDia', operacionDiaSchema, 'operacion_dia');
 

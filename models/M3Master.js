@@ -29,6 +29,10 @@ const m3MasterSchema = new mongoose.Schema({
 m3MasterSchema.index({ cuenta: 1, estado: 1 });
 m3MasterSchema.index({ 'Nº de cuenta': 1 });
 m3MasterSchema.index({ 'Cuenta': 1 });
+// Optimiza listados (sort por createdAt/updatedAt) y cruces por cuenta
+m3MasterSchema.index({ createdAt: -1 });
+m3MasterSchema.index({ updatedAt: -1 });
+m3MasterSchema.index({ cuenta: 1, createdAt: -1 });
 
 export default mongoose.model('M3Master', m3MasterSchema, 'm3_master');
 

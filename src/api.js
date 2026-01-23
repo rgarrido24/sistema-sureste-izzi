@@ -177,6 +177,15 @@ export async function getOperacionDia(vendedor = null) {
   return apiRequest(endpoint);
 }
 
+// Versión "lite" (más rápida): trae solo campos necesarios para listar/filtrar en UI
+export async function getOperacionDiaLite(vendedor = null) {
+  const params = new URLSearchParams();
+  params.set('lite', '1');
+  if (vendedor) params.set('vendedor', vendedor);
+  const qs = params.toString();
+  return apiRequest(`/operacion?${qs}`);
+}
+
 // Para exportar (permite limit=0 para traer todo, con cap del backend)
 export async function getOperacionDiaExport({ vendedor = null, limit = 0 } = {}) {
   const params = new URLSearchParams();

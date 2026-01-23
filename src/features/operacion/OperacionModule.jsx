@@ -943,7 +943,8 @@ export default function OperacionModule() {
       else setRefreshing(true);
 
       try {
-        let operacionData = await api.getOperacionDia();
+        // Usar versión lite para acelerar carga (Render Free)
+        let operacionData = await api.getOperacionDiaLite();
         // IMPORTANTE: regionales ya vienen filtrados server-side por región.
         // filterByVendor() para regionales usa heurística y puede dejar en 0 aunque sí haya datos.
         if (user?.role === 'vendedor' || user?.role === 'user') {
@@ -1079,7 +1080,8 @@ export default function OperacionModule() {
         usuarioActualNombre
       );
       // Recargar datos
-      const operacionData = await api.getOperacionDia();
+      // Usar versión lite para acelerar recarga
+      const operacionData = await api.getOperacionDiaLite();
       const filtered = (user?.role === 'vendedor' || user?.role === 'user')
         ? filterByVendor(operacionData, user)
         : operacionData;
