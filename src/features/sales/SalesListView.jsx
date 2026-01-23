@@ -39,8 +39,10 @@ export default function SalesListView({
       setLoading(true);
       try {
         let salesData = await api.getSalesMaster();
-        // Aplicar filtro de vendedor si es necesario
-        salesData = filterByVendor(salesData, user);
+        // Aplicar filtro SOLO para vendedor/user. Regionales ya vienen filtrados server-side por región.
+        if (user?.role === 'vendedor' || user?.role === 'user') {
+          salesData = filterByVendor(salesData, user);
+        }
         setData(salesData.map(d => ({ id: d._id || d.id, ...d })));
         setDbCount(salesData.length);
       } catch (error) {

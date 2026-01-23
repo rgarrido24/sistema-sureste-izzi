@@ -617,6 +617,52 @@ export default function DashboardModule({ currentModule }) {
             const estatusFPD = getEstatusFPD(item, 'M4');
             return estatusFPD === 'M4';
           }).length;
+        } else if (user.role === 'regionales') {
+          // Regionales: NO usar endpoints de count globales. Tomar datos (ya filtrados por región en backend)
+          // y contar con la misma lógica que las pestañas.
+          const [m1Data, m2Data, m3Data, m4Data, operacionData] = await Promise.all([
+            api.getM1Master(null),
+            api.getM2Master(null),
+            api.getM3Master(null),
+            api.getM4Master(null),
+            api.getOperacionDia(),
+          ]);
+
+          salesCountResult = 0;   // este count no se muestra en el dashboard
+          installCountResult = 0; // este count no se muestra en el dashboard
+          operacionCountResult = Array.isArray(operacionData) ? operacionData.length : 0;
+
+          // Contar M1 (no FPD CORRIENTE ni FPD PÉRDIDA)
+          m1CountResult = (m1Data || []).filter(item => {
+            const estatusFPD = (item['Estatus FPD'] || item['EstatusFPD'] || '').toUpperCase().trim();
+            return !estatusFPD.includes('PÉRDIDA') &&
+                   !estatusFPD.includes('PERDIDA') &&
+                   !estatusFPD.includes('PERDIDO') &&
+                   !estatusFPD.includes('CORRIENTE');
+          }).length;
+
+          const getEstatusFPD = (item, campo) => {
+            const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || '';
+            if (estatusFPDRaw) {
+              const estatusFPD = estatusFPDRaw.toUpperCase().trim();
+              if (estatusFPD === 'FPD CORRIENTE') return 'FPD CORRIENTE';
+              if (estatusFPD === campo) return campo;
+              if (estatusFPD.includes('PÉRDIDA') || estatusFPD.includes('PERDIDA')) return 'FPD PÉRDIDA';
+            }
+            const campoValue = item[campo] || item[campo.toLowerCase()] || null;
+            if (campoValue !== null && campoValue !== undefined && campoValue !== '') {
+              const campoNum = typeof campoValue === 'number' ? campoValue : parseInt(String(campoValue).trim(), 10);
+              if (!isNaN(campoNum)) {
+                if (campoNum === 0) return 'FPD CORRIENTE';
+                if (campoNum === 1) return campo;
+              }
+            }
+            return campo;
+          };
+
+          m2CountResult = (m2Data || []).filter(item => getEstatusFPD(item, 'M2') === 'M2').length;
+          m3CountResult = (m3Data || []).filter(item => getEstatusFPD(item, 'M3') === 'M3').length;
+          m4CountResult = (m4Data || []).filter(item => getEstatusFPD(item, 'M4') === 'M4').length;
         } else {
           // Para admin, cargar todos los conteos
           // Para M1, contar solo los que tienen estatus M1 (no FPD CORRIENTE ni FPD PÉRDIDA)
@@ -693,6 +739,42 @@ export default function DashboardModule({ currentModule }) {
           let operacionData = await api.getOperacionDia();
           if (user.role === 'vendedor' || user.role === 'user') {
             operacionData = filterByVendor(operacionData, user);
+          }
+          // Seguridad/consistencia: si es regional, forzar filtro por su región en frontend
+          // (por si el backend devuelve más de una región por datos incompletos o deploy desalineado).
+          if (user.role === 'regionales') {
+            const userRegion = normalizeText(user.region || '');
+            operacionData = (operacionData || []).filter(item => {
+              // Preferir campos explícitos de región si existen
+              const regionRaw =
+                item?.REGION ||
+                item?.Region ||
+                item?.['Región'] ||
+                item?.['REGIÓN'] ||
+                item?.SUBREGION ||
+                item?.['SUBREGION'] ||
+                item?.['Subregion'] ||
+                item?.['Sub Region'] ||
+                item?.['Region Nueva'] ||
+                item?.['REGION NUEVA'] ||
+                '';
+              const regionFromField = normalizeText(regionRaw);
+              if (regionFromField) {
+                // Normalizaciones comunes para que "SURESTE 1/2" cuente como SURESTE, etc.
+                const r = regionFromField;
+                if (r.includes('SURESTE')) return userRegion === 'SURESTE';
+                if (r.includes('NORESTE')) return userRegion === 'NORESTE';
+                if (r.includes('OCCIDENTE')) return userRegion === 'OCCIDENTE';
+                if (r.includes('PACIF')) return userRegion === 'PACIFICO';
+                if (r.includes('METRO')) return userRegion === 'METROPOLITANA';
+                return r === userRegion;
+              }
+
+              const hub = item?.Hub || item?.HUB || item?.hub || '';
+              const plaza = item?.Plaza || item?.PLAZA || item?.plaza || '';
+              const region = getRegionFromHubPlazaOperacion(hub, plaza) || 'METROPOLITANA';
+              return normalizeText(region) === userRegion;
+            });
           }
           
           console.log('📊 Dashboard - Total de operaciones cargadas:', operacionData.length);

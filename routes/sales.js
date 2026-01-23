@@ -2,6 +2,7 @@ import express from 'express';
 import SalesMaster from '../models/SalesMaster.js';
 import { requireAuth } from '../middleware/auth.js';
 import ActivityEvent from '../models/ActivityEvent.js';
+import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,7 +10,21 @@ router.use(requireAuth);
 // Obtener todos los registros
 router.get('/', async (req, res) => {
   try {
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+    }
+
     const sales = await SalesMaster.find();
+
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      const filtered = applyRegionalFilterInMemory(sales, userRegion);
+      return res.json(filtered);
+    }
+
     res.json(sales);
   } catch (error) {
     console.error('Error obteniendo sales:', error);
@@ -20,6 +35,16 @@ router.get('/', async (req, res) => {
 // Obtener conteo
 router.get('/count', async (req, res) => {
   try {
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const sales = await SalesMaster.find().lean();
+      const filtered = applyRegionalFilterInMemory(sales, userRegion);
+      return res.json({ count: filtered.length });
+    }
+
     const count = await SalesMaster.countDocuments();
     res.json({ count });
   } catch (error) {

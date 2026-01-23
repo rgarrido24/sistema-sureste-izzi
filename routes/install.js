@@ -2,6 +2,7 @@ import express from 'express';
 import InstallMaster from '../models/InstallMaster.js';
 import { requireAuth } from '../middleware/auth.js';
 import ActivityEvent from '../models/ActivityEvent.js';
+import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -9,7 +10,21 @@ router.use(requireAuth);
 // Obtener todos los registros
 router.get('/', async (req, res) => {
   try {
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+    }
+
     const installs = await InstallMaster.find();
+
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      const filtered = applyRegionalFilterInMemory(installs, userRegion);
+      return res.json(filtered);
+    }
+
     res.json(installs);
   } catch (error) {
     console.error('Error obteniendo installs:', error);
@@ -20,6 +35,16 @@ router.get('/', async (req, res) => {
 // Obtener conteo
 router.get('/count', async (req, res) => {
   try {
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const installs = await InstallMaster.find().lean();
+      const filtered = applyRegionalFilterInMemory(installs, userRegion);
+      return res.json({ count: filtered.length });
+    }
+
     const count = await InstallMaster.countDocuments();
     res.json({ count });
   } catch (error) {

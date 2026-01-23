@@ -770,7 +770,11 @@ export default function OperacionModule() {
 
       try {
         let operacionData = await api.getOperacionDia();
-        operacionData = filterByVendor(operacionData, user);
+        // IMPORTANTE: regionales ya vienen filtrados server-side por región.
+        // filterByVendor() para regionales usa heurística y puede dejar en 0 aunque sí haya datos.
+        if (user?.role === 'vendedor' || user?.role === 'user') {
+          operacionData = filterByVendor(operacionData, user);
+        }
         
         // Filtrar estados "Completa" e "Instalada" del listado principal
         // Pero mantenerlos en el filtro de estados para poder buscarlos
@@ -966,7 +970,9 @@ export default function OperacionModule() {
       );
       // Recargar datos
       const operacionData = await api.getOperacionDia();
-      const filtered = filterByVendor(operacionData, user);
+      const filtered = (user?.role === 'vendedor' || user?.role === 'user')
+        ? filterByVendor(operacionData, user)
+        : operacionData;
       setAllData(operacionData);
       
       const operacionFiltrada = filtered.filter(item => {
@@ -1353,7 +1359,9 @@ export default function OperacionModule() {
     try {
       setExporting(true);
       let exportData = await api.getOperacionDiaExport({ limit: 0 });
-      exportData = filterByVendor(exportData, user);
+      exportData = (user?.role === 'vendedor' || user?.role === 'user')
+        ? filterByVendor(exportData, user)
+        : exportData;
 
       const instaladas = exportData.filter(item => {
         const est = String(item?.['Estado'] || item?.estado || '').toUpperCase().trim();
