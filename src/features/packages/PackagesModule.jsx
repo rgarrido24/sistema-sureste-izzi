@@ -56,9 +56,19 @@ function slugLetters(s) {
   return normalizeSpaces(s).toUpperCase().replace(/[^A-Z0-9+.\s]/g, '');
 }
 
+function repairWizzName(name) {
+  let s = normalizeSpaces(name);
+  if (!s) return s;
+  // Inserta espacio entre letras y números si vienen pegados (ej: "BASICO10" -> "BASICO 10")
+  s = s.replace(/([A-Za-zÁÉÍÓÚÑáéíóúñ])(\d)/g, '$1 $2');
+  // Arregla números duplicados sin separador (ej: 1010->10, 2020->20, 100100->100)
+  s = s.replace(/\b(\d{1,3})\1\b/g, '$1');
+  return normalizeSpaces(s);
+}
+
 function generateWizzCode({ tipo, name }) {
   const t = String(tipo || '').toUpperCase().trim();
-  const text = slugLetters(name);
+  const text = slugLetters(repairWizzName(name));
 
   // DOBLES: "WIZZ 10" -> WD10
   const dobleMatch = text.match(/^WIZZ\s+(\d{1,4})$/);
@@ -123,12 +133,13 @@ function parseWizzPaste(text) {
     if (upper.startsWith('SINGLES')) { tipo = 'SINGLE'; continue; }
 
     // Limpia posibles tabs/columnas (ej: "TRIPLES\tWIZZ 10 + ...")
-    const cleaned = normalizeSpaces(line.replace(/^\w+\s+/i, line)); // no-op safe
+    // IMPORTANTE: no duplicar contenido (bug anterior convertía "WIZZ 10" -> "WIZZ 1010")
+    const cleaned = normalizeSpaces(line);
     if (!tipo) continue;
 
     // Si viene "TRIPLES WIZZ 10 + ..." en la misma línea
     const inline = cleaned.replace(/^(TRIPLES|DOBLES|SINGLES)\s+/i, '');
-    const name = normalizeSpaces(inline);
+    const name = repairWizzName(inline);
     if (!name) continue;
 
     const codigo = generateWizzCode({ tipo, name });
