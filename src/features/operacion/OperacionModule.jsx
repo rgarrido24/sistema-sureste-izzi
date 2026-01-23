@@ -826,13 +826,18 @@ export default function OperacionModule() {
   };
 
   const estadoRank = (estadoRaw) => {
-    const e = String(estadoRaw || '').toUpperCase().trim();
-    if (!e) return 0;
-    if (e === 'COMPLETA' || e === 'INSTALADA') return 3;
+    const e0 = String(estadoRaw || '').toUpperCase().trim();
+    if (!e0) return 0;
+    // Normalización robusta (evita perder "COMPLETADA/INSTALADO", etc.)
+    const e =
+      e0.includes('INSTAL') ? 'COMPLETA' :
+      e0.includes('COMPLET') ? 'COMPLETA' :
+      (e0.includes('NOT') ? 'NOT DONE' : e0);
+    if (e === 'COMPLETA') return 3;
     if (e === 'ABIERTA') return 2;
     if (e === 'PENDIENTE') return 1;
     if (e === 'NOT DONE') return 0;
-    if (e === 'CANCELADA') return -1;
+    if (e.includes('CANCEL')) return -1;
     return 0;
   };
 
@@ -1138,9 +1143,17 @@ export default function OperacionModule() {
     // Filtro por estado
     let matchesEstado = true;
     if (filterEstado) {
-      const estadoItem = (item.estado || item.Estado || '').toUpperCase().trim();
-      const estadoFiltro = filterEstado.toUpperCase().trim();
-      matchesEstado = estadoItem === estadoFiltro;
+      const rawItem = (item.estado || item.Estado || '').toUpperCase().trim();
+      const rawFiltro = String(filterEstado || '').toUpperCase().trim();
+      const normItem =
+        rawItem.includes('INSTAL') ? 'COMPLETA' :
+        rawItem.includes('COMPLET') ? 'COMPLETA' :
+        (rawItem.includes('NOT') ? 'NOT DONE' : rawItem);
+      const normFiltro =
+        rawFiltro.includes('INSTAL') ? 'COMPLETA' :
+        rawFiltro.includes('COMPLET') ? 'COMPLETA' :
+        (rawFiltro.includes('NOT') ? 'NOT DONE' : rawFiltro);
+      matchesEstado = normItem === normFiltro;
     }
     
     // Filtro por rango de fechas (sin hora)
@@ -1200,12 +1213,17 @@ export default function OperacionModule() {
     (filterEstado.toUpperCase() === 'COMPLETA' || filterEstado.toUpperCase() === 'INSTALADA')
     ? allData.filter(item => {
         // Estado: Columna BI "Estado" - considerar "Instalada" como "Completa"
-        let estado = (item['Estado'] || item.estado || '').toUpperCase().trim();
-        const estadoFiltro = filterEstado.toUpperCase().trim();
-        // Si el filtro es "Completa", también incluir "Instalada"
-        const matchesEstado = estado === estadoFiltro || 
-          (estadoFiltro === 'COMPLETA' && estado === 'INSTALADA') ||
-          (estadoFiltro === 'INSTALADA' && estado === 'COMPLETA');
+        const rawEstado = (item['Estado'] || item.estado || '').toUpperCase().trim();
+        const rawFiltro = String(filterEstado || '').toUpperCase().trim();
+        const normEstado =
+          rawEstado.includes('INSTAL') ? 'COMPLETA' :
+          rawEstado.includes('COMPLET') ? 'COMPLETA' :
+          (rawEstado.includes('NOT') ? 'NOT DONE' : rawEstado);
+        const normFiltro =
+          rawFiltro.includes('INSTAL') ? 'COMPLETA' :
+          rawFiltro.includes('COMPLET') ? 'COMPLETA' :
+          (rawFiltro.includes('NOT') ? 'NOT DONE' : rawFiltro);
+        const matchesEstado = normEstado === normFiltro;
         const matchesSearch = !searchTerm || 
           (item['Compañia'] || item['Compañía'] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
           (item.cuenta || item['Cuenta de facturación'] || '').toString().includes(searchTerm) ||
@@ -1394,9 +1412,14 @@ export default function OperacionModule() {
     if (region && statsByRegion[region]) {
       statsByRegion[region].total++;
       
-      if (estado === 'COMPLETA' || estado === 'INSTALADA') {
+      const estadoNorm =
+        estado.includes('INSTAL') ? 'COMPLETA' :
+        estado.includes('COMPLET') ? 'COMPLETA' :
+        (estado.includes('NOT') ? 'NOT DONE' : estado);
+
+      if (estadoNorm === 'COMPLETA') {
         statsByRegion[region].completas++;
-        if (estado === 'INSTALADA') {
+        if (estado.includes('INSTAL')) {
           statsByRegion[region].instaladas++;
         }
         
@@ -1413,9 +1436,13 @@ export default function OperacionModule() {
       const regionFinal = 'METROPOLITANA';
       if (statsByRegion[regionFinal]) {
         statsByRegion[regionFinal].total++;
-        if (estado === 'COMPLETA' || estado === 'INSTALADA') {
+        const estadoNorm =
+          estado.includes('INSTAL') ? 'COMPLETA' :
+          estado.includes('COMPLET') ? 'COMPLETA' :
+          (estado.includes('NOT') ? 'NOT DONE' : estado);
+        if (estadoNorm === 'COMPLETA') {
           statsByRegion[regionFinal].completas++;
-          if (estado === 'INSTALADA') {
+          if (estado.includes('INSTAL')) {
             statsByRegion[regionFinal].instaladas++;
           }
           const plazaKey = plazaFinal || hub || 'Sin plaza';
@@ -1436,8 +1463,12 @@ export default function OperacionModule() {
   console.log('📊 OPERACION - Total SURESTE (todas):', statsByRegion['SURESTE']?.total || 0);
   
   const totalInstaladasCompletas = allData.filter(item => {
-    const estado = (item['Estado'] || item.estado || '').toUpperCase().trim();
-    return estado === 'COMPLETA' || estado === 'INSTALADA';
+    const rawEstado = (item['Estado'] || item.estado || '').toUpperCase().trim();
+    const norm =
+      rawEstado.includes('INSTAL') ? 'COMPLETA' :
+      rawEstado.includes('COMPLET') ? 'COMPLETA' :
+      rawEstado;
+    return norm === 'COMPLETA';
   }).length;
 
   const canExportInstaladas = !!user && (
@@ -1510,17 +1541,21 @@ export default function OperacionModule() {
         {(() => {
           // Contar estados de filteredData (excluyendo Completas/Instaladas)
           const estadoCounts = filteredData.reduce((acc, item) => {
-            const estado = (item['Estado'] || item.estado || 'Abierta').toUpperCase().trim();
-            if (estado !== 'COMPLETA' && estado !== 'INSTALADA') {
-              acc[estado] = (acc[estado] || 0) + 1;
+            const raw = (item['Estado'] || item.estado || 'Abierta').toUpperCase().trim();
+            const norm =
+              raw.includes('INSTAL') ? 'COMPLETA' :
+              raw.includes('COMPLET') ? 'COMPLETA' :
+              (raw.includes('NOT') ? 'NOT DONE' : raw);
+            if (norm !== 'COMPLETA') {
+              acc[norm] = (acc[norm] || 0) + 1;
             }
             return acc;
           }, {});
           
           // Contar Completas/Instaladas de allData para mostrar en el header
           const completasInstaladas = allData.filter(item => {
-            const estado = (item['Estado'] || item.estado || '').toUpperCase().trim();
-            return estado === 'COMPLETA' || estado === 'INSTALADA';
+            const raw = (item['Estado'] || item.estado || '').toUpperCase().trim();
+            return raw.includes('INSTAL') || raw.includes('COMPLET');
           }).length;
           
           return (
@@ -1645,13 +1680,10 @@ export default function OperacionModule() {
                 const count = allData.filter(item => {
                   let itemEstado = (item['Estado'] || item.estado || '').toUpperCase().trim();
                   const estadoUpper = estado.toUpperCase().trim();
-                  // Si el estado es "INSTALADA", tratarlo como "COMPLETA" para el conteo
-                  if (itemEstado === 'INSTALADA') itemEstado = 'COMPLETA';
-                  if (estadoUpper === 'INSTALADA') {
-                    return itemEstado === 'COMPLETA' || itemEstado === 'INSTALADA';
-                  }
-                  return itemEstado === estadoUpper || 
-                    (estadoUpper === 'COMPLETA' && (itemEstado === 'COMPLETA' || itemEstado === 'INSTALADA'));
+                  // Normalización robusta: INSTAL*/COMPLET* cuenta como COMPLETA
+                  const itemNorm = (itemEstado.includes('INSTAL') || itemEstado.includes('COMPLET')) ? 'COMPLETA' : itemEstado;
+                  const filtroNorm = (estadoUpper.includes('INSTAL') || estadoUpper.includes('COMPLET')) ? 'COMPLETA' : estadoUpper;
+                  return itemNorm === filtroNorm;
                 }).length;
                 return (
                   <option key={estado} value={estado}>

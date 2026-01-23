@@ -153,14 +153,23 @@ router.post('/bulk', async (req, res) => {
     const normalizeEstado = (raw) => {
       const e = String(raw ?? '').trim().toUpperCase();
       if (!e) return '';
-      // Normalizar variantes comunes
-      if (e === 'INSTALADA') return 'COMPLETA';
+      // Normalizar variantes comunes (robusto)
+      // Completa/Instalada (incluye "COMPLETADA", "COMPLETADO", "INSTALADO", etc.)
+      if (e.includes('INSTAL')) return 'COMPLETA';
+      if (e.includes('COMPLET')) return 'COMPLETA';
+
+      // Not done (incluye "NOTDONE", "NO REALIZADA", etc. si trae NOT)
       if (e === 'NOTDONE') return 'NOT DONE';
-      if (e === 'NOT DONE') return 'NOT DONE';
-      if (e === 'CANCELADA') return 'CANCELADA';
-      if (e === 'ABIERTA') return 'ABIERTA';
-      if (e === 'PENDIENTE') return 'PENDIENTE';
-      if (e === 'COMPLETA') return 'COMPLETA';
+      if (e.includes('NOT') && e.includes('DONE')) return 'NOT DONE';
+      if (e.includes('NOT') && !e.includes('CANCEL')) return 'NOT DONE';
+
+      // Cancelada
+      if (e.includes('CANCEL')) return 'CANCELADA';
+
+      // Pendiente / Abierta
+      if (e.includes('PEND')) return 'PENDIENTE';
+      if (e.includes('ABIERT')) return 'ABIERTA';
+
       return e;
     };
 
