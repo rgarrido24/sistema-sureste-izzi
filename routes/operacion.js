@@ -144,8 +144,106 @@ router.post('/bulk', async (req, res) => {
     
     let created = 0;
     let updated = 0;
-    let skipped = 0;
+    // Separar motivos para no confundir "duplicados" con "sin cuenta"
+    let skippedNoCuenta = 0;
+    let skippedNoUpdateExisting = 0;
+    let duplicatedByCuenta = 0; // filas con la misma cuenta dentro del archivo (se sobrescriben)
     const errors = [];
+
+    const normalizeEstado = (raw) => {
+      const e = String(raw ?? '').trim().toUpperCase();
+      if (!e) return '';
+      // Normalizar variantes comunes
+      if (e === 'INSTALADA') return 'COMPLETA';
+      if (e === 'NOTDONE') return 'NOT DONE';
+      if (e === 'NOT DONE') return 'NOT DONE';
+      if (e === 'CANCELADA') return 'CANCELADA';
+      if (e === 'ABIERTA') return 'ABIERTA';
+      if (e === 'PENDIENTE') return 'PENDIENTE';
+      if (e === 'COMPLETA') return 'COMPLETA';
+      return e;
+    };
+
+    const estadoRank = (estadoRaw) => {
+      const e = normalizeEstado(estadoRaw);
+      // Prioridad pedida: dar prioridad a COMPLETA/INSTALADA
+      if (e === 'COMPLETA') return 4;
+      if (e === 'ABIERTA') return 3;
+      if (e === 'PENDIENTE') return 2;
+      if (e === 'NOT DONE') return 1;
+      if (e === 'CANCELADA') return 0;
+      return 0;
+    };
+
+    const parseDateToMs = (val) => {
+      if (val === undefined || val === null || val === '') return null;
+      if (val instanceof Date) {
+        const t = val.getTime();
+        return Number.isFinite(t) ? t : null;
+      }
+      // Excel serial (número o string numérica)
+      if (typeof val === 'number' || (typeof val === 'string' && /^\d+(\.\d+)?$/.test(String(val).trim()))) {
+        const n = typeof val === 'number' ? val : Number(String(val).trim());
+        if (Number.isFinite(n) && n > 20000 && n < 90000) {
+          const excelEpoch = new Date(1899, 11, 30);
+          return excelEpoch.getTime() + n * 86400000;
+        }
+      }
+      const s = String(val).trim();
+      if (!s || s === '########') return null;
+      const d = new Date(s);
+      const t = d.getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+
+    const getRecencyMs = (obj) => {
+      const candidates = [
+        obj?.updatedAt,
+        obj?.fechaActualizacion,
+        obj?.createdAt,
+        obj?.fechaCreacion,
+        obj?.['Fecha de la orden'],
+        obj?.['Fecha de la captura'],
+        obj?.['Fecha Orden'],
+        obj?.['Fecha solicitada'],
+        obj?.['Fecha Solicitada'],
+        obj?.['FechaSolicitada'],
+        obj?.['Fecha Instalacion'],
+        obj?.['Fecha Instalación'],
+        obj?.['FechaInstalacion'],
+      ];
+      for (const c of candidates) {
+        const t = parseDateToMs(c);
+        if (t !== null) return t;
+      }
+      return null;
+    };
+
+    const pickBestRecordForCuenta = (currentBest, incoming) => {
+      if (!currentBest) return incoming;
+
+      const bestEstado = currentBest?.Estado ?? currentBest?.estado ?? '';
+      const incEstado = incoming?.Estado ?? incoming?.estado ?? '';
+      const bestRank = estadoRank(bestEstado);
+      const incRank = estadoRank(incEstado);
+
+      const bestT = getRecencyMs(currentBest);
+      const incT = getRecencyMs(incoming);
+
+      // 1) Si ambos tienen fecha y difiere: el más reciente gana
+      if (bestT !== null && incT !== null && bestT !== incT) {
+        return incT > bestT ? incoming : currentBest;
+      }
+      // 2) Si solo uno tiene fecha: el que tiene fecha gana
+      if (bestT === null && incT !== null) return incoming;
+      if (bestT !== null && incT === null) return currentBest;
+
+      // 3) Empate o sin fechas: priorizar estado (COMPLETA/INSTALADA primero)
+      if (incRank !== bestRank) return incRank > bestRank ? incoming : currentBest;
+
+      // 4) Último desempate: mantener el actual (estable)
+      return currentBest;
+    };
 
     const stripBadKeys = (obj) => {
       if (!obj || typeof obj !== 'object') return {};
@@ -175,7 +273,7 @@ router.post('/bulk', async (req, res) => {
         }
         const cuentaKey = String(cuenta || '').trim().replace(/\s+/g, '');
         if (!cuentaKey || cuentaKey.length < 3 || cuentaKey === 'undefined' || cuentaKey === 'null') {
-          skipped++;
+          skippedNoCuenta++;
           continue;
         }
 
@@ -200,7 +298,15 @@ router.post('/bulk', async (req, res) => {
           delete optimizedData.fechaCreacion;
         }
 
-        byCuenta.set(cuentaKey, optimizedData);
+        if (byCuenta.has(cuentaKey)) {
+          // Es normal que el archivo traiga varias filas por cuenta (se actualiza estatus durante el día)
+          duplicatedByCuenta++;
+          const prev = byCuenta.get(cuentaKey);
+          const best = pickBestRecordForCuenta(prev, optimizedData);
+          byCuenta.set(cuentaKey, best);
+        } else {
+          byCuenta.set(cuentaKey, optimizedData);
+        }
       } catch (itemError) {
         errors.push({ item, error: itemError.message });
       }
@@ -208,7 +314,18 @@ router.post('/bulk', async (req, res) => {
 
     const docs = Array.from(byCuenta.values());
     if (docs.length === 0) {
-      return res.json({ success: true, created: 0, updated: 0, skipped: data.length, total: data.length, errors: errors.length ? errors : undefined });
+      return res.json({
+        success: true,
+        created: 0,
+        updated: 0,
+        total: data.length,
+        processed: 0,
+        skipped: data.length,
+        skippedNoCuenta,
+        duplicatedByCuenta,
+        skippedNoUpdateExisting,
+        errors: errors.length ? errors : undefined
+      });
     }
 
     // 2) Procesar en lotes con bulkWrite
@@ -219,7 +336,7 @@ router.post('/bulk', async (req, res) => {
 
       const existingDocs = await OperacionDia.find(
         { cuenta: { $in: cuentas } },
-        { _id: 1, cuenta: 1, VendedorAsignado: 1, Vendedor: 1, fechaCreacion: 1, createdAt: 1 }
+        { _id: 1, cuenta: 1, VendedorAsignado: 1, Vendedor: 1, fechaCreacion: 1, createdAt: 1, updatedAt: 1, fechaActualizacion: 1, Estado: 1, estado: 1 }
       ).lean();
       const existingByCuenta = new Map(existingDocs.map(d => [String(d.cuenta), d]));
 
@@ -229,7 +346,7 @@ router.post('/bulk', async (req, res) => {
         if (!cuenta) continue;
         const existing = existingByCuenta.get(String(cuenta));
         if (existing && !updateExisting) {
-          skipped++;
+          skippedNoUpdateExisting++;
           continue;
         }
 
@@ -242,6 +359,27 @@ router.post('/bulk', async (req, res) => {
           ...(vendorKeep && !docVendor ? { VendedorAsignado: existing.VendedorAsignado || existing.Vendedor } : {}),
           updatedAt: new Date(),
         };
+
+        // Evitar degradar estatus: si ya estaba COMPLETA/INSTALADA y el nuevo trae un estatus anterior,
+        // mantener el estatus existente (a menos que el nuevo sea también COMPLETA o claramente más reciente).
+        try {
+          const existingEstado = normalizeEstado(existing?.Estado ?? existing?.estado ?? '');
+          const incomingEstado = normalizeEstado(toSet?.Estado ?? toSet?.estado ?? '');
+          const existingRank = estadoRank(existingEstado);
+          const incomingRank = estadoRank(incomingEstado);
+          if (existingRank >= 4 && incomingRank < 4) {
+            const existingT = getRecencyMs(existing);
+            const incomingT = getRecencyMs(toSet);
+            // Si no hay señal clara de que el nuevo sea más reciente, NO degradar
+            if (incomingT === null || (existingT !== null && existingT >= incomingT)) {
+              if (existing?.Estado !== undefined) toSet.Estado = existing.Estado;
+              if (existing?.estado !== undefined) toSet.estado = existing.estado;
+            }
+          }
+        } catch (e) {
+          // no bloquear upsert por un fallo de comparación
+        }
+
         // Evitar conflictos de upsert: fechaCreacion solo en $setOnInsert
         if ('fechaCreacion' in toSet) delete toSet.fechaCreacion;
         if ('createdAt' in toSet) delete toSet.createdAt;
@@ -269,9 +407,14 @@ router.post('/bulk', async (req, res) => {
       success: true,
       created,
       updated,
-      skipped: skipped + (data.length - docs.length),
-      total: data.length,
       processed: docs.length,
+      skippedNoCuenta,
+      duplicatedByCuenta,
+      skippedNoUpdateExisting,
+      // Compat: "skipped" = todo lo que no terminó como create/update.
+      // OJO: duplicatedByCuenta NO es error, solo indica filas repetidas en el archivo.
+      skipped: skippedNoCuenta + skippedNoUpdateExisting + duplicatedByCuenta,
+      total: data.length,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {

@@ -325,13 +325,27 @@ export default function UploadModule({ currentModule }) {
           const updated = result.updated || 0;
           const skipped = result.skipped || 0;
           const total = result.total || data.length;
+          const skippedNoCuenta = result.skippedNoCuenta || 0;
+          const duplicatedByCuenta = result.duplicatedByCuenta || 0;
+          const skippedNoUpdateExisting = result.skippedNoUpdateExisting || 0;
           
           let message = `✅ Carga completada:\n\n`;
           message += `📊 Total procesados: ${total}\n`;
           message += `✅ Creados: ${created}\n`;
           message += `🔄 Actualizados: ${updated}\n`;
-          if (skipped > 0) {
-            message += `⏭️ Omitidos: ${skipped} (sin número de cuenta)\n`;
+          // Mostrar desglose real de omitidos (evita confundir duplicados con "sin cuenta")
+          if (duplicatedByCuenta > 0) {
+            message += `🧾 Duplicados en archivo: ${duplicatedByCuenta} (se tomó el último por cuenta)\n`;
+          }
+          if (skippedNoCuenta > 0) {
+            message += `⛔ Sin número de cuenta: ${skippedNoCuenta}\n`;
+          }
+          if (skippedNoUpdateExisting > 0) {
+            message += `⏭️ Omitidos (no actualizar existentes): ${skippedNoUpdateExisting}\n`;
+          }
+          // Compat con backends viejos: si solo viene "skipped", mostrarlo genérico
+          if (skipped > 0 && skippedNoCuenta === 0 && duplicatedByCuenta === 0 && skippedNoUpdateExisting === 0) {
+            message += `⏭️ Omitidos: ${skipped}\n`;
           }
           
           if (result.errors && result.errors.length > 0) {
