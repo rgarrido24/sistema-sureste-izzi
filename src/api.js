@@ -271,6 +271,13 @@ export async function dedupePackages() {
   });
 }
 
+export async function deletePackagesByMarca(marca) {
+  const m = String(marca || '').toUpperCase().trim();
+  return apiRequest(`/packages/marca/${encodeURIComponent(m)}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function deletePackage(id) {
   return apiRequest(`/packages/${id}`, {
     method: 'DELETE',

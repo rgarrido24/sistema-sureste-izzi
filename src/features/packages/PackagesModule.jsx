@@ -318,6 +318,21 @@ export default function PackagesModule() {
     }
   };
 
+  const handleDeleteWizzAll = async () => {
+    const ok = confirm('¿Seguro que quieres borrar TODOS los paquetes WIZZ? Esto no se puede deshacer.');
+    if (!ok) return;
+    setBulkLoading(true);
+    try {
+      const resp = await api.deletePackagesByMarca('WIZZ');
+      alert(`🗑️ WIZZ eliminado. Registros borrados: ${resp.deletedCount}`);
+      await loadPackages();
+    } catch (e) {
+      alert('Error borrando WIZZ: ' + (e?.message || 'Error'));
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="text-center p-8">Cargando paquetes...</div>;
   }
@@ -460,6 +475,15 @@ SINGLES\tWIZZ TV
               title="Corrige marca en registros viejos y elimina duplicados"
             >
               Limpiar duplicados
+            </button>
+            <button
+              type="button"
+              disabled={bulkLoading}
+              onClick={handleDeleteWizzAll}
+              className="px-4 py-2 bg-red-50 text-red-800 rounded-lg font-semibold hover:bg-red-100 border border-red-200 disabled:opacity-60"
+              title="Borra todos los paquetes WIZZ para recargar desde cero"
+            >
+              Borrar WIZZ
             </button>
           </div>
         </div>
