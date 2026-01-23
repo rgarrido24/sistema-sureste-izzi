@@ -42,7 +42,8 @@ router.get('/', async (req, res) => {
       const missingCuentas = [];
 
       for (const doc of m3) {
-        const cuenta = doc?.cuenta;
+        const obj = doc?.toObject ? doc.toObject() : doc;
+        const cuenta = normalizeCuenta(obj) || obj?.cuenta;
         const reg = extractRegionFromRecord(doc);
         if (cuenta && reg) regionByCuenta.set(cuenta, reg);
         else if (cuenta) missingCuentas.push(cuenta);
@@ -65,7 +66,8 @@ router.get('/', async (req, res) => {
       }
 
       const filtered = m3.filter(doc => {
-        const cuenta = doc?.cuenta;
+        const obj = doc?.toObject ? doc.toObject() : doc;
+        const cuenta = normalizeCuenta(obj) || obj?.cuenta;
         const reg = (cuenta && regionByCuenta.get(cuenta)) ? regionByCuenta.get(cuenta) : extractRegionFromRecord(doc);
         return normalizeRegion(reg) === userRegion;
       });

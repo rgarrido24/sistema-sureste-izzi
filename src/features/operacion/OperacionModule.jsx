@@ -741,7 +741,9 @@ export default function OperacionModule() {
   const [exporting, setExporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
-  const [filterFecha, setFilterFecha] = useState('');
+  // Rango de fechas (inicio - fin) para "Fecha solicitada" (sin hora)
+  const [filterFechaInicio, setFilterFechaInicio] = useState('');
+  const [filterFechaFin, setFilterFechaFin] = useState('');
   const [filterRegion, setFilterRegion] = useState('');
   const [filterPlaza, setFilterPlaza] = useState('');
   const [showStats, setShowStats] = useState(true); // Mostrar estadísticas por defecto
@@ -754,6 +756,45 @@ export default function OperacionModule() {
   const [notas, setNotas] = useState({}); // Notas locales por item ID
   const [savingNotas, setSavingNotas] = useState({}); // Estado de guardado por item ID
   const inFlightRef = useRef(false);
+
+  const getFechaSolicitadaYYYYMMDD = (item) => {
+    const fechaSolicitada =
+      item?.['Fecha solicitada'] ||
+      item?.['Fecha Solicitada'] ||
+      item?.['FechaSolicitada'] ||
+      '';
+    if (!fechaSolicitada) return '';
+
+    // Convertir fecha a formato YYYY-MM-DD para comparar (sin hora)
+    if (fechaSolicitada instanceof Date) {
+      return fechaSolicitada.toISOString().split('T')[0];
+    }
+    const fechaStr = String(fechaSolicitada).trim();
+    if (!fechaStr) return '';
+
+    // Si tiene hora, quitarla
+    const fechaSinHora = fechaStr.split(' ')[0].split('T')[0];
+
+    // Formato YYYY-MM-DD
+    if (fechaSinHora.match(/^\d{4}-\d{2}-\d{2}/)) {
+      return fechaSinHora.slice(0, 10);
+    }
+
+    // Formato DD/MM/YY o DD/MM/YYYY
+    const match = fechaStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (match) {
+      const [, dia, mes, anio] = match;
+      const anioCompleto = anio.length === 2 ? `20${anio}` : anio;
+      return `${anioCompleto}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    }
+
+    // Intentar parsear como fecha estándar
+    const parsed = new Date(fechaStr);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+    return '';
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -1063,44 +1104,15 @@ export default function OperacionModule() {
       matchesEstado = estadoItem === estadoFiltro;
     }
     
-    // Filtro por fecha (sin hora)
+    // Filtro por rango de fechas (sin hora)
     let matchesFecha = true;
-    if (filterFecha) {
-      const fechaSolicitada = item['Fecha solicitada'] || item['Fecha Solicitada'] || item['FechaSolicitada'] || 
-                              item['Fecha solicitada'] || item['Fecha Solicitada'] || '';
-      if (fechaSolicitada) {
-        // Convertir fecha a formato YYYY-MM-DD para comparar (sin hora)
-        let fechaItem = '';
-        if (fechaSolicitada instanceof Date) {
-          fechaItem = fechaSolicitada.toISOString().split('T')[0];
-        } else {
-          const fechaStr = String(fechaSolicitada).trim();
-          // Si tiene hora, quitarla
-          const fechaSinHora = fechaStr.split(' ')[0].split('T')[0];
-          // Intentar parsear diferentes formatos
-          if (fechaSinHora.match(/^\d{4}-\d{2}-\d{2}/)) {
-            fechaItem = fechaSinHora;
-          } else {
-            // Si está en formato DD/MM/YY o DD/MM/YYYY, convertir
-            const match = fechaStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-            if (match) {
-              const [, dia, mes, anio] = match;
-              const anioCompleto = anio.length === 2 ? `20${anio}` : anio;
-              fechaItem = `${anioCompleto}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
-            } else {
-              // Intentar parsear como fecha estándar
-              const fechaParsed = new Date(fechaStr);
-              if (!isNaN(fechaParsed.getTime())) {
-                fechaItem = fechaParsed.toISOString().split('T')[0];
-              }
-            }
-          }
-        }
-        // Comparar solo la parte de fecha (sin hora)
-        matchesFecha = fechaItem === filterFecha || fechaItem.startsWith(filterFecha);
-      } else {
-        // Si hay filtro de fecha pero el item no tiene fecha, no coincide
+    if (filterFechaInicio || filterFechaFin) {
+      const fechaItem = getFechaSolicitadaYYYYMMDD(item);
+      if (!fechaItem) {
         matchesFecha = false;
+      } else {
+        if (filterFechaInicio && fechaItem < filterFechaInicio) matchesFecha = false;
+        if (filterFechaFin && fechaItem > filterFechaFin) matchesFecha = false;
       }
     }
     
@@ -1135,7 +1147,7 @@ export default function OperacionModule() {
   // Resetear a página 1 cuando cambian los filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterEstado, filterFecha, filterRegion, filterPlaza, itemsPerPage]);
+  }, [searchTerm, filterEstado, filterFechaInicio, filterFechaFin, filterRegion, filterPlaza, itemsPerPage]);
   
   // Si el filtro es "Completa" o "Instalada", mostrar datos de allData filtrados
   const filteredDataWithCompletas = filterEstado && 
@@ -1154,7 +1166,37 @@ export default function OperacionModule() {
           (item['Nº de orden'] || item['No. VTS'] || '').toString().includes(searchTerm) ||
           (item['Teléfonos'] || '').toString().includes(searchTerm) ||
           (item['Clave Vendedor'] || '').toString().includes(searchTerm);
-        return matchesEstado && matchesSearch;
+
+        // También aplicar filtros de rango de fecha, región y plaza para Completas/Instaladas
+        let matchesFecha = true;
+        if (filterFechaInicio || filterFechaFin) {
+          const fechaItem = getFechaSolicitadaYYYYMMDD(item);
+          if (!fechaItem) {
+            matchesFecha = false;
+          } else {
+            if (filterFechaInicio && fechaItem < filterFechaInicio) matchesFecha = false;
+            if (filterFechaFin && fechaItem > filterFechaFin) matchesFecha = false;
+          }
+        }
+
+        let matchesRegion = true;
+        if (filterRegion) {
+          const hub = item['Hub'] || item['HUB'] || item.Hub || '';
+          const plaza = item['Plaza'] || item['PLAZA'] || item.Plaza || '';
+          const region = getRegionFromHubPlaza(hub, plaza);
+          matchesRegion = region === filterRegion;
+        }
+
+        let matchesPlaza = true;
+        if (filterPlaza) {
+          const hub = item['Hub'] || item['HUB'] || item.Hub || '';
+          const plaza = item['Plaza'] || item['PLAZA'] || item.Plaza || '';
+          const plazaKey = plaza || hub || '';
+          const plazaDisplayName = getPlazaFullName(plazaKey);
+          matchesPlaza = plazaDisplayName === filterPlaza;
+        }
+
+        return matchesEstado && matchesSearch && matchesFecha && matchesRegion && matchesPlaza;
       })
     : filteredData;
 
@@ -1567,14 +1609,37 @@ export default function OperacionModule() {
               })}
             </select>
             
-            {/* Filtro por fecha */}
-            <input
-              type="date"
-              value={filterFecha}
-              onChange={(e) => setFilterFecha(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
-              placeholder="Filtrar por fecha"
-            />
+            {/* Filtro por rango de fechas */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="date"
+                value={filterFechaInicio}
+                onChange={(e) => setFilterFechaInicio(e.target.value)}
+                className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                title="Fecha inicio"
+              />
+              <span className="text-slate-400 text-sm">a</span>
+              <input
+                type="date"
+                value={filterFechaFin}
+                onChange={(e) => setFilterFechaFin(e.target.value)}
+                className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                title="Fecha fin"
+              />
+              {(filterFechaInicio || filterFechaFin) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterFechaInicio('');
+                    setFilterFechaFin('');
+                  }}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  title="Limpiar rango de fechas"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
             
             {/* Filtro por región */}
             <select
@@ -2082,7 +2147,7 @@ export default function OperacionModule() {
       ) : (
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
           <p className="text-slate-500">
-            {searchTerm || filterEstado || filterFecha || filterRegion
+            {searchTerm || filterEstado || filterFechaInicio || filterFechaFin || filterRegion
               ? 'No se encontraron órdenes con los filtros aplicados'
               : 'No hay órdenes en operación del día (excluyendo Completas e Instaladas)'
             }
