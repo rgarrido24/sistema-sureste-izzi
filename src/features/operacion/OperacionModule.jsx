@@ -817,74 +817,16 @@ export default function OperacionModule() {
           operacionData = filterByVendor(operacionData, user);
         }
         
-        // Filtrar estados "Completa" e "Instalada" del listado principal
-        // Pero mantenerlos en el filtro de estados para poder buscarlos
-        const operacionFiltrada = operacionData.filter(item => {
-          const estado = (item.Estado || item.estado || '').toUpperCase().trim();
-          return estado !== 'COMPLETA' && estado !== 'INSTALADA';
-        });
-        
-        // Eliminar duplicados: si hay varias órdenes con el mismo número de cuenta,
-        // solo mantener la última (más reciente por fecha de actualización o creación)
-        // IMPORTANTE: Usar "Cuenta de facturación" o "Nº de cuenta" (columna BQ) como clave
-        // NO usar "Nº de cuenta" si contiene texto como "Residencial"
-        const cuentaMap = new Map();
-        const sinCuenta = [];
-        
-        operacionFiltrada.forEach(item => {
-          // Priorizar "Cuenta de facturación" (columna AT) y "Nº de cuenta" (columna BQ) si es numérico
-          const cuentaFact = item['Cuenta de facturación'] || item['Cuenta de facturacion'] || '';
-          const cuentaNum = item['Nº de cuenta'] || item['N° de cuenta'] || '';
-          const cuentaNormalizada = item.cuenta || '';
-          
-          // Determinar la cuenta: si cuentaNum es numérico, usarlo; si no, usar cuentaFact
-          let cuenta = '';
-          if (cuentaFact && !isNaN(cuentaFact)) {
-            cuenta = String(cuentaFact).trim();
-          } else if (cuentaNum && !isNaN(cuentaNum)) {
-            cuenta = String(cuentaNum).trim();
-          } else if (cuentaNormalizada && !isNaN(cuentaNormalizada)) {
-            cuenta = String(cuentaNormalizada).trim();
-          }
-          
-          // Solo deduplicar si tenemos un número de cuenta válido
-          if (cuenta && cuenta !== '' && !isNaN(cuenta)) {
-            const existing = cuentaMap.get(cuenta);
-            if (!existing) {
-              cuentaMap.set(cuenta, item);
-            } else {
-              // Comparar fechas para mantener la más reciente
-              const existingDate = new Date(existing.updatedAt || existing.createdAt || existing.fechaActualizacion || existing.fechaCreacion || 0);
-              const currentDate = new Date(item.updatedAt || item.createdAt || item.fechaActualizacion || item.fechaCreacion || 0);
-              if (currentDate >= existingDate) {
-                cuentaMap.set(cuenta, item);
-              }
-            }
-          } else {
-            // Sin cuenta válida numérica, mantener todas (no se pueden deduplicar)
-            sinCuenta.push(item);
-          }
-        });
-        
-        // Convertir map a array y agregar IDs
-        const uniqueData = Array.from(cuentaMap.values()).map((d, index) => ({ 
-          id: d._id || d.id || `operacion-${index}`, 
-          ...d 
+        // IMPORTANTE: NO deduplicar por cuenta.
+        // El usuario necesita visualizar TODAS las órdenes (incluyendo repetidas por cuenta).
+        const dataWithIds = (operacionData || []).map((d, index) => ({
+          id: d._id || d.id || `operacion-${index}`,
+          ...d,
         }));
-        
-        // Agregar los que no tienen cuenta
-        sinCuenta.forEach((d, index) => {
-          uniqueData.push({
-            id: d._id || d.id || `operacion-sin-cuenta-${index}`,
-            ...d
-          });
-        });
-        
-        console.log(`📊 Total registros originales: ${operacionData.length}`);
-        console.log(`📊 Después de filtrar Completa/Instalada: ${operacionFiltrada.length}`);
-        console.log(`📊 Después de deduplicación: ${uniqueData.length}`);
-        
-        setData(uniqueData);
+
+        console.log(`📊 Operación del Día - Total registros cargados: ${dataWithIds.length}`);
+
+        setData(dataWithIds);
         setAllData(operacionData); // Guardar todos los datos para estadísticas
         
         // Inicializar notas desde los datos cargados
@@ -1016,58 +958,11 @@ export default function OperacionModule() {
         : operacionData;
       setAllData(operacionData);
       
-      const operacionFiltrada = filtered.filter(item => {
-        const estado = (item.Estado || item.estado || '').toUpperCase().trim();
-        return estado !== 'COMPLETA' && estado !== 'INSTALADA';
-      });
-      
-      // Aplicar deduplicación
-      const cuentaMap = new Map();
-      const sinCuenta = [];
-      
-      operacionFiltrada.forEach(item => {
-        const cuentaFact = item['Cuenta de facturación'] || item['Cuenta de facturacion'] || '';
-        const cuentaNum = item['Nº de cuenta'] || item['N° de cuenta'] || '';
-        const cuentaNormalizada = item.cuenta || '';
-        
-        let cuenta = '';
-        if (cuentaFact && !isNaN(cuentaFact)) {
-          cuenta = String(cuentaFact).trim();
-        } else if (cuentaNum && !isNaN(cuentaNum)) {
-          cuenta = String(cuentaNum).trim();
-        } else if (cuentaNormalizada && !isNaN(cuentaNormalizada)) {
-          cuenta = String(cuentaNormalizada).trim();
-        }
-        
-        if (cuenta && cuenta !== '' && !isNaN(cuenta)) {
-          const existing = cuentaMap.get(cuenta);
-          if (!existing) {
-            cuentaMap.set(cuenta, item);
-          } else {
-            const existingDate = new Date(existing.updatedAt || existing.createdAt || existing.fechaActualizacion || existing.fechaCreacion || 0);
-            const currentDate = new Date(item.updatedAt || item.createdAt || item.fechaActualizacion || item.fechaCreacion || 0);
-            if (currentDate >= existingDate) {
-              cuentaMap.set(cuenta, item);
-            }
-          }
-        } else {
-          sinCuenta.push(item);
-        }
-      });
-      
-      const uniqueData = Array.from(cuentaMap.values()).map((d, index) => ({ 
-        id: d._id || d.id || `operacion-${index}`, 
-        ...d 
-      }));
-      
-      sinCuenta.forEach((d, index) => {
-        uniqueData.push({
-          id: d._id || d.id || `operacion-sin-cuenta-${index}`,
-          ...d
-        });
-      });
-      
-      setData(uniqueData);
+      // Mantener todas las órdenes (sin deduplicar) después de asignar vendedor
+      setData((filtered || []).map((d, index) => ({
+        id: d._id || d.id || `operacion-${index}`,
+        ...d,
+      })));
       setAssigningVendor(null);
       setVendorInput('');
       alert('✅ Vendedor asignado correctamente');

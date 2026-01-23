@@ -84,11 +84,23 @@ export default function UploadModule({ currentModule }) {
             if (!Array.isArray(row)) return false;
             const cells = row.map(normalizeHeaderCell).filter(Boolean);
             if (cells.length < 5) return false;
-            return cells.some(c => c.includes('nº de cuenta') || c.includes('n° de cuenta') || c.includes('no. de cuenta') || (c.includes('cuenta') && c.includes('de')) || c === 'cuenta');
+            // Fuerte: operación del día suele traer "Nº de cuenta" o "Cuenta de facturación"
+            const hasCuentaStrong = cells.some(c =>
+              c.includes('nº de cuenta') ||
+              c.includes('n° de cuenta') ||
+              c.includes('no. de cuenta') ||
+              c.includes('cuenta de facturacion') ||
+              c.includes('cuenta de facturación')
+            );
+            if (hasCuentaStrong) return true;
+            // Fallback: otros archivos (M1-M4) traen "CUENTA"
+            return cells.some(c => c === 'cuenta' || c.includes('cuenta'));
           };
 
           let headerRowIndex = 0;
-          for (let i = 0; i < Math.min(5, rows.length); i++) {
+          // Buscar encabezados en una ventana más amplia:
+          // Muchos archivos traen varias filas de reporte antes del header real.
+          for (let i = 0; i < Math.min(50, rows.length); i++) {
             if (isHeaderRow(rows[i])) {
               headerRowIndex = i;
               break;
@@ -152,25 +164,45 @@ export default function UploadModule({ currentModule }) {
           // Validación fuerte para Operación del Día: ¿realmente viene "Nº de cuenta" con valores?
           const extractCuentaLike = (obj) => {
             if (!obj || typeof obj !== 'object') return '';
-            const candidates = [
-              obj['Nº de cuenta'],
-              obj['N° de cuenta'],
-              obj['No. de cuenta'],
-              obj['Cuenta de facturación'],
-              obj['Cuenta de Facturación'],
-              obj['CUENTA DE FACTURACIÓN'],
-              obj['CUENTA'],
-              obj['Cuenta'],
-              obj['Referencia'],
-              obj['REFERENCIA'],
+            const normalizeKey = (k) => String(k || '')
+              .trim()
+              .toLowerCase()
+              .replace(/[\s\u00A0]+/g, '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '');
+
+            const entries = Object.entries(obj);
+            const priority = [
+              'nºdecuenta',
+              'n°decuenta',
+              'nodecuenta',
+              'cuentadefacturacion',
+              'cuenta',
+              'nocuenta',
+              'referencia',
             ];
-            for (const v of candidates) {
-              const raw = String(v ?? '').trim();
+
+            // 1) Buscar por keys exactas normalizadas
+            for (const wanted of priority) {
+              const hit = entries.find(([k]) => normalizeKey(k) === wanted);
+              if (!hit) continue;
+              const raw = String(hit[1] ?? '').trim();
               if (!raw) continue;
               const digits = raw.replace(/[^\d]/g, '');
               if (digits.length >= 3) return digits;
               if (raw.length >= 3 && raw !== 'undefined' && raw !== 'null') return raw;
             }
+
+            // 2) Fallback: cualquier columna que contenga "cuenta" / "facturacion"
+            for (const [k, v] of entries) {
+              const nk = normalizeKey(k);
+              if (!nk.includes('cuenta') && !nk.includes('facturacion')) continue;
+              const raw = String(v ?? '').trim();
+              if (!raw) continue;
+              const digits = raw.replace(/[^\d]/g, '');
+              if (digits.length >= 3) return digits;
+            }
+
             return '';
           };
 
