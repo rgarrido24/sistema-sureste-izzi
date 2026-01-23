@@ -2,7 +2,9 @@ import express from 'express';
 import SalesMaster from '../models/SalesMaster.js';
 import { requireAuth } from '../middleware/auth.js';
 import ActivityEvent from '../models/ActivityEvent.js';
-import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
+import OperacionDia from '../models/OperacionDia.js';
+import { normalizeCuenta } from '../utils/cuentaHelper.js';
+import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -21,7 +23,41 @@ router.get('/', async (req, res) => {
 
     if (req.user?.role === 'regionales') {
       const userRegion = normalizeRegion(req.user.region || '');
-      const filtered = applyRegionalFilterInMemory(sales, userRegion);
+      // Filtro robusto: si el registro no trae región, inferir por cuenta cruzando con OperacionDia (Hub/Plaza)
+      const regionByCuenta = new Map();
+      const missingCuentas = [];
+
+      for (const doc of sales) {
+        const cuenta = normalizeCuenta(doc) || doc?.cuenta || '';
+        if (!cuenta) continue;
+        const reg = extractRegionFromRecord(doc);
+        if (reg) regionByCuenta.set(cuenta, reg);
+        else missingCuentas.push(cuenta);
+      }
+
+      if (missingCuentas.length > 0) {
+        const uniqueMissing = Array.from(new Set(missingCuentas)).slice(0, 50000);
+        const opDocs = await OperacionDia.find(
+          { cuenta: { $in: uniqueMissing } },
+          { cuenta: 1, Hub: 1, HUB: 1, Plaza: 1, PLAZA: 1, REGION: 1, Region: 1, 'Región': 1, 'REGIÓN': 1, SUBREGION: 1, 'SUBREGION': 1 }
+        ).lean();
+
+        for (const od of opDocs) {
+          const cuenta = od?.cuenta;
+          if (!cuenta) continue;
+          if (regionByCuenta.has(cuenta)) continue;
+          const reg = extractRegionFromRecord(od);
+          if (reg) regionByCuenta.set(cuenta, reg);
+        }
+      }
+
+      const filtered = sales.filter(doc => {
+        const cuenta = normalizeCuenta(doc) || doc?.cuenta || '';
+        if (!cuenta) return false;
+        const reg = regionByCuenta.get(cuenta) || extractRegionFromRecord(doc);
+        return normalizeRegion(reg) === userRegion;
+      });
+
       return res.json(filtered);
     }
 
@@ -40,9 +76,41 @@ router.get('/count', async (req, res) => {
       if (!userRegion) {
         return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
       }
+      // Contar con el mismo filtro robusto que / (sin traer toda la colección al cliente)
       const sales = await SalesMaster.find().lean();
-      const filtered = applyRegionalFilterInMemory(sales, userRegion);
-      return res.json({ count: filtered.length });
+
+      const regionByCuenta = new Map();
+      const missingCuentas = [];
+      for (const doc of sales) {
+        const cuenta = normalizeCuenta(doc) || doc?.cuenta || '';
+        if (!cuenta) continue;
+        const reg = extractRegionFromRecord(doc);
+        if (reg) regionByCuenta.set(cuenta, reg);
+        else missingCuentas.push(cuenta);
+      }
+      if (missingCuentas.length > 0) {
+        const uniqueMissing = Array.from(new Set(missingCuentas)).slice(0, 50000);
+        const opDocs = await OperacionDia.find(
+          { cuenta: { $in: uniqueMissing } },
+          { cuenta: 1, Hub: 1, HUB: 1, Plaza: 1, PLAZA: 1, REGION: 1, Region: 1, 'Región': 1, 'REGIÓN': 1, SUBREGION: 1, 'SUBREGION': 1 }
+        ).lean();
+        for (const od of opDocs) {
+          const cuenta = od?.cuenta;
+          if (!cuenta) continue;
+          if (regionByCuenta.has(cuenta)) continue;
+          const reg = extractRegionFromRecord(od);
+          if (reg) regionByCuenta.set(cuenta, reg);
+        }
+      }
+
+      let count = 0;
+      for (const doc of sales) {
+        const cuenta = normalizeCuenta(doc) || doc?.cuenta || '';
+        if (!cuenta) continue;
+        const reg = regionByCuenta.get(cuenta) || extractRegionFromRecord(doc);
+        if (normalizeRegion(reg) === userRegion) count++;
+      }
+      return res.json({ count });
     }
 
     const count = await SalesMaster.countDocuments();
