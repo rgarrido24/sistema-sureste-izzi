@@ -264,6 +264,13 @@ export async function bulkCreatePackages(packages) {
   });
 }
 
+export async function dedupePackages() {
+  return apiRequest('/packages/dedupe', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 export async function deletePackage(id) {
   return apiRequest(`/packages/${id}`, {
     method: 'DELETE',

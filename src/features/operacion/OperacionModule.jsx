@@ -875,15 +875,27 @@ export default function OperacionModule() {
       try {
         // Endpoint optimizado en backend: devuelve vendedores desde usuarios (rápido)
         const vendorsData = await api.getOperacionVendors();
-        const vendorsList = (vendorsData?.vendors || []).filter(Boolean);
+        const vendorsList = (vendorsData?.vendors || [])
+          .filter(Boolean)
+          .map(v => String(v).trim())
+          .filter(v => v && !String(v).toUpperCase().includes('CVVEN'))
+          .filter(v => {
+            // Evitar códigos largos sin espacios (tipo CVVENEXT0110009893)
+            const s = String(v).trim();
+            if (!s.includes(' ') && /^[A-Z0-9]{8,}$/i.test(s)) return false;
+            return true;
+          });
         setVendors(vendorsList.map(v => ({ id: v, name: v, username: v })));
       } catch (error) {
         console.error('Error cargando vendedores:', error);
         // Fallback: intentar obtener usuarios del sistema
         try {
           const users = await api.getAllUsers();
-          const vendorsList = users.filter(u => u.role === 'vendedor' || u.role === 'user');
-          setVendors(vendorsList);
+          const vendorsList = users
+            .filter(u => u.role === 'vendedor' || u.role === 'user')
+            .map(u => (u?.name || '').trim())
+            .filter(Boolean);
+          setVendors(vendorsList.map(v => ({ id: v, name: v, username: v })));
         } catch (fallbackError) {
           console.error('Error en fallback de vendedores:', fallbackError);
         }
@@ -1754,9 +1766,18 @@ export default function OperacionModule() {
                     Paquete Contratado:
                   </label>
                   <select
-                    value={item.Paquete || item.paquete || ''}
+                    value={(() => {
+                      const current = item.Paquete || item.paquete || '';
+                      if (!current) return '';
+                      const source = (packageCatalog && packageCatalog.length > 0)
+                        ? packageCatalog
+                        : FALLBACK_IZZI_PACKAGES;
+                      // Si antes se guardó código, mapearlo a nombre para que se seleccione correctamente
+                      const found = (source || []).find(p => String(p.codigo || '').trim() === String(current).trim());
+                      return found?.name || current;
+                    })()}
                     onChange={async (e) => {
-                      const paqueteSeleccionado = e.target.value;
+                      const paqueteSeleccionado = e.target.value; // Guardamos SOLO el nombre
                       try {
                         await api.updateOperacion(item.id, { Paquete: paqueteSeleccionado, paquete: paqueteSeleccionado });
                         // Actualizar el item en allData y data
@@ -1775,54 +1796,68 @@ export default function OperacionModule() {
                   >
                     <option value="">Seleccionar paquete...</option>
                     {(() => {
-                      const normMarca = (m) => String(m || 'IZZI').toUpperCase().trim();
                       const normTipo = (t) => String(t || '').toUpperCase().trim();
                       const byGroup = new Map();
+                      const normalizeOptionName = (name) => {
+                        const raw = String(name || '').replace(/\s+/g, ' ').trim();
+                        if (!raw) return raw;
+                        const parts = raw.split(' ').filter(Boolean);
+                        const out = [];
+                        for (const p of parts) {
+                          if (out.length === 0) out.push(p);
+                          else if (out[out.length - 1] !== p) out.push(p);
+                        }
+                        return out.join(' ');
+                      };
 
                       const source = (packageCatalog && packageCatalog.length > 0)
                         ? packageCatalog
                         : FALLBACK_IZZI_PACKAGES;
 
+                      // Agrupar SOLO por tipo (TRIPLE / DOBLE / SINGLE). Mezclamos IZZI + WIZZ.
+                      // Dedupe por nombre para que no salgan repetidos aunque existan duplicados en BD.
                       source.forEach(p => {
-                        const marca = normMarca(p.marca);
                         const tipo = normTipo(p.tipo) || 'OTROS';
-                        const key = `${tipo}||${marca}`;
+                        const key = `${tipo}`;
                         if (!byGroup.has(key)) byGroup.set(key, []);
                         byGroup.get(key).push(p);
                       });
 
                       const orderTipo = ['TRIPLE', 'DOBLE', 'SINGLE', 'OTROS'];
-                      const orderMarca = ['IZZI', 'WIZZ'];
                       const keys = Array.from(byGroup.keys()).sort((a, b) => {
-                        const [tA, mA] = a.split('||');
-                        const [tB, mB] = b.split('||');
+                        const tA = a;
+                        const tB = b;
                         const tIdxA = orderTipo.indexOf(tA);
                         const tIdxB = orderTipo.indexOf(tB);
-                        const tCmp = (tIdxA === -1 ? 999 : tIdxA) - (tIdxB === -1 ? 999 : tIdxB);
-                        if (tCmp !== 0) return tCmp;
-                        const mIdxA = orderMarca.indexOf(mA);
-                        const mIdxB = orderMarca.indexOf(mB);
-                        return (mIdxA === -1 ? 999 : mIdxA) - (mIdxB === -1 ? 999 : mIdxB);
+                        return (tIdxA === -1 ? 999 : tIdxA) - (tIdxB === -1 ? 999 : tIdxB);
                       });
 
                       return keys.map(k => {
-                        const [tipo, marca] = k.split('||');
-                        const label = `${tipo === 'OTROS' ? 'OTROS' : `PLANES ${tipo}S`} ${marca}`;
-                        const list = (byGroup.get(k) || [])
-                          .slice()
-                          .sort((a, b) => String(a.codigo || a.name || '').localeCompare(String(b.codigo || b.name || '')));
+                        const tipo = k;
+                        const label = `${tipo === 'OTROS' ? 'OTROS' : `PLANES ${tipo}S`}`;
+
+                        const listRaw = (byGroup.get(k) || []).slice();
+                        // dedupe por nombre
+                        const seenName = new Set();
+                        const list = listRaw
+                          .filter(p => {
+                            const name = normalizeOptionName(p.name);
+                            if (!name) return false;
+                            const keyName = name.toUpperCase();
+                            if (seenName.has(keyName)) return false;
+                            seenName.add(keyName);
+                            return true;
+                          })
+                          .sort((a, b) => normalizeOptionName(a.name).localeCompare(normalizeOptionName(b.name)));
 
                         return (
                           <optgroup key={k} label={label}>
                             {list.map(pkg => {
-                              const valueKey = (pkg.codigo || pkg.name || '').trim();
+                              const valueKey = normalizeOptionName(pkg.name); // valor = nombre (normalizado)
                               if (!valueKey) return null;
-                              const display = pkg.codigo
-                                ? `${pkg.codigo} - ${pkg.name}`
-                                : pkg.name;
                               return (
                                 <option key={pkg.id || valueKey} value={valueKey}>
-                                  {display}
+                                  {valueKey}
                                 </option>
                               );
                             })}

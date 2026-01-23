@@ -305,6 +305,19 @@ export default function PackagesModule() {
     }
   };
 
+  const handleDedupe = async () => {
+    setBulkLoading(true);
+    try {
+      const resp = await api.dedupePackages();
+      alert(`✅ Limpieza lista. Marca corregida: ${resp.marcaFixed} | Nombres normalizados: ${resp.nameFixed || 0} | Duplicados eliminados: ${resp.deletedDuplicates}`);
+      await loadPackages();
+    } catch (e) {
+      alert('Error limpiando duplicados: ' + (e?.message || 'Error'));
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="text-center p-8">Cargando paquetes...</div>;
   }
@@ -438,6 +451,15 @@ SINGLES\tWIZZ TV
               className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200"
             >
               Pegar ejemplo
+            </button>
+            <button
+              type="button"
+              disabled={bulkLoading}
+              onClick={handleDedupe}
+              className="px-4 py-2 bg-amber-50 text-amber-800 rounded-lg font-semibold hover:bg-amber-100 border border-amber-200 disabled:opacity-60"
+              title="Corrige marca en registros viejos y elimina duplicados"
+            >
+              Limpiar duplicados
             </button>
           </div>
         </div>
