@@ -544,7 +544,9 @@ export default function SalesStatusView({
   filterVendor, 
   setFilterVendor,
   filterEstatus,
-  setFilterEstatus
+  setFilterEstatus,
+  filterPlaza,
+  setFilterPlaza
 }) {
   const { user } = useAuth();
   const [data, setData] = useState([]);
@@ -629,6 +631,13 @@ export default function SalesStatusView({
   const vendors = [...new Set(
     data.map(item => item.Vendedor || item['Vendedor']).filter(Boolean)
   )].sort();
+
+  const plazas = [...new Set(
+    data
+      .map(item => item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '')
+      .map(v => String(v || '').trim())
+      .filter(v => v && v.toLowerCase() !== 'sin dato' && v.toLowerCase() !== 'n/a' && v.toLowerCase() !== 'na')
+  )].sort((a, b) => a.localeCompare(b));
   
   // Mapeo de HUBs y PLAZAs a regiones (SURESTE, METROPOLITANA, NORESTE)
   const getRegionFromHubPlaza = (hub, plaza) => {
@@ -999,6 +1008,9 @@ export default function SalesStatusView({
       (item.PLAZA || item['PLAZA'] || item.Plaza || '').toLowerCase().includes(searchLower);
     
     const matchesVendor = !filterVendor || (item.Vendedor || item['Vendedor']) === filterVendor;
+
+    const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
+    const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
     
     // Filtrar por estatus (para M1, M2, M3, M4)
     let matchesEstatus = true;
@@ -1007,7 +1019,7 @@ export default function SalesStatusView({
       matchesEstatus = itemEstatus === filterEstatus;
     }
     
-    return matchesSearch && matchesVendor && matchesEstatus;
+    return matchesSearch && matchesVendor && matchesPlaza && matchesEstatus;
   });
 
   // Paginación
@@ -1101,7 +1113,10 @@ export default function SalesStatusView({
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               placeholder="Buscar cliente, cuenta, teléfono..."
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
             />
@@ -1109,7 +1124,10 @@ export default function SalesStatusView({
           {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
             <select
               value={filterEstatus || ''}
-              onChange={(e) => setFilterEstatus(e.target.value || null)}
+              onChange={(e) => {
+                setFilterEstatus(e.target.value || null);
+                setCurrentPage(1);
+              }}
               className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
             >
               <option value="">Todos los estatus</option>
@@ -1121,12 +1139,28 @@ export default function SalesStatusView({
           )}
           <select
             value={filterVendor}
-            onChange={(e) => setFilterVendor(e.target.value)}
+            onChange={(e) => {
+              setFilterVendor(e.target.value);
+              setCurrentPage(1);
+            }}
             className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
           >
             <option value="">Todos los vendedores</option>
             {vendors.map(vendor => (
               <option key={vendor} value={vendor}>{vendor}</option>
+            ))}
+          </select>
+          <select
+            value={filterPlaza || ''}
+            onChange={(e) => {
+              setFilterPlaza(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Todas las plazas</option>
+            {plazas.map(plaza => (
+              <option key={plaza} value={plaza}>{plaza}</option>
             ))}
           </select>
         </div>

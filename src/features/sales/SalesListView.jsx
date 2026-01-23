@@ -9,7 +9,9 @@ export default function SalesListView({
   searchTerm, 
   setSearchTerm, 
   filterVendor, 
-  setFilterVendor
+  setFilterVendor,
+  filterPlaza,
+  setFilterPlaza
 }) {
   const { user } = useAuth();
   const [data, setData] = useState([]);
@@ -60,6 +62,12 @@ export default function SalesListView({
   }
 
   const vendors = [...new Set(data.map(item => item.Vendedor).filter(Boolean))].sort();
+  const plazas = [...new Set(
+    data
+      .map(item => item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '')
+      .map(v => String(v || '').trim())
+      .filter(v => v && v.toLowerCase() !== 'sin dato' && v.toLowerCase() !== 'n/a' && v.toLowerCase() !== 'na')
+  )].sort((a, b) => a.localeCompare(b));
   
   // Filtrar datos
   const filteredData = data.filter(item => {
@@ -69,8 +77,11 @@ export default function SalesListView({
       (item.Telefono || '').includes(searchTerm);
     
     const matchesVendor = !filterVendor || item.Vendedor === filterVendor;
+
+    const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
+    const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
     
-    return matchesSearch && matchesVendor;
+    return matchesSearch && matchesVendor && matchesPlaza;
   });
 
   return (
@@ -96,6 +107,16 @@ export default function SalesListView({
             <option value="">Todos los vendedores</option>
             {vendors.map(vendor => (
               <option key={vendor} value={vendor}>{vendor}</option>
+            ))}
+          </select>
+          <select
+            value={filterPlaza || ''}
+            onChange={(e) => setFilterPlaza(e.target.value)}
+            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Todas las plazas</option>
+            {plazas.map(plaza => (
+              <option key={plaza} value={plaza}>{plaza}</option>
             ))}
           </select>
         </div>

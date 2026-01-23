@@ -743,6 +743,7 @@ export default function OperacionModule() {
   const [filterEstado, setFilterEstado] = useState('');
   const [filterFecha, setFilterFecha] = useState('');
   const [filterRegion, setFilterRegion] = useState('');
+  const [filterPlaza, setFilterPlaza] = useState('');
   const [showStats, setShowStats] = useState(true); // Mostrar estadísticas por defecto
   const [vendors, setVendors] = useState([]); // Lista de vendedores
   const [assigningVendor, setAssigningVendor] = useState(null); // ID del item al que se está asignando vendedor
@@ -1105,8 +1106,18 @@ export default function OperacionModule() {
       const region = getRegionFromHubPlaza(hub, plaza);
       matchesRegion = region === filterRegion;
     }
+
+    // Filtro por plaza (nombre completo)
+    let matchesPlaza = true;
+    if (filterPlaza) {
+      const hub = item['Hub'] || item['HUB'] || item.Hub || '';
+      const plaza = item['Plaza'] || item['PLAZA'] || item.Plaza || '';
+      const plazaKey = plaza || hub || '';
+      const plazaDisplayName = getPlazaFullName(plazaKey);
+      matchesPlaza = plazaDisplayName === filterPlaza;
+    }
     
-    return matchesSearch && matchesEstado && matchesFecha && matchesRegion;
+    return matchesSearch && matchesEstado && matchesFecha && matchesRegion && matchesPlaza;
   });
   
   // Paginación: calcular índices
@@ -1118,7 +1129,7 @@ export default function OperacionModule() {
   // Resetear a página 1 cuando cambian los filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterEstado, filterFecha, filterRegion, itemsPerPage]);
+  }, [searchTerm, filterEstado, filterFecha, filterRegion, filterPlaza, itemsPerPage]);
   
   // Si el filtro es "Completa" o "Instalada", mostrar datos de allData filtrados
   const filteredDataWithCompletas = filterEstado && 
@@ -1147,6 +1158,28 @@ export default function OperacionModule() {
       .map(item => item.Estado || item.estado)
       .filter(estado => estado)
   )].sort();
+
+  // Plazas únicas (nombre completo) para el filtro de Plaza.
+  // Si ya hay filtro de región, solo mostrar plazas de esa región.
+  const plazasUnicas = [...new Set(
+    data
+      .filter(item => {
+        if (!filterRegion) return true;
+        const hub = item['Hub'] || item['HUB'] || item.Hub || '';
+        const plaza = item['Plaza'] || item['PLAZA'] || item.Plaza || '';
+        const region = getRegionFromHubPlaza(hub, plaza);
+        return region === filterRegion;
+      })
+      .map(item => {
+        const hub = item['Hub'] || item['HUB'] || item.Hub || '';
+        const plaza = item['Plaza'] || item['PLAZA'] || item.Plaza || '';
+        const plazaKey = plaza || hub || '';
+        const label = getPlazaFullName(plazaKey);
+        if (!label || label === 'Sin plaza') return null;
+        return label;
+      })
+      .filter(Boolean)
+  )].sort((a, b) => String(a).localeCompare(String(b)));
 
   if (loading) {
     return (
@@ -1547,6 +1580,18 @@ export default function OperacionModule() {
               <option value="METROPOLITANA">METROPOLITANA</option>
               <option value="PACIFICO">PACIFICO</option>
               <option value="OCCIDENTE">OCCIDENTE</option>
+            </select>
+
+            {/* Filtro por plaza (dentro de la región actual si aplica) */}
+            <select
+              value={filterPlaza}
+              onChange={(e) => setFilterPlaza(e.target.value)}
+              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[220px]"
+            >
+              <option value="">Todas las plazas</option>
+              {plazasUnicas.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
             </select>
             
             {/* Selector de items por página */}
