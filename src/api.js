@@ -198,6 +198,17 @@ export async function updateOperacionVendedor(operacionId, vendedor, usuarioModi
   });
 }
 
+export async function updateOperacionPaquete(operacionId, paquete, usuarioModificadoPor = null, usuarioModificadoPorNombre = null) {
+  return apiRequest(`/operacion/${operacionId}/paquete`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      paquete,
+      usuarioModificadoPor,
+      usuarioModificadoPorNombre,
+    }),
+  });
+}
+
 export async function getOperacionVendors() {
   return apiRequest('/operacion/vendors');
 }

@@ -203,7 +203,7 @@ export default function AdminLayout({
                       : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
                   }`}
                 >
-                  Operación
+                  Operación del Día
                 </button>
                 <button 
                   onClick={() => setActiveTab('packages')} 

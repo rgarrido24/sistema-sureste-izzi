@@ -852,6 +852,9 @@ export default function OperacionModule() {
         setNotas(notasIniciales);
       } catch (error) {
         console.error('Error cargando operación:', error);
+        if (error?.status === 403) {
+          alert(error?.details?.error || 'Usuario regional sin región asignada. Pide a Admin que la configure.');
+        }
       } finally {
         if (isInitial) setLoading(false);
         setRefreshing(false);
@@ -902,7 +905,7 @@ export default function OperacionModule() {
       }
     };
     // Cargar vendedores para roles que pueden asignar
-    if (user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control')) {
+    if (user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control' || user.role === 'regionales')) {
       loadVendors();
     }
   }, [user]);
@@ -1025,6 +1028,9 @@ export default function OperacionModule() {
       alert('Error al asignar vendedor. Por favor intenta de nuevo.');
     }
   };
+
+  const canAudit = !!user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'mesa_control');
+  const canAssignVendor = !!user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control' || user.role === 'regionales');
 
   // Filtrar datos
   const filteredData = data.filter(item => {
@@ -1712,11 +1718,29 @@ export default function OperacionModule() {
                       <span>Vendedor asignado: <strong className="text-slate-700">{vendedorAsignado}</strong></span>
                     </div>
                   )}
-                  {/* Mostrar usuario que modificó por última vez */}
-                  {(item.UsuarioModificadoPorNombre || item['UsuarioModificadoPorNombre']) && (
-                    <div className="flex items-center gap-2 text-[10px] text-slate-500 italic border-t border-slate-100 pt-2 mt-2">
-                      <User size={10} className="text-slate-400" />
-                      <span>Última modificación por: <strong className="text-slate-700">{item.UsuarioModificadoPorNombre || item['UsuarioModificadoPorNombre']}</strong></span>
+                  {/* Auditoría (admin / mesa_control): quién asignó vendedor / paquete */}
+                  {canAudit && (
+                    <div className="border-t border-slate-100 pt-2 mt-2 space-y-1 text-[10px] text-slate-500 italic">
+                      {(item.VendedorModificadoPorNombre || item.UsuarioModificadoPorNombre || item['UsuarioModificadoPorNombre']) && (
+                        <div className="flex items-center gap-2">
+                          <User size={10} className="text-slate-400" />
+                          <span>
+                            Vendedor asignado por:{' '}
+                            <strong className="text-slate-700">
+                              {item.VendedorModificadoPorNombre || item.UsuarioModificadoPorNombre || item['UsuarioModificadoPorNombre']}
+                            </strong>
+                          </span>
+                        </div>
+                      )}
+                      {item.PaqueteModificadoPorNombre && (
+                        <div className="flex items-center gap-2">
+                          <User size={10} className="text-slate-400" />
+                          <span>
+                            Paquete asignado por:{' '}
+                            <strong className="text-slate-700">{item.PaqueteModificadoPorNombre}</strong>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                   {hub && (
@@ -1779,13 +1803,34 @@ export default function OperacionModule() {
                     onChange={async (e) => {
                       const paqueteSeleccionado = e.target.value; // Guardamos SOLO el nombre
                       try {
-                        await api.updateOperacion(item.id, { Paquete: paqueteSeleccionado, paquete: paqueteSeleccionado });
+                        const usuarioActual = user?.username || user?.id || '';
+                        const usuarioActualNombre = user?.name || '';
+                        const updated = await api.updateOperacionPaquete(
+                          item.id,
+                          paqueteSeleccionado,
+                          usuarioActual,
+                          usuarioActualNombre
+                        );
                         // Actualizar el item en allData y data
                         setAllData(prev => prev.map(i => 
-                          i.id === item.id ? { ...i, Paquete: paqueteSeleccionado, paquete: paqueteSeleccionado } : i
+                          i.id === item.id
+                            ? {
+                                ...i,
+                                Paquete: paqueteSeleccionado,
+                                paquete: paqueteSeleccionado,
+                                PaqueteModificadoPorNombre: updated?.PaqueteModificadoPorNombre || usuarioActualNombre || i.PaqueteModificadoPorNombre,
+                              }
+                            : i
                         ));
                         setData(prev => prev.map(i => 
-                          i.id === item.id ? { ...i, Paquete: paqueteSeleccionado, paquete: paqueteSeleccionado } : i
+                          i.id === item.id
+                            ? {
+                                ...i,
+                                Paquete: paqueteSeleccionado,
+                                paquete: paqueteSeleccionado,
+                                PaqueteModificadoPorNombre: updated?.PaqueteModificadoPorNombre || usuarioActualNombre || i.PaqueteModificadoPorNombre,
+                              }
+                            : i
                         ));
                       } catch (error) {
                         console.error('Error guardando paquete:', error);
@@ -1889,7 +1934,7 @@ export default function OperacionModule() {
                   </div>
                   
                   {/* Asignar Vendedor (para admin, admin_general, director y mesa_control) */}
-                  {user && (user.role === 'admin' || user.role === 'admin_general' || user.role === 'director' || user.role === 'mesa_control') && (
+                  {canAssignVendor && (
                     <div>
                       {assigningVendor === item.id ? (
                         <div className="bg-blue-50 p-2 rounded-lg border border-blue-200">

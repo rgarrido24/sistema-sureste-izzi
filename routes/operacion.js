@@ -281,20 +281,45 @@ router.get('/stats', async (req, res) => {
 router.put('/update-vendor/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { vendedor } = req.body;
+    const { vendedor, usuarioModificadoPor, usuarioModificadoPorNombre } = req.body;
     
     if (!vendedor) {
       return res.status(400).json({ error: 'Se requiere el nombre del vendedor' });
     }
     
+    const vendedorTrimmed = String(vendedor || '').trim();
+    if (!vendedorTrimmed) {
+      return res.status(400).json({ error: 'Se requiere el nombre del vendedor' });
+    }
+
+    // Seguridad: regionales solo pueden modificar su región
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const existing = await OperacionDia.findById(id).lean();
+      if (!existing) return res.status(404).json({ error: 'Registro no encontrado' });
+      const allowed = applyRegionalFilterInMemory([existing], userRegion);
+      if (!allowed || allowed.length === 0) {
+        return res.status(403).json({ error: 'Acceso denegado: solo puedes modificar tu región.' });
+      }
+    }
+
     const updated = await OperacionDia.findByIdAndUpdate(
       id,
       {
-        'Clave Vendedor': vendedor,
-        'CVVEN': vendedor,
-        'VendedorAsignado': vendedor,
-        'Vendedor': vendedor,
-        'Vendedor Asignado': vendedor,
+        // IMPORTANTE: NO sobrescribir CVVEN/Clave Vendedor (se capturó del archivo)
+        'VendedorAsignado': vendedorTrimmed,
+        'Vendedor': vendedorTrimmed,
+        'Vendedor Asignado': vendedorTrimmed,
+        // Auditoría (quién asignó por última vez)
+        VendedorModificadoPor: usuarioModificadoPor || '',
+        VendedorModificadoPorNombre: usuarioModificadoPorNombre || '',
+        VendedorModificadoAt: new Date(),
+        // Backward compat (pantallas viejas usan este campo)
+        UsuarioModificadoPor: usuarioModificadoPor || '',
+        UsuarioModificadoPorNombre: usuarioModificadoPorNombre || '',
         fechaActualizacion: new Date(),
         updatedAt: new Date()
       },
@@ -315,6 +340,20 @@ router.put('/update-vendor/:id', async (req, res) => {
 // Actualizar registro específico
 router.put('/:id', async (req, res) => {
   try {
+    // Seguridad: regionales solo pueden modificar su región
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const existing = await OperacionDia.findById(req.params.id).lean();
+      if (!existing) return res.status(404).json({ error: 'No encontrado' });
+      const allowed = applyRegionalFilterInMemory([existing], userRegion);
+      if (!allowed || allowed.length === 0) {
+        return res.status(403).json({ error: 'Acceso denegado: solo puedes modificar tu región.' });
+      }
+    }
+
     const updated = await OperacionDia.findByIdAndUpdate(
       req.params.id,
       { ...req.body, fechaActualizacion: new Date(), updatedAt: new Date() },
@@ -337,6 +376,20 @@ router.put('/:id/estado', async (req, res) => {
       return res.status(400).json({ error: 'Estado inválido' });
     }
     
+    // Seguridad: regionales solo pueden modificar su región
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const existing = await OperacionDia.findById(id).lean();
+      if (!existing) return res.status(404).json({ error: 'No encontrado' });
+      const allowed = applyRegionalFilterInMemory([existing], userRegion);
+      if (!allowed || allowed.length === 0) {
+        return res.status(403).json({ error: 'Acceso denegado: solo puedes modificar tu región.' });
+      }
+    }
+
     const operacion = await OperacionDia.findByIdAndUpdate(
       id,
       { estado, fechaActualizacion: new Date() },
@@ -358,20 +411,42 @@ router.put('/:id/estado', async (req, res) => {
 router.put('/:id/vendedor', async (req, res) => {
   try {
     const { id } = req.params;
-    const { vendedor } = req.body;
+    const { vendedor, usuarioModificadoPor, usuarioModificadoPorNombre } = req.body;
     
     if (!vendedor || vendedor.trim() === '') {
       return res.status(400).json({ error: 'El nombre del vendedor es requerido' });
     }
     
+    const vendedorTrimmed = String(vendedor || '').trim();
+
+    // Seguridad: regionales solo pueden modificar su región
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const existing = await OperacionDia.findById(id).lean();
+      if (!existing) return res.status(404).json({ error: 'No encontrado' });
+      const allowed = applyRegionalFilterInMemory([existing], userRegion);
+      if (!allowed || allowed.length === 0) {
+        return res.status(403).json({ error: 'Acceso denegado: solo puedes modificar tu región.' });
+      }
+    }
+
     const operacion = await OperacionDia.findByIdAndUpdate(
       id,
       { 
-        'Clave Vendedor': vendedor.trim(),
-        'CVVEN': vendedor.trim(),
-        'VendedorAsignado': vendedor.trim(),
-        'Vendedor': vendedor.trim(),
-        'Vendedor Asignado': vendedor.trim(),
+        // IMPORTANTE: NO sobrescribir CVVEN/Clave Vendedor (se capturó del archivo)
+        'VendedorAsignado': vendedorTrimmed,
+        'Vendedor': vendedorTrimmed,
+        'Vendedor Asignado': vendedorTrimmed,
+        // Auditoría (quién asignó por última vez)
+        VendedorModificadoPor: usuarioModificadoPor || '',
+        VendedorModificadoPorNombre: usuarioModificadoPorNombre || '',
+        VendedorModificadoAt: new Date(),
+        // Backward compat (pantallas viejas usan este campo)
+        UsuarioModificadoPor: usuarioModificadoPor || '',
+        UsuarioModificadoPorNombre: usuarioModificadoPorNombre || '',
         fechaActualizacion: new Date(),
         updatedAt: new Date()
       },
@@ -382,10 +457,62 @@ router.put('/:id/vendedor', async (req, res) => {
       return res.status(404).json({ error: 'No encontrado' });
     }
     
-    console.log(`✅ Vendedor asignado: ${vendedor.trim()} a operación ${id}`);
+    console.log(`✅ Vendedor asignado: ${vendedorTrimmed} a operación ${id}`);
     res.json(operacion);
   } catch (error) {
     console.error('Error actualizando vendedor operacion:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Actualizar paquete asignado a una operación (auditoría separada)
+router.put('/:id/paquete', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paquete, Paquete, usuarioModificadoPor, usuarioModificadoPorNombre } = req.body;
+
+    const paqueteValue = String(paquete || Paquete || '').trim();
+    if (!paqueteValue) {
+      return res.status(400).json({ error: 'El paquete es requerido' });
+    }
+
+    // Seguridad: regionales solo pueden modificar su región
+    if (req.user?.role === 'regionales') {
+      const userRegion = normalizeRegion(req.user.region || '');
+      if (!userRegion) {
+        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+      }
+      const existing = await OperacionDia.findById(id).lean();
+      if (!existing) return res.status(404).json({ error: 'No encontrado' });
+      const allowed = applyRegionalFilterInMemory([existing], userRegion);
+      if (!allowed || allowed.length === 0) {
+        return res.status(403).json({ error: 'Acceso denegado: solo puedes modificar tu región.' });
+      }
+    }
+
+    const operacion = await OperacionDia.findByIdAndUpdate(
+      id,
+      {
+        Paquete: paqueteValue,
+        paquete: paqueteValue,
+        // Auditoría (quién asignó por última vez)
+        PaqueteModificadoPor: usuarioModificadoPor || '',
+        PaqueteModificadoPorNombre: usuarioModificadoPorNombre || '',
+        PaqueteModificadoAt: new Date(),
+        fechaActualizacion: new Date(),
+        updatedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    if (!operacion) {
+      return res.status(404).json({ error: 'No encontrado' });
+    }
+
+    console.log(`✅ Paquete asignado: ${paqueteValue} a operación ${id}`);
+    res.json(operacion);
+  } catch (error) {
+    console.error('Error actualizando paquete operacion:', error);
     res.status(500).json({ error: 'Error del servidor' });
   }
 });

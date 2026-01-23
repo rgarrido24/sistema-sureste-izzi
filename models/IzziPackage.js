@@ -1,13 +1,6 @@
 import mongoose from 'mongoose';
 
 const izziPackageSchema = new mongoose.Schema({
-  // Marca comercial (Izzi / Wizz)
-  marca: {
-    type: String,
-    enum: ['IZZI', 'WIZZ'],
-    default: 'IZZI',
-    index: true
-  },
   codigo: {
     type: String,
     required: false,
