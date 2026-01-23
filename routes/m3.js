@@ -33,7 +33,8 @@ router.get('/', async (req, res) => {
         { 'Vendedor': vendedor }
       ];
     }
-    const m3 = await M3Master.find(query).sort({ createdAt: -1 });
+    // lean() para acelerar (no necesitamos métodos de Mongoose en lectura)
+    const m3 = await M3Master.find(query).sort({ createdAt: -1 }).lean();
 
     if (req.user?.role === 'regionales') {
       const userRegion = normalizeRegion(req.user.region || '');
@@ -44,7 +45,7 @@ router.get('/', async (req, res) => {
       for (const doc of m3) {
         const obj = doc?.toObject ? doc.toObject() : doc;
         const cuenta = normalizeCuenta(obj) || obj?.cuenta;
-        const reg = extractRegionFromRecord(doc);
+        const reg = extractRegionFromRecord(obj);
         if (cuenta && reg) regionByCuenta.set(cuenta, reg);
         else if (cuenta) missingCuentas.push(cuenta);
       }
@@ -68,7 +69,7 @@ router.get('/', async (req, res) => {
       const filtered = m3.filter(doc => {
         const obj = doc?.toObject ? doc.toObject() : doc;
         const cuenta = normalizeCuenta(obj) || obj?.cuenta;
-        const reg = (cuenta && regionByCuenta.get(cuenta)) ? regionByCuenta.get(cuenta) : extractRegionFromRecord(doc);
+        const reg = (cuenta && regionByCuenta.get(cuenta)) ? regionByCuenta.get(cuenta) : extractRegionFromRecord(obj);
         return normalizeRegion(reg) === userRegion;
       });
 

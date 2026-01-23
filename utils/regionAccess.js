@@ -26,6 +26,11 @@ export function normalizeRegion(region) {
   return r;
 }
 
+function isKnownRegion(region) {
+  const r = normalizeRegion(region);
+  return r === 'METROPOLITANA' || r === 'NORESTE' || r === 'OCCIDENTE' || r === 'PACIFICO' || r === 'SURESTE';
+}
+
 export function extractRegionFromRecord(record) {
   if (!record) return '';
   const obj = record.toObject ? record.toObject() : record;
@@ -59,22 +64,20 @@ export function extractRegionFromRecord(record) {
     obj['DIVISION REGIÓN'],
     obj.DivisionRegion,
     obj.divisionRegion,
-
-    // A veces la "región" viene en plaza
-    obj.PLAZA,
-    obj['PLAZA'],
-    obj.Plaza
   ];
   for (const c of candidates) {
     const r = normalizeRegion(c);
-    if (r) return r;
+    // Importante: NO aceptar valores como "TIJUANA" / "MERIDA" que son plazas.
+    // Solo regresamos cuando el valor ya es una región reconocida.
+    if (r && isKnownRegion(r)) return r;
   }
 
   // Fallback: calcular por Hub/Plaza si existen
   const hub = obj.Hub || obj.HUB || obj['Hub'] || obj['HUB'] || obj.hub || '';
   const plaza = obj.Plaza || obj.PLAZA || obj['Plaza'] || obj['PLAZA'] || obj.plaza || '';
   const computed = getRegionFromHubPlaza(hub, plaza);
-  return normalizeRegion(computed);
+  const normComputed = normalizeRegion(computed);
+  return isKnownRegion(normComputed) ? normComputed : '';
 }
 
 export function applyRegionalFilterInMemory(docs, userRegion) {
