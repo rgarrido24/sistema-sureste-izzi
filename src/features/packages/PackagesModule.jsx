@@ -56,9 +56,29 @@ function slugLetters(s) {
   return normalizeSpaces(s).toUpperCase().replace(/[^A-Z0-9+.\s]/g, '');
 }
 
+// Repara un bug típico de copy/paste/parsing donde se duplica el "resto" de la línea:
+// Ej: "WIZZ 20" -> "WIZZ 2020"
+// Ej: "WIZZ 20 + TV BASICO" -> "WIZZ 20 + TV BASICO20 + TV BASICO"
+function repairDuplicatedTail(name) {
+  const s = String(name || '').trim();
+  if (!s) return s;
+  const firstSpace = s.indexOf(' ');
+  if (firstSpace < 0) return s;
+  const head = s.slice(0, firstSpace);
+  const tail = s.slice(firstSpace + 1);
+  if (tail.length >= 2 && tail.length % 2 === 0) {
+    const half = tail.length / 2;
+    const a = tail.slice(0, half);
+    const b = tail.slice(half);
+    if (a === b) return `${head} ${a}`.trim();
+  }
+  return s;
+}
+
 function generateWizzCode({ tipo, name }) {
   const t = String(tipo || '').toUpperCase().trim();
-  const text = slugLetters(name);
+  const repairedName = repairDuplicatedTail(name);
+  const text = slugLetters(repairedName);
 
   // DOBLES: "WIZZ 10" -> WD10
   const dobleMatch = text.match(/^WIZZ\s+(\d{1,4})$/);
@@ -117,18 +137,36 @@ function parseWizzPaste(text) {
   const out = [];
 
   for (const line of lines) {
-    const upper = line.toUpperCase();
-    if (upper.startsWith('TRIPLES')) { tipo = 'TRIPLE'; continue; }
-    if (upper.startsWith('DOBLES')) { tipo = 'DOBLE'; continue; }
-    if (upper.startsWith('SINGLES')) { tipo = 'SINGLE'; continue; }
+    const headerMatch = line.match(/^(TRIPLES|DOBLES|SINGLES)\s*(.*)$/i);
+    if (headerMatch) {
+      const h = String(headerMatch[1] || '').toUpperCase();
+      if (h === 'TRIPLES') tipo = 'TRIPLE';
+      if (h === 'DOBLES') tipo = 'DOBLE';
+      if (h === 'SINGLES') tipo = 'SINGLE';
 
-    // Limpia posibles tabs/columnas (ej: "TRIPLES\tWIZZ 10 + ...")
-    const cleaned = normalizeSpaces(line.replace(/^\w+\s+/i, line)); // no-op safe
+      // Permitir que venga el primer paquete en la misma línea del header
+      const remainder = normalizeSpaces(headerMatch[2] || '');
+      if (!remainder) continue;
+
+      const nameInline = repairDuplicatedTail(remainder.replace(/^\t+/, '').trim());
+      if (!nameInline) continue;
+
+      const codigoInline = generateWizzCode({ tipo, name: nameInline });
+      out.push({
+        marca: 'WIZZ',
+        tipo,
+        codigo: codigoInline,
+        name: nameInline,
+        price: 0,
+        description: '',
+      });
+      continue;
+    }
+
     if (!tipo) continue;
 
-    // Si viene "TRIPLES WIZZ 10 + ..." en la misma línea
-    const inline = cleaned.replace(/^(TRIPLES|DOBLES|SINGLES)\s+/i, '');
-    const name = normalizeSpaces(inline);
+    const cleaned = normalizeSpaces(line);
+    const name = repairDuplicatedTail(cleaned);
     if (!name) continue;
 
     const codigo = generateWizzCode({ tipo, name });
