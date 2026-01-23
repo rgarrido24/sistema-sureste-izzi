@@ -796,6 +796,136 @@ export default function OperacionModule() {
     return '';
   };
 
+  // Deduplicación por cuenta:
+  // - Mantener SOLO 1 registro por cuenta
+  // - Elegir el más reciente por fechas (updatedAt/createdAt/fechaActualizacion/fechaCreacion)
+  // - Si hay empate o faltan fechas, priorizar COMPLETA/INSTALADA
+  const getCuentaKey = (item) => {
+    const candidates = [
+      item?.cuenta,
+      item?.['Nº de cuenta'],
+      item?.['N° de cuenta'],
+      item?.['No. de cuenta'],
+      item?.['Cuenta de facturación'],
+      item?.['Cuenta de facturacion'],
+      item?.['CUENTA'],
+      item?.['Cuenta'],
+      item?.['NoCuenta'],
+      item?.['Referencia'],
+    ];
+    for (const v of candidates) {
+      const raw = String(v ?? '').trim();
+      if (!raw || raw === 'undefined' || raw === 'null') continue;
+      const digits = raw.replace(/[^\d]/g, '');
+      if (digits.length >= 3) return digits;
+    }
+    return '';
+  };
+
+  const estadoRank = (estadoRaw) => {
+    const e = String(estadoRaw || '').toUpperCase().trim();
+    if (!e) return 0;
+    if (e === 'COMPLETA' || e === 'INSTALADA') return 3;
+    if (e === 'ABIERTA') return 2;
+    if (e === 'PENDIENTE') return 1;
+    if (e === 'NOT DONE') return 0;
+    if (e === 'CANCELADA') return -1;
+    return 0;
+  };
+
+  const parseDateToMs = (val) => {
+    if (val === undefined || val === null || val === '') return null;
+    if (val instanceof Date) {
+      const t = val.getTime();
+      return Number.isFinite(t) ? t : null;
+    }
+    // Excel serial (número o string numérica)
+    if (typeof val === 'number' || (typeof val === 'string' && /^\d+(\.\d+)?$/.test(val.trim()))) {
+      const n = typeof val === 'number' ? val : Number(val.trim());
+      if (Number.isFinite(n) && n > 20000 && n < 90000) {
+        const excelEpoch = new Date(1899, 11, 30);
+        return excelEpoch.getTime() + n * 86400000;
+      }
+    }
+    const s = String(val).trim();
+    if (!s || s === '########') return null;
+    const d = new Date(s);
+    const t = d.getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+
+  const getRecencyMs = (item) => {
+    const candidates = [
+      item?.updatedAt,
+      item?.fechaActualizacion,
+      item?.createdAt,
+      item?.fechaCreacion,
+      item?.['Fecha de la orden'],
+      item?.['Fecha de la captura'],
+      item?.['Fecha Orden'],
+    ];
+    for (const c of candidates) {
+      const t = parseDateToMs(c);
+      if (t !== null) return t;
+    }
+    return null;
+  };
+
+  const dedupeByCuentaKeepLatest = (rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const byCuenta = new Map();
+
+    list.forEach((row, idx) => {
+      const key = getCuentaKey(row);
+      // Si no hay cuenta, no deduplicar: dejar cada registro como único
+      if (!key) {
+        const uniqueKey = `__no_cuenta__${row?._id || row?.id || idx}`;
+        byCuenta.set(uniqueKey, { row, idx });
+        return;
+      }
+      const prev = byCuenta.get(key);
+      if (!prev) {
+        byCuenta.set(key, { row, idx });
+        return;
+      }
+
+      const prevT = getRecencyMs(prev.row);
+      const curT = getRecencyMs(row);
+
+      // 1) Si ambos tienen fecha y difiere → más reciente gana
+      if (prevT !== null && curT !== null && prevT !== curT) {
+        if (curT > prevT) byCuenta.set(key, { row, idx });
+        return;
+      }
+      // 2) Si solo uno tiene fecha → el que tiene fecha gana
+      if (prevT === null && curT !== null) {
+        byCuenta.set(key, { row, idx });
+        return;
+      }
+      if (prevT !== null && curT === null) {
+        return;
+      }
+
+      // 3) Empate o sin fechas → priorizar estado COMPLETA/INSTALADA
+      const prevEstado = prev.row?.Estado || prev.row?.estado || '';
+      const curEstado = row?.Estado || row?.estado || '';
+      const prevR = estadoRank(prevEstado);
+      const curR = estadoRank(curEstado);
+      if (curR !== prevR) {
+        if (curR > prevR) byCuenta.set(key, { row, idx });
+        return;
+      }
+
+      // 4) Último desempate: como el backend suele ordenar por createdAt desc,
+      // idx más chico tiende a ser más reciente → mantener prev (no reemplazar)
+    });
+
+    return Array.from(byCuenta.values()).map(({ row }, index) => ({
+      id: row?._id || row?.id || `operacion-${index}`,
+      ...row,
+    }));
+  };
+
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
@@ -816,22 +946,16 @@ export default function OperacionModule() {
         if (user?.role === 'vendedor' || user?.role === 'user') {
           operacionData = filterByVendor(operacionData, user);
         }
-        
-        // IMPORTANTE: NO deduplicar por cuenta.
-        // El usuario necesita visualizar TODAS las órdenes (incluyendo repetidas por cuenta).
-        const dataWithIds = (operacionData || []).map((d, index) => ({
-          id: d._id || d.id || `operacion-${index}`,
-          ...d,
-        }));
 
-        console.log(`📊 Operación del Día - Total registros cargados: ${dataWithIds.length}`);
+        const deduped = dedupeByCuentaKeepLatest(operacionData);
+        console.log(`📊 Operación del Día - Registros (dedupe por cuenta): ${deduped.length}`);
 
-        setData(dataWithIds);
-        setAllData(operacionData); // Guardar todos los datos para estadísticas
+        setData(deduped);
+        setAllData(deduped); // Mantener consistencia en estadísticas/filtros
         
         // Inicializar notas desde los datos cargados
         const notasIniciales = {};
-        operacionData.forEach(item => {
+        (deduped || []).forEach(item => {
           const itemId = item._id || item.id;
           if (itemId && (item.Nota || item.Notas)) {
             notasIniciales[itemId] = item.Nota || item.Notas || '';
@@ -956,13 +1080,9 @@ export default function OperacionModule() {
       const filtered = (user?.role === 'vendedor' || user?.role === 'user')
         ? filterByVendor(operacionData, user)
         : operacionData;
-      setAllData(operacionData);
-      
-      // Mantener todas las órdenes (sin deduplicar) después de asignar vendedor
-      setData((filtered || []).map((d, index) => ({
-        id: d._id || d.id || `operacion-${index}`,
-        ...d,
-      })));
+      const deduped = dedupeByCuentaKeepLatest(filtered);
+      setAllData(deduped);
+      setData(deduped);
       setAssigningVendor(null);
       setVendorInput('');
       alert('✅ Vendedor asignado correctamente');
@@ -2044,7 +2164,7 @@ export default function OperacionModule() {
           <p className="text-slate-500">
             {searchTerm || filterEstado || filterFechaInicio || filterFechaFin || filterRegion
               ? 'No se encontraron órdenes con los filtros aplicados'
-              : 'No hay órdenes en operación del día (excluyendo Completas e Instaladas)'
+              : 'No hay órdenes en operación del día'
             }
           </p>
         </div>
