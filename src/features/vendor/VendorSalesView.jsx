@@ -144,20 +144,35 @@ const generateMessageFromTemplate = async (client, status) => {
 
     // Obtener plantillas activas (sin filtro) y seleccionar con match tolerante
     const templates = await api.getTemplates();
+    const activeOnly = (Array.isArray(templates) ? templates : []).filter(t => t?.isActive && t?.content);
 
-    const candidates = new Set([normStatus]);
-    if (isCobranza) {
-      candidates.add('COBRANZA');
-      candidates.add('GENERAL');
-      // Si quieres que una plantilla "M1" sirva como fallback general de cobranza
-      candidates.add('M1');
+    const modNorm = (t) => normalize(t?.module);
+    const modLoose = (t) => normalize(t?.module).replace(/\s+/g, ' ');
+
+    // Helpers: búsqueda por igualdad y por "contiene"
+    const findByExact = (target) => activeOnly.find(t => modNorm(t) === target);
+    const findByIncludes = (needle) => activeOnly.find(t => modLoose(t).includes(needle));
+
+    // Prioridad:
+    // 1) Exacto por estatus (M1/M2/M3/M4)
+    // 2) Para cobranza: cualquier plantilla cuyo módulo contenga "COBRANZA" y/o el estatus (ej: "COBRANZA M1", "COBRANZA - M1")
+    // 3) Exacto "COBRANZA"
+    // 4) Exacto "GENERAL" / "GENERALES"
+    let activeTemplate = findByExact(normStatus);
+
+    if (!activeTemplate && isCobranza) {
+      // Preferir las que mencionen cobranza + estatus
+      activeTemplate =
+        activeOnly.find(t => modLoose(t).includes('COBRANZA') && modLoose(t).includes(normStatus)) ||
+        // Luego cualquier que mencione cobranza
+        findByIncludes('COBRANZA') ||
+        // Luego cualquier que mencione el estatus
+        findByIncludes(normStatus);
     }
 
-    const activeTemplate = templates.find(t => {
-      if (!t?.isActive) return false;
-      const mod = normalize(t.module);
-      return candidates.has(mod);
-    });
+    if (!activeTemplate) {
+      activeTemplate = findByExact('COBRANZA') || findByExact('GENERAL') || findByExact('GENERALES');
+    }
     
     if (!activeTemplate) {
       // Si no hay plantilla, usar mensaje por defecto
