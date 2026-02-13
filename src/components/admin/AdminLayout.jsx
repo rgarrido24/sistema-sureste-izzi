@@ -21,14 +21,15 @@ export default function AdminLayout({
             <div className="flex items-center gap-3">
               <RGOLogo size={50} showText={false} />
               <div>
-                {/* Mostrar mensaje de bienvenida para director, mesa_control y regionales */}
-                {(user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') ? (
+                {/* Mostrar mensaje de bienvenida para director, mesa_control, regionales y cobranza_mx */}
+                {(user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx') ? (
                   <>
                     <h1 className="text-xl font-bold text-slate-800">Bienvenido, {user?.name || 'Usuario'}</h1>
                     <p className="text-sm text-slate-500">
                       {user?.role === 'director' && 'Panel de Director'}
                       {user?.role === 'mesa_control' && 'Panel de Mesa de Control'}
                       {user?.role === 'regionales' && `Panel Regional - ${user?.region || 'Región'}`}
+                      {user?.role === 'cobranza_mx' && 'Panel Cobranza MX'}
                     </p>
                   </>
                 ) : (
@@ -39,7 +40,7 @@ export default function AdminLayout({
               </div>
             </div>
             <div className="flex bg-gradient-to-r from-slate-100 to-slate-50 p-1 rounded-lg border border-slate-200 overflow-x-auto no-scrollbar w-full sm:w-auto">
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx') && (
                 <button 
                   onClick={() => setModule(MODULES.SALES)} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -52,7 +53,7 @@ export default function AdminLayout({
                 </button>
               )}
               {/* El rol 'usuarios' no ve Instalaciones, solo Administración */}
-              {(user?.role !== 'usuarios' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales')) && (
+              {(user?.role !== 'usuarios' && user?.role !== 'cobranza_mx' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales')) && (
                 <button 
                   onClick={() => setModule(MODULES.INSTALL)} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -111,7 +112,7 @@ export default function AdminLayout({
             </button>
 
             {/* Dashboard - Visible excepto para rol 'usuarios' */}
-            {user?.role !== 'usuarios' && (
+            {user?.role !== 'usuarios' && user?.role !== 'cobranza_mx' && (
               <button 
                 onClick={() => setActiveTab('dashboard')} 
                 className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -125,7 +126,7 @@ export default function AdminLayout({
             )}
 
             {/* Tabs de Cobranza - Para admin, admin_general, director, mesa_control y regionales */}
-            {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
+            {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx') && (
               <>
                 <button 
                   onClick={() => setActiveTab('m1')} 

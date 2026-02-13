@@ -21,8 +21,18 @@ export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
   // Si es rol 'usuarios', iniciar directamente en Administración > Usuarios
   // Si es rol 'usuarios', forzar que siempre esté en Administración
-  const initialModule = user?.role === 'usuarios' ? MODULES.ADMIN : MODULES.SALES;
-  const initialTab = user?.role === 'usuarios' ? 'users' : 'dashboard';
+  const initialModule =
+    user?.role === 'usuarios'
+      ? MODULES.ADMIN
+      : user?.role === 'cobranza_mx'
+        ? MODULES.SALES
+        : MODULES.SALES;
+  const initialTab =
+    user?.role === 'usuarios'
+      ? 'users'
+      : user?.role === 'cobranza_mx'
+        ? 'm1'
+        : 'dashboard';
   const [currentModule, setCurrentModule] = useState(initialModule);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -30,6 +40,10 @@ export default function AdminDashboard({ user }) {
   const handleModuleChange = (module) => {
     if (user?.role === 'usuarios' && module !== MODULES.ADMIN) {
       // No permitir cambiar a otros módulos
+      return;
+    }
+    if (user?.role === 'cobranza_mx' && module !== MODULES.SALES) {
+      // Cobranza MX: no permitir salir del módulo de Cobranza
       return;
     }
     setCurrentModule(module);
@@ -48,10 +62,10 @@ export default function AdminDashboard({ user }) {
       {activeTab === 'chat' && <AssistantChatView />}
 
       {/* Dashboard - No disponible para rol 'usuarios' */}
-      {activeTab === 'dashboard' && user?.role !== 'usuarios' && <DashboardModule currentModule={currentModule} />}
+      {activeTab === 'dashboard' && user?.role !== 'usuarios' && user?.role !== 'cobranza_mx' && <DashboardModule currentModule={currentModule} />}
       
       {/* Módulo de Cobranza - Para admin, admin_general, director, mesa_control y regionales */}
-      {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales') && (
+      {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx') && (
         <>
           {(activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4' || activeTab === 'view') && (
             <SalesModule activeTab={activeTab} />

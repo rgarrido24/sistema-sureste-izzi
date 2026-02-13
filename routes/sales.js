@@ -12,17 +12,21 @@ router.use(requireAuth);
 // Obtener todos los registros
 router.get('/', async (req, res) => {
   try {
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
-      if (!userRegion) {
-        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
-      }
+    const role = req.user?.role;
+    const isScopedByRegion = role === 'regionales' || role === 'cobranza_mx';
+    const userRegion = role === 'regionales'
+      ? normalizeRegion(req.user.region || '')
+      : role === 'cobranza_mx'
+        ? normalizeRegion('METROPOLITANA')
+        : '';
+
+    if (isScopedByRegion && !userRegion) {
+      return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
     }
 
     const sales = await SalesMaster.find();
 
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
+    if (isScopedByRegion) {
       // Filtro robusto: si el registro no trae región, inferir por cuenta cruzando con OperacionDia (Hub/Plaza)
       const regionByCuenta = new Map();
       const missingCuentas = [];
@@ -71,8 +75,15 @@ router.get('/', async (req, res) => {
 // Obtener conteo
 router.get('/count', async (req, res) => {
   try {
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
+    const role = req.user?.role;
+    const isScopedByRegion = role === 'regionales' || role === 'cobranza_mx';
+    const userRegion = role === 'regionales'
+      ? normalizeRegion(req.user.region || '')
+      : role === 'cobranza_mx'
+        ? normalizeRegion('METROPOLITANA')
+        : '';
+
+    if (isScopedByRegion) {
       if (!userRegion) {
         return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
       }

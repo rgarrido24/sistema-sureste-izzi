@@ -14,11 +14,16 @@ router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   try {
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
-      if (!userRegion) {
-        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
-      }
+    const role = req.user?.role;
+    const isScopedByRegion = role === 'regionales' || role === 'cobranza_mx';
+    const userRegion = role === 'regionales'
+      ? normalizeRegion(req.user.region || '')
+      : role === 'cobranza_mx'
+        ? normalizeRegion('METROPOLITANA')
+        : '';
+
+    if (isScopedByRegion && !userRegion) {
+      return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
     }
     const { estado, fecha, vendedor } = req.query;
     const query = {};
@@ -36,8 +41,7 @@ router.get('/', async (req, res) => {
     // lean() para acelerar (no necesitamos métodos de Mongoose en lectura)
     const m3 = await M3Master.find(query).sort({ createdAt: -1 }).lean();
 
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
+    if (isScopedByRegion) {
       // Filtro robusto: si el registro no trae región, inferir por cuenta cruzando con OperacionDia (Hub/Plaza)
       const regionByCuenta = new Map();
       const missingCuentas = [];
@@ -144,6 +148,49 @@ router.get('/count', async (req, res) => {
       }
     }
     
+    // Cobranza (METROPOLITANA): conteo filtrado por región
+    if (req.user?.role === 'cobranza_mx') {
+      const userRegion = normalizeRegion('METROPOLITANA');
+      const docs = await M3Master.find(query).lean();
+
+      const regionByCuenta = new Map();
+      const missingCuentas = [];
+
+      for (const doc of docs) {
+        const obj = doc?.toObject ? doc.toObject() : doc;
+        const cuenta = normalizeCuenta(obj) || obj?.cuenta;
+        const reg = extractRegionFromRecord(obj);
+        if (cuenta && reg) regionByCuenta.set(cuenta, reg);
+        else if (cuenta) missingCuentas.push(cuenta);
+      }
+
+      if (missingCuentas.length > 0) {
+        const uniqueMissing = Array.from(new Set(missingCuentas)).slice(0, 50000);
+        const opDocs = await OperacionDia.find(
+          { cuenta: { $in: uniqueMissing } },
+          { cuenta: 1, Hub: 1, HUB: 1, Plaza: 1, PLAZA: 1, REGION: 1, Region: 1, 'Región': 1, 'REGIÓN': 1, SUBREGION: 1, 'SUBREGION': 1 }
+        ).lean();
+        for (const od of opDocs) {
+          const cuenta = od?.cuenta;
+          if (!cuenta) continue;
+          if (regionByCuenta.has(cuenta)) continue;
+          const reg = extractRegionFromRecord(od);
+          if (reg) regionByCuenta.set(cuenta, reg);
+        }
+      }
+
+      let count = 0;
+      for (const doc of docs) {
+        const obj = doc?.toObject ? doc.toObject() : doc;
+        const cuenta = normalizeCuenta(obj) || obj?.cuenta;
+        if (!cuenta) continue;
+        const reg = (cuenta && regionByCuenta.get(cuenta)) ? regionByCuenta.get(cuenta) : extractRegionFromRecord(obj);
+        if (normalizeRegion(reg) === userRegion) count++;
+      }
+
+      return res.json({ count });
+    }
+
     console.log('🔍 M3 Count Query:', JSON.stringify(query, null, 2));
     const count = await M3Master.countDocuments(query);
     console.log(`📊 M3 Count Result: ${count} (estatusFPD: ${estatusFPD || 'todos'})`);

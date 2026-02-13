@@ -45,6 +45,74 @@ function normalizeText(text) {
     .trim();
 }
 
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function cleanPhoneNumber(phone) {
+  if (!phone) return null;
+  let cleaned = String(phone).trim();
+  if (!cleaned) return null;
+  if (cleaned.startsWith('+')) cleaned = cleaned.slice(1);
+  cleaned = digitsOnly(cleaned);
+  if (!cleaned) return null;
+
+  // México: 52 + 10 dígitos
+  if (cleaned.startsWith('52') && cleaned.length >= 12) return cleaned;
+  // Si tiene 10 dígitos, asumir MX
+  if (cleaned.length === 10) return `52${cleaned}`;
+  return cleaned;
+}
+
+function isMxPhone(phone) {
+  const cleaned = cleanPhoneNumber(phone);
+  return !!cleaned && cleaned.startsWith('52');
+}
+
+function inferCountryFlag(item) {
+  const candidates = [
+    item?.PAIS, item?.Pais, item?.pais,
+    item?.['País'], item?.['PAÍS'],
+    item?.country, item?.Country, item?.COUNTRY,
+  ];
+  for (const c of candidates) {
+    const v = normalizeText(c);
+    if (!v) continue;
+    if (v === 'MX' || v === 'MEX' || v.includes('MEXICO')) return true;
+    if (v === 'US' || v === 'USA' || v.includes('UNITED STATES')) return false;
+    if (v === 'CA' || v === 'CAN' || v.includes('CANADA')) return false;
+    if (v === 'GT' || v.includes('GUATEMALA')) return false;
+    if (v === 'SV' || v.includes('EL SALVADOR')) return false;
+    return null;
+  }
+  return null;
+}
+
+function isMxRecord(item) {
+  if (!item) return false;
+
+  const countryFlag = inferCountryFlag(item);
+  if (countryFlag === true) return true;
+  if (countryFlag === false) return false;
+
+  const phones = [
+    item.Telefono1, item['Telefono1'], item.Telefono2, item['Telefono2'],
+    item.Telefono, item['Telefono'], item.telefono,
+    item.Celular, item['Celular'], item.CELULAR,
+    item.Movil, item['Movil'], item['Móvil'], item.MOVIL,
+  ];
+  for (const p of phones) {
+    if (isMxPhone(p)) return true;
+  }
+
+  // Si se detecta una región conocida (hubs/plazas), lo consideramos MX
+  const region = getRegionFromData(item);
+  if (region) return true;
+
+  // Default estricto
+  return false;
+}
+
 /**
  * Obtiene región desde HUB y PLAZA o campo Region
  */
@@ -124,6 +192,18 @@ export function filterByVendor(data, user) {
     return data;
   }
   
+  // Cobranza MX: en realidad es METROPOLITANA (front-end fallback)
+  if (user.role === 'cobranza_mx') {
+    const userRegion = 'METROPOLITANA';
+    const filtered = (data || []).filter(item => {
+      const itemRegion = getRegionFromData(item);
+      if (!itemRegion) return false;
+      return itemRegion === userRegion;
+    });
+    console.log(`📊 Usuario Cobranza MX (METROPOLITANA): ${user.name} | Total datos: ${data.length} | Filtrados: ${filtered.length}`);
+    return filtered;
+  }
+
   // Si el usuario es regionales, filtrar por región
   if (user.role === 'regionales') {
     const userRegion = user.region ? normalizeText(user.region) : null;

@@ -13,11 +13,16 @@ router.use(requireAuth);
 // Obtener todos los registros M1
 router.get('/', async (req, res) => {
   try {
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
-      if (!userRegion) {
-        return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
-      }
+    const role = req.user?.role;
+    const isScopedByRegion = role === 'regionales' || role === 'cobranza_mx';
+    const userRegion = role === 'regionales'
+      ? normalizeRegion(req.user.region || '')
+      : role === 'cobranza_mx'
+        ? normalizeRegion('METROPOLITANA')
+        : '';
+
+    if (isScopedByRegion && !userRegion) {
+      return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
     }
     const { estado, fecha } = req.query;
     const query = {};
@@ -31,9 +36,7 @@ router.get('/', async (req, res) => {
     // Usar lean() para acelerar y porque no necesitamos métodos de Mongoose aquí
     const m1 = await M1Master.find(query).sort({ createdAt: -1 }).lean();
 
-    if (req.user?.role === 'regionales') {
-      const userRegion = normalizeRegion(req.user.region || '');
-
+    if (isScopedByRegion) {
       // 1) Intentar detectar región directamente del registro
       const regionByCuenta = new Map();
       const missingCuentas = [];
@@ -85,9 +88,65 @@ router.get('/count', async (req, res) => {
     const query = {};
     
     if (estado) query.estado = estado;
+
+    const isCobranzaMetro = req.user?.role === 'cobranza_mx';
+    const metroRegion = normalizeRegion('METROPOLITANA');
     
     // Si se pide contar solo M1 (estatus FPD = M1)
     if (estatusFPD === 'M1') {
+      // Cobranza (METROPOLITANA): contar solo METROPOLITANA
+      if (isCobranzaMetro) {
+        const allM1 = await M1Master.find({}).lean();
+
+        // Mapa región por cuenta (con fallback a OperacionDia)
+        const regionByCuenta = new Map();
+        const missingCuentas = [];
+
+        for (const doc of allM1) {
+          const cuenta = doc?.cuenta;
+          if (!cuenta) continue;
+          const reg = extractRegionFromRecord(doc);
+          if (reg) regionByCuenta.set(cuenta, reg);
+          else missingCuentas.push(cuenta);
+        }
+
+        if (missingCuentas.length > 0) {
+          const uniqueMissing = Array.from(new Set(missingCuentas)).slice(0, 50000);
+          const opDocs = await OperacionDia.find(
+            { cuenta: { $in: uniqueMissing } },
+            { cuenta: 1, Hub: 1, HUB: 1, Plaza: 1, PLAZA: 1, REGION: 1, Region: 1, 'Región': 1, 'REGIÓN': 1, SUBREGION: 1, 'SUBREGION': 1 }
+          ).lean();
+
+          for (const od of opDocs) {
+            const cuenta = od?.cuenta;
+            if (!cuenta) continue;
+            if (regionByCuenta.has(cuenta)) continue;
+            const reg = extractRegionFromRecord(od);
+            if (reg) regionByCuenta.set(cuenta, reg);
+          }
+        }
+
+        let count = 0;
+        for (const item of allM1) {
+          const cuenta = item?.cuenta;
+          if (!cuenta) continue;
+          const reg = regionByCuenta.get(cuenta) || extractRegionFromRecord(item);
+          if (normalizeRegion(reg) !== metroRegion) continue;
+
+          const estatusFPDValue = (item['Estatus FPD'] || item['EstatusFPD'] || '').toUpperCase().trim();
+          if (
+            !estatusFPDValue.includes('PÉRDIDA') &&
+            !estatusFPDValue.includes('PERDIDA') &&
+            !estatusFPDValue.includes('PERDIDO') &&
+            !estatusFPDValue.includes('CORRIENTE')
+          ) {
+            count++;
+          }
+        }
+
+        return res.json({ count });
+      }
+
       // Contar solo los que tienen estatus FPD = M1 (no FPD CORRIENTE ni FPD PÉRDIDA)
       const allM1 = await M1Master.find({});
       let m1Count = 0;
@@ -103,6 +162,44 @@ router.get('/count', async (req, res) => {
       return res.json({ count: m1Count });
     }
     
+    // Cobranza (METROPOLITANA): conteo general filtrado por región
+    if (isCobranzaMetro) {
+      const docs = await M1Master.find(query).lean();
+
+      const regionByCuenta = new Map();
+      const missingCuentas = [];
+      for (const doc of docs) {
+        const cuenta = doc?.cuenta;
+        if (!cuenta) continue;
+        const reg = extractRegionFromRecord(doc);
+        if (reg) regionByCuenta.set(cuenta, reg);
+        else missingCuentas.push(cuenta);
+      }
+      if (missingCuentas.length > 0) {
+        const uniqueMissing = Array.from(new Set(missingCuentas)).slice(0, 50000);
+        const opDocs = await OperacionDia.find(
+          { cuenta: { $in: uniqueMissing } },
+          { cuenta: 1, Hub: 1, HUB: 1, Plaza: 1, PLAZA: 1, REGION: 1, Region: 1, 'Región': 1, 'REGIÓN': 1, SUBREGION: 1, 'SUBREGION': 1 }
+        ).lean();
+        for (const od of opDocs) {
+          const cuenta = od?.cuenta;
+          if (!cuenta) continue;
+          if (regionByCuenta.has(cuenta)) continue;
+          const reg = extractRegionFromRecord(od);
+          if (reg) regionByCuenta.set(cuenta, reg);
+        }
+      }
+
+      let count = 0;
+      for (const doc of docs) {
+        const cuenta = doc?.cuenta;
+        if (!cuenta) continue;
+        const reg = regionByCuenta.get(cuenta) || extractRegionFromRecord(doc);
+        if (normalizeRegion(reg) === metroRegion) count++;
+      }
+      return res.json({ count });
+    }
+
     const count = await M1Master.countDocuments(query);
     res.json({ count });
   } catch (error) {

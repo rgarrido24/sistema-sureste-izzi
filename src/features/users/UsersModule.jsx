@@ -193,6 +193,7 @@ export default function UsersModule() {
                   <option value="usuarios">Usuarios</option>
                   <option value="mesa_control">Mesa de Control</option>
                   <option value="regionales">Regionales</option>
+                  <option value="cobranza_mx">Cobranza MX</option>
                 </>
               )}
             </select>
