@@ -465,12 +465,13 @@ const getMesInstalacion = (data, status) => {
         const fechaStr = String(fecha).trim();
         let fechaDate = null;
         
-        // Intentar parsear formato DD/MM/YYYY o DD/MM/YY
-        // Nota: Asumimos formato DD/MM/YYYY (día/mes/año) que es el formato común en México
+        // Intentar parsear formato M/D/YYYY o M/D/YY
+        // Nota: los exports de Excel (SheetJS) entregan estas fechas en mes/día/año (formato US),
+        // no día/mes/año, aunque el archivo se vea "mexicano" a simple vista.
         if (fechaStr.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/)) {
           const partes = fechaStr.split('/');
-          const dia = parseInt(partes[0]);
-          const mes = parseInt(partes[1]) - 1; // Mes en JS es 0-indexed
+          const mes = parseInt(partes[0]) - 1; // Mes en JS es 0-indexed
+          const dia = parseInt(partes[1]);
           const anio = parseInt(partes[2].length === 2 ? '20' + partes[2] : partes[2]);
           
           // Validar que el mes sea válido (0-11) y el día sea válido
@@ -1312,6 +1313,8 @@ export default function SalesStatusView({
                                        item['FECHA VENCIMIENTO'] ||
                                        item['Fecha de Vencimiento'] ||
                                        item['FECHA DE VENCIMIENTO'] ||
+                                       item['Fecha Perdida FPD'] ||
+                                       item['FechaPerdidaFPD'] ||
                                        '';
             let fechaVencimiento = '';
             if (fechaVencimientoRaw) {

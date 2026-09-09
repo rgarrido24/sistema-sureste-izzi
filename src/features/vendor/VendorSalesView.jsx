@@ -660,7 +660,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
             const plaza = item.PLAZA || item['PLAZA'] || item.Plaza || 'Sin dato';
             
             // Leer fecha de vencimiento
-            const fechaVencimientoRaw = item['Fecha Vencimiento'] || item['FechaVencimiento'] || item['Fecha Vencimiento'] || '';
+            const fechaVencimientoRaw = item['Fecha Vencimiento'] || item['FechaVencimiento'] || item['Fecha Perdida FPD'] || item['FechaPerdidaFPD'] || '';
             let fechaVencimiento = '';
             if (fechaVencimientoRaw) {
               if (typeof fechaVencimientoRaw === 'number') {
