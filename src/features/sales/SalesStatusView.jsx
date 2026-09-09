@@ -550,7 +550,9 @@ export default function SalesStatusView({
   filterEstatus,
   setFilterEstatus,
   filterPlaza,
-  setFilterPlaza
+  setFilterPlaza,
+  filterRegion,
+  setFilterRegion
 }) {
   const { user } = useAuth();
   const [data, setData] = useState([]);
@@ -928,6 +930,31 @@ export default function SalesStatusView({
       return 'M1';
     }
   };
+
+  // Obtiene el grupo de región de un item (misma lógica que las Estadísticas por Región)
+  const getItemRegion = (item) => {
+    const regionRaw = item.SUBREGION ||
+                     item['SUBREGION'] ||
+                     item['Subregion'] ||
+                     item['Sub Region'] ||
+                     item['SUB REGION'] ||
+                     item.REGION || 
+                     item['REGION'] || 
+                     item['Region'] ||
+                     item['Region Nueva'] || 
+                     item['REGION NUEVA'] ||
+                     item['RegionNueva'] ||
+                     item['REGIONNUEVA'] ||
+                     item.PLAZA ||
+                     item['PLAZA'] ||
+                     item.Plaza ||
+                     item.region ||
+                     item.Region ||
+                     '';
+    const hub = item.HUB || item['HUB'] || item.Hub || '';
+    const plaza = item.PLAZA || item['PLAZA'] || item.Plaza || '';
+    return getRegionGroup(regionRaw, hub, plaza);
+  };
   
   // Calcular estadísticas por región (para M1, M2, M3, M4)
   const regionStats = (status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') ? (() => {
@@ -1037,6 +1064,8 @@ export default function SalesStatusView({
     const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
     const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
 
+    const matchesRegion = !filterRegion || getItemRegion(item) === filterRegion;
+
     // Filtro por "con/sin vendedor asignado"
     const assigned = isVendorAssigned(item);
     const matchesVendorAssigned =
@@ -1051,7 +1080,7 @@ export default function SalesStatusView({
       matchesEstatus = itemEstatus === filterEstatus;
     }
     
-    return matchesSearch && matchesVendor && matchesPlaza && matchesVendorAssigned && matchesEstatus;
+    return matchesSearch && matchesVendor && matchesPlaza && matchesRegion && matchesVendorAssigned && matchesEstatus;
   });
 
   // Paginación
@@ -1207,6 +1236,24 @@ export default function SalesStatusView({
               <option key={plaza} value={plaza}>{plaza}</option>
             ))}
           </select>
+          {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+            <select
+              value={filterRegion || ''}
+              onChange={(e) => {
+                setFilterRegion(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+            >
+              <option value="">Todas las regiones</option>
+              <option value="SURESTE">SURESTE</option>
+              <option value="NORESTE">NORESTE</option>
+              <option value="METROPOLITANA">METROPOLITANA</option>
+              <option value="PACIFICO">PACIFICO</option>
+              <option value="OCCIDENTE">OCCIDENTE</option>
+              <option value="Sin Dato">Sin Dato</option>
+            </select>
+          )}
         </div>
         <p className="text-sm text-slate-600 mt-2">
           Mostrando {filteredData.length} de {count} clientes • Estatus: {status}

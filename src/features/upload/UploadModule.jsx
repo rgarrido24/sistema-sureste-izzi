@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { parseCSV, parseExcel } from '../../utils/fileParser.js';
 import * as api from '../../api.js';
@@ -14,6 +14,33 @@ export default function UploadModule({ currentModule }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState('');
   const [isMonthlyReplace, setIsMonthlyReplace] = useState(false);
+  const [deletingModule, setDeletingModule] = useState(null);
+
+  const handleDeleteAll = async (moduleKey, moduleLabel, deleteFn) => {
+    const primeraConfirmacion = confirm(
+      `⚠️ Esto va a BORRAR TODOS los registros de ${moduleLabel}.\n\nEsta acción no se puede deshacer. ¿Continuar?`
+    );
+    if (!primeraConfirmacion) return;
+
+    const segundaConfirmacion = prompt(
+      `Para confirmar, escribe "${moduleLabel}" (tal cual) y presiona OK:`
+    );
+    if (segundaConfirmacion !== moduleLabel) {
+      alert('Cancelado: el texto no coincidió.');
+      return;
+    }
+
+    setDeletingModule(moduleKey);
+    try {
+      const result = await deleteFn();
+      alert(`✅ ${moduleLabel} eliminado correctamente.\n${result?.message || ''}`);
+    } catch (error) {
+      console.error(`Error eliminando ${moduleLabel}:`, error);
+      alert(`Error eliminando ${moduleLabel}: ${error.message || 'Error del servidor'}`);
+    } finally {
+      setDeletingModule(null);
+    }
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -479,6 +506,34 @@ export default function UploadModule({ currentModule }) {
           {uploading ? 'Cargando...' : 'Cargar Archivo'}
         </button>
       </div>
+
+      {canUpload && (
+        <div className="mt-8 pt-6 border-t border-red-200">
+          <h3 className="text-sm font-bold text-red-700 flex items-center gap-2 mb-1">
+            <Trash2 size={16} />
+            Zona de peligro
+          </h3>
+          <p className="text-xs text-slate-500 mb-3">
+            Borra TODOS los registros de un módulo. Úsalo solo si los datos de ese módulo están obsoletos y vas a recargarlos desde cero.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { key: 'm2', label: 'M2', fn: api.deleteAllM2 },
+              { key: 'm3', label: 'M3', fn: api.deleteAllM3 },
+              { key: 'm4', label: 'M4', fn: api.deleteAllM4 },
+            ].map(({ key, label, fn }) => (
+              <button
+                key={key}
+                onClick={() => handleDeleteAll(key, label, fn)}
+                disabled={deletingModule !== null}
+                className="px-4 py-2 bg-red-50 text-red-700 border border-red-300 rounded-lg font-bold text-sm hover:bg-red-100 disabled:opacity-50 transition-colors"
+              >
+                {deletingModule === key ? 'Borrando...' : `Borrar todo ${label}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

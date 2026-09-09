@@ -10,6 +10,7 @@ export default function SalesModule({ activeTab }) {
   const [filterVendorAssigned, setFilterVendorAssigned] = useState('');
   const [filterEstatus, setFilterEstatus] = useState(null);
   const [filterPlaza, setFilterPlaza] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
 
   // Determinar qué vista mostrar - cada vista carga sus propios datos
   if (activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') {
@@ -27,6 +28,8 @@ export default function SalesModule({ activeTab }) {
         setFilterEstatus={setFilterEstatus}
         filterPlaza={filterPlaza}
         setFilterPlaza={setFilterPlaza}
+        filterRegion={filterRegion}
+        setFilterRegion={setFilterRegion}
       />
     );
   }
