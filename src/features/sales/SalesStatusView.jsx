@@ -5,6 +5,7 @@ import { MODULES } from '../../utils/constants.js';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
+import { calcularEstatusFPDDesdeFecha } from '../../utils/helpers.js';
 
 // Componente para editar teléfono y notas
 function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromesaPago, onUpdate }) {
@@ -905,7 +906,17 @@ export default function SalesStatusView({
     }
     
     // Para M1, usar el campo Estatus FPD
-    const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || item['Estatus Fpd'] || '';
+    let estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || item['Estatus Fpd'] || '';
+
+    // Formato nuevo del archivo M1: no trae "Estatus FPD", solo "Fecha Perdida FPD".
+    // Calcularlo comparando esa fecha límite contra hoy.
+    if (!estatusFPDRaw) {
+      const fechaPerdida = item['Fecha Perdida FPD'] || item['FechaPerdidaFPD'] || '';
+      if (fechaPerdida) {
+        estatusFPDRaw = calcularEstatusFPDDesdeFecha(fechaPerdida);
+      }
+    }
+
     const estatusFPD = estatusFPDRaw.toUpperCase().trim();
     
     if (estatusFPD.includes('PÉRDIDA') || estatusFPD.includes('PERDIDA') || estatusFPD.includes('PERDIDO')) {
@@ -1273,10 +1284,10 @@ export default function SalesStatusView({
             
             // Buscar saldo por vencer
             const saldoPorVencerRaw = item['SALDO POR VENCER'] || 
-                                     item['SALDO POR VENCER'] || 
+                                     item['SALDO_POR_VENCER'] || 
                                      item['Saldo por vencer'] || 
                                      item['Saldo Por Vencer'] ||
-                                     item['Saldo Por Vencer'] ||
+                                     item['Saldo_Por_Vencer'] ||
                                      item['SALDO POR VENCER '] ||
                                      0;
             

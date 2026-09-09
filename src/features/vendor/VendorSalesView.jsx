@@ -4,6 +4,7 @@ import * as api from '../../api.js';
 import { MODULES } from '../../utils/constants.js';
 import { filterByVendor } from '../../utils/vendorFilter.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { calcularEstatusFPDDesdeFecha } from '../../utils/helpers.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 
 // Componente para editar teléfono y notas (compartido con SalesStatusView)
@@ -449,7 +450,16 @@ const getEstatusFPD = (item, status) => {
   }
   
   // Para M1, usar el campo Estatus FPD
-  const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || item['Estatus Fpd'] || '';
+  let estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || item['Estatus Fpd'] || '';
+
+  // Formato nuevo del archivo M1: no trae "Estatus FPD", solo "Fecha Perdida FPD".
+  if (!estatusFPDRaw) {
+    const fechaPerdida = item['Fecha Perdida FPD'] || item['FechaPerdidaFPD'] || '';
+    if (fechaPerdida) {
+      estatusFPDRaw = calcularEstatusFPDDesdeFecha(fechaPerdida);
+    }
+  }
+
   const estatusFPD = estatusFPDRaw.toUpperCase().trim();
   
   if (estatusFPD.includes('PÉRDIDA') || estatusFPD.includes('PERDIDA') || estatusFPD.includes('PERDIDO')) {
@@ -639,7 +649,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
             };
             
             const saldoRaw = item.SALDO || item['SALDO'] || item.Saldo || item['Saldo'] || 0;
-            const saldoPorVencerRaw = item['SALDO POR VENCER'] || item['SALDO POR VENCER'] || item['Saldo por vencer'] || item['Saldo Por Vencer'] || 0;
+            const saldoPorVencerRaw = item['SALDO POR VENCER'] || item['SALDO_POR_VENCER'] || item['Saldo por vencer'] || item['Saldo Por Vencer'] || 0;
             const saldoVencidoRaw = item['SALDO VENCIDO'] || item['SALDO VENCIDO'] || item['Saldo vencido'] || item['Saldo Vencido'] || 0;
             
             const saldo = parseMoney(saldoRaw);

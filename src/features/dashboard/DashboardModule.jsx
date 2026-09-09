@@ -5,6 +5,18 @@ import { BarChart3, Users, CheckCircle, MapPin } from 'lucide-react';
 import * as api from '../../api.js';
 import { filterByVendor, matchVendorName } from '../../utils/vendorFilter.js';
 import { getRegionFromHubPlaza as getRegionFromHubPlazaOperacion } from '../../utils/regionHubPlaza.js';
+import { calcularEstatusFPDDesdeFecha } from '../../utils/helpers.js';
+
+// Obtiene el Estatus FPD de un registro M1, calculándolo desde "Fecha Perdida FPD"
+// cuando el archivo (formato nuevo) no trae la columna "Estatus FPD" directamente.
+const getEstatusFPDM1 = (item) => {
+  let raw = item['Estatus FPD'] || item['EstatusFPD'] || '';
+  if (!raw) {
+    const fechaPerdida = item['Fecha Perdida FPD'] || item['FechaPerdidaFPD'] || '';
+    if (fechaPerdida) raw = calcularEstatusFPDDesdeFecha(fechaPerdida);
+  }
+  return raw.toUpperCase().trim();
+};
 
 // Función para normalizar texto sin acentos (para comparación flexible)
 const normalizeText = (text) => {
@@ -573,7 +585,7 @@ export default function DashboardModule({ currentModule }) {
           
           // Contar solo M1 (no FPD CORRIENTE ni FPD PÉRDIDA) del vendedor
           m1CountResult = filteredM1.filter(item => {
-            const estatusFPD = (item['Estatus FPD'] || item['EstatusFPD'] || '').toUpperCase().trim();
+            const estatusFPD = getEstatusFPDM1(item);
             return !estatusFPD.includes('PÉRDIDA') && 
                    !estatusFPD.includes('PERDIDA') && 
                    !estatusFPD.includes('PERDIDO') &&
@@ -634,7 +646,7 @@ export default function DashboardModule({ currentModule }) {
 
           // Contar M1 (no FPD CORRIENTE ni FPD PÉRDIDA)
           m1CountResult = (m1Data || []).filter(item => {
-            const estatusFPD = (item['Estatus FPD'] || item['EstatusFPD'] || '').toUpperCase().trim();
+            const estatusFPD = getEstatusFPDM1(item);
             return !estatusFPD.includes('PÉRDIDA') &&
                    !estatusFPD.includes('PERDIDA') &&
                    !estatusFPD.includes('PERDIDO') &&

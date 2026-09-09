@@ -6,6 +6,7 @@ import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
 import ActivityEvent from '../models/ActivityEvent.js';
+import { getEstatusFPDM1 } from '../utils/estatusFPD.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -133,7 +134,7 @@ router.get('/count', async (req, res) => {
           const reg = regionByCuenta.get(cuenta) || extractRegionFromRecord(item);
           if (normalizeRegion(reg) !== metroRegion) continue;
 
-          const estatusFPDValue = (item['Estatus FPD'] || item['EstatusFPD'] || '').toUpperCase().trim();
+          const estatusFPDValue = getEstatusFPDM1(item);
           if (
             !estatusFPDValue.includes('PÉRDIDA') &&
             !estatusFPDValue.includes('PERDIDA') &&
@@ -151,7 +152,7 @@ router.get('/count', async (req, res) => {
       const allM1 = await M1Master.find({});
       let m1Count = 0;
       allM1.forEach(item => {
-        const estatusFPDValue = (item['Estatus FPD'] || item['EstatusFPD'] || '').toUpperCase().trim();
+        const estatusFPDValue = getEstatusFPDM1(item);
         if (!estatusFPDValue.includes('PÉRDIDA') && 
             !estatusFPDValue.includes('PERDIDA') && 
             !estatusFPDValue.includes('PERDIDO') &&
