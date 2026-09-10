@@ -207,6 +207,7 @@ export default function UploadModule({ currentModule }) {
               'cuenta',
               'nocuenta',
               'referencia',
+              'cliente',
             ];
 
             // 1) Buscar por keys exactas normalizadas
@@ -292,7 +293,8 @@ export default function UploadModule({ currentModule }) {
               'Nº Cuenta', 
               'N° Cuenta', 
               'Numero de cuenta', 
-              'Número de cuenta'
+              'Número de cuenta',
+              'Cliente'
             ];
             let cuentaFound = null;
             for (const variation of cuentaVariations) {
@@ -317,7 +319,7 @@ export default function UploadModule({ currentModule }) {
           // Detectar si es M0, M1, M2, M3, M4 por el nombre del archivo o contenido
           let result;
           // Determinar si es M0/M1/M2/M3/M4 para aplicar reemplazo mensual si está activado
-          const isM0M1M2M3M4 = fileNameLower.includes('m0') || fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
+          const isM0M1M2M3M4 = fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
                             fileNameLower.includes('m3') || fileNameLower.includes('m4') || 
                             fileNameLower.includes('cosecha');
 
@@ -329,9 +331,8 @@ export default function UploadModule({ currentModule }) {
           const headerHasFechaPerdidaFPD = headers.some(h => 
             String(h || '').trim().toLowerCase().includes('fecha perdida fpd')
           );
-          const isM0File = fileNameLower.includes('m0') ||
-                            ((fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) &&
-                            !headerHasEstatusFPD && headerHasFechaPerdidaFPD);
+          const isM0File = (fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) &&
+                            !headerHasEstatusFPD && headerHasFechaPerdidaFPD;
 
           if (isM0File) {
             const shouldReplace = isMonthlyReplace && isM0M1M2M3M4;
@@ -481,7 +482,7 @@ export default function UploadModule({ currentModule }) {
         </div>
 
         {/* Checkbox para carga mensual (solo para M1, M2, M3, M4) */}
-        {file && (file.name.toLowerCase().includes('m0') || file.name.toLowerCase().includes('m1') || file.name.toLowerCase().includes('m2') || 
+        {file && (file.name.toLowerCase().includes('m1') || file.name.toLowerCase().includes('m2') || 
                  file.name.toLowerCase().includes('m3') || file.name.toLowerCase().includes('m4') || 
                  file.name.toLowerCase().includes('cosecha')) && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -538,7 +539,6 @@ export default function UploadModule({ currentModule }) {
           <div className="flex gap-2 flex-wrap">
             {[
               { key: 'operacion', label: 'Operación del Día', fn: api.deleteAllOperacion },
-              { key: 'm0', label: 'M0', fn: api.deleteAllM0 },
               { key: 'm2', label: 'M2', fn: api.deleteAllM2 },
               { key: 'm3', label: 'M3', fn: api.deleteAllM3 },
               { key: 'm4', label: 'M4', fn: api.deleteAllM4 },
