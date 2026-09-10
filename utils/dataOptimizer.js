@@ -56,6 +56,10 @@ const FIELD_NORMALIZATION = {
   'N° de cuenta': 'Nº de cuenta',
   'Cuenta de facturación': 'Nº de cuenta',
   'CUENTA': 'Cuenta',
+  'No Orden': 'Nº de orden',
+  'NoOrden': 'Nº de orden',
+  'NO ORDEN': 'Nº de orden',
+  'No. Orden': 'Nº de orden',
   
   // Vendedor
   'CVVEN': 'Clave Vendedor',

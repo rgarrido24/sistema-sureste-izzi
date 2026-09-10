@@ -623,9 +623,9 @@ const generateMessageFromTemplate = async (client) => {
       const nombre = client['Compañia'] || client['Compañía'] || client.Cliente || client['Cliente'] || 'Cliente';
       const cuentaFact = client['Cuenta de facturación'] || client['Cuenta de facturacion'] || '';
       const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
-      const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || 'N/A';
+      const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (looksLikeAccount(client.Cliente) ? client.Cliente : '') || 'N/A';
       const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
-      const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
+      const ordenNum = client['Nº de orden'] || client['N° de orden'] || client['No Orden'] || client['NoOrden'] || '';
       const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
       return `Hola ${nombre}, te contactamos sobre tu orden ${orden} (Cuenta: ${cuenta}).`;
     }
@@ -638,7 +638,7 @@ const generateMessageFromTemplate = async (client) => {
     const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
     const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || 'N/A';
     const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
-    const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
+    const ordenNum = client['Nº de orden'] || client['N° de orden'] || client['No Orden'] || client['NoOrden'] || '';
     const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
     const estado = client['Estado'] || client.estado || client.Estado || 'N/A';
     const fechaSolicitada = client['Fecha solicitada'] || client['Fecha Solicitada'] || client.fechaSolicitada || 'N/A';
@@ -684,7 +684,7 @@ const generateMessageFromTemplate = async (client) => {
     const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
     const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || 'N/A';
     const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
-    const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
+    const ordenNum = client['Nº de orden'] || client['N° de orden'] || client['No Orden'] || client['NoOrden'] || '';
     const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
     return `Hola ${nombre}, te contactamos sobre tu orden ${orden} (Cuenta: ${cuenta}).`;
   }
@@ -1127,9 +1127,9 @@ export default function OperacionModule() {
   // Filtrar datos
   const filteredData = data.filter(item => {
     // Obtener campos para búsqueda
-    const cliente = item['Compañia'] || item['Compañía'] || item.Cliente || item['Cliente'] || '';
-    const cuenta = item.cuenta || item['Nº de cuenta'] || item['Cuenta de facturación'] || item['Cuenta'] || '';
-    const orden = item['Nº de orden'] || item['No. VTS'] || item['Orden'] || '';
+    const cliente = item['Compañia'] || item['Compañía'] || item.cuenta || item['Cliente'] || '';
+    const cuenta = item.cuenta || item['Nº de cuenta'] || item['Cuenta de facturación'] || item['Cuenta'] || item['Cliente'] || '';
+    const orden = item['No Orden'] || item['NoOrden'] || item['Nº de orden'] || item['No. VTS'] || item['Orden'] || '';
     const telefono = item['Teléfonos'] || item['Teléfono'] || item.Telefono || item['Telefono'] || '';
     const cvven = item['Clave Vendedor'] || item['CVVEN'] || item.CVVEN || '';
     
@@ -1794,28 +1794,39 @@ export default function OperacionModule() {
               console.log('🔍 DEBUG - Plaza:', item['Plaza'] || item['PLAZA']);
             }
             
-            // Obtener campos según las columnas ESPECÍFICAS especificadas:
-            // Cliente: Columna BJ "Compañia"
-            const cliente = item['Compañia'] || item['Compañía'] || item['Compania'] || item['Companía'] || 
-                          item.Cliente || item['Cliente'] || item['Nombre'] || item.Nombre || 'Sin nombre';
-            
-            // Orden: Columna AL "No. VTS" y BA "Nº de orden" (formato nuevo: "No Orden")
-            const ordenVTS = item['No. VTS'] || item['No VTS'] || item['No.VTS'] || item['NoVTS'] || '';
-            const ordenNum = item['Nº de orden'] || item['N° de orden'] || item['Nº de orden'] || 
-                           item['N° de orden'] || item['Orden'] || item['Nº Orden'] || item['No Orden'] || '';
-            const orden = ordenVTS || ordenNum || 'N/A';
-            
-            // Cuenta: Columna AT "Cuenta de facturación" Y BQ "Nº de cuenta"
-            // (o, en el formato nuevo de archivo, columna D "Cliente" trae directamente el número de cuenta)
-            const cuentaFact = item['Cuenta de facturación'] || item['Cuenta de facturacion'] || 
-                             item['Cuenta de Facturación'] || item['Cuenta de Facturacion'] || '';
-            const cuentaNum = item['Nº de cuenta'] || item['N° de cuenta'] || item['Nº de Cuenta'] || 
-                            item['N° de Cuenta'] || '';
-            // Priorizar "Cuenta de facturación" (columna AT), luego "Nº de cuenta" (columna BQ) si es numérico
-            const cuenta = (cuentaFact && !isNaN(cuentaFact)) ? cuentaFact : 
-                         (cuentaNum && !isNaN(cuentaNum)) ? cuentaNum : 
-                         item.cuenta || item['Cuenta'] || item.CUENTA || 
-                         (item.Cliente && String(item.Cliente).trim()) || 'N/A';
+            const pickField = (obj, aliases) => {
+              for (const a of aliases) {
+                const v = obj?.[a];
+                if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+              }
+              const wanted = new Set(aliases.map(a => String(a).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s._-]+/g, '')));
+              for (const [k, v] of Object.entries(obj || {})) {
+                const nk = String(k).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s._-]+/g, '');
+                if (wanted.has(nk) && v !== undefined && v !== null && String(v).trim() !== '') {
+                  return String(v).trim();
+                }
+              }
+              return '';
+            };
+            const looksLikeAccount = (v) => /^\d{5,}$/.test(String(v || '').replace(/\s/g, ''));
+
+            // Nombre: no usar "Cliente" si en el formato RGO esa columna es el número de cuenta
+            const nombreCompania = pickField(item, ['Compañia', 'Compañía', 'Compania', 'Companía', 'Nombre']);
+            const clienteRaw = pickField(item, ['Cliente']);
+            const cuenta = pickField(item, [
+              'cuenta', 'Nº de cuenta', 'N° de cuenta', 'Cuenta de facturación', 'Cuenta de facturacion', 'Cuenta', 'CUENTA'
+            ]) || (looksLikeAccount(clienteRaw) ? clienteRaw : '');
+            const cliente = (nombreCompania && !looksLikeAccount(nombreCompania))
+              ? nombreCompania
+              : (cuenta || 'Sin nombre');
+            const mostrarCuenta = cuenta && String(cuenta) !== String(cliente);
+
+            // Orden: Columna E "No Orden" (formato RGO) o columnas clásicas
+            const orden = pickField(item, [
+              'No Orden', 'NoOrden', 'NO ORDEN', 'No. Orden',
+              'Nº de orden', 'N° de orden', 'Nº Orden', 'Orden',
+              'No. VTS', 'No VTS', 'No.VTS', 'NoVTS'
+            ]) || 'N/A';
             
             // Estado: Columna BI "Estado" - también considerar "Instalada" como "Completa"
             // (formato nuevo: "Estatus Ord")
@@ -1915,9 +1926,11 @@ export default function OperacionModule() {
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold">Orden: {orden}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold">Cuenta: {cuenta}</span>
-                  </div>
+                  {mostrarCuenta && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold">Cuenta: {cuenta}</span>
+                    </div>
+                  )}
                   {fecha && (
                     <div className="flex items-center gap-2">
                       <Calendar size={12} className="text-slate-400" />

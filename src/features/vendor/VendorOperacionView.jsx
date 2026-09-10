@@ -96,7 +96,7 @@ const generateMessageFromTemplate = async (client) => {
       const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
       const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (client.Cliente && String(client.Cliente).trim()) || 'N/A';
       const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
-      const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
+      const ordenNum = client['Nº de orden'] || client['N° de orden'] || client['No Orden'] || client['NoOrden'] || '';
       const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
       return `Hola ${nombre}, te contactamos sobre tu orden ${orden} (Cuenta: ${cuenta}).`;
     }
@@ -109,7 +109,7 @@ const generateMessageFromTemplate = async (client) => {
     const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
     const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (client.Cliente && String(client.Cliente).trim()) || 'N/A';
     const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
-    const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
+    const ordenNum = client['Nº de orden'] || client['N° de orden'] || client['No Orden'] || client['NoOrden'] || '';
     const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
     const estado = client['Estado'] || client.estado || client.Estado || 'N/A';
     const fechaSolicitada = client['Fecha solicitada'] || client['Fecha Solicitada'] || client.fechaSolicitada || 'N/A';
@@ -153,7 +153,7 @@ const generateMessageFromTemplate = async (client) => {
     const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
     const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (client.Cliente && String(client.Cliente).trim()) || 'N/A';
     const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
-    const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
+    const ordenNum = client['Nº de orden'] || client['N° de orden'] || client['No Orden'] || client['NoOrden'] || '';
     const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
     return `Hola ${nombre}, te contactamos sobre tu orden ${orden} (Cuenta: ${cuenta}).`;
   }
@@ -399,9 +399,10 @@ export default function VendorOperacionView({ myName }) {
       {filteredData.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredData.map((item) => {
-            const cliente = item['Compañia'] || item['Compañía'] || item.Cliente || item['Cliente'] || 'Sin nombre';
+            const cliente = item['Compañia'] || item['Compañía'] || item.cuenta || item['Cliente'] || 'Sin nombre';
             const cuenta = item.cuenta || item['Cuenta de facturación'] || item['Nº de cuenta'] || (item.Cliente && String(item.Cliente).trim()) || '-';
-            const orden = item['Nº de orden'] || item['No. VTS'] || '';
+            const orden = item['No Orden'] || item['NoOrden'] || item['Nº de orden'] || item['No. VTS'] || item['Orden'] || 'N/A';
+            const mostrarCuenta = cuenta && cuenta !== '-' && String(cuenta) !== String(cliente);
             const telefono = item['Teléfonos'] || item['Teléfono'] || '';
             const estado = item['Estado'] || item.estado || 'Abierta';
             const hub = item['Hub'] || item['HUB'] || '';
@@ -446,10 +447,12 @@ export default function VendorOperacionView({ myName }) {
                 </div>
                 
                 <div className="space-y-2 text-xs text-slate-600 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold">Cuenta:</span> #{cuenta}
-                  </div>
-                  {orden && (
+                  {mostrarCuenta && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">Cuenta:</span> #{cuenta}
+                    </div>
+                  )}
+                  {orden && orden !== 'N/A' && (
                     <div className="flex items-center gap-2">
                       <span className="font-bold">Orden:</span> {orden}
                     </div>
