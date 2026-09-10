@@ -52,52 +52,56 @@ export function parseCSV(text) {
   };
 
   const separator = detectSeparator(text);
-  
-  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-  
-  if (lines.length === 0) {
-    return [];
-  }
-  
+
+  // Parseo de una sola pasada, respetando comillas que pueden contener
+  // saltos de línea (ej. columna "Comentarios" con texto multilínea).
+  // Partir el texto por \n antes de tiempo rompe esas filas en varias
+  // y descuadra las columnas — por eso se procesa carácter por carácter
+  // sobre el texto completo, y solo se cierra una fila con un salto de
+  // línea que esté FUERA de comillas.
   const arr = [];
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const row = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let j = 0; j < line.length; j++) {
-      const char = line[j];
-      const nextChar = line[j + 1];
-      
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          // Comillas dobles escapadas
-          current += '"';
-          j++; // Saltar el siguiente carácter
-        } else {
-          // Toggle de comillas
-          inQuotes = !inQuotes;
-        }
-      } else if (char === separator && !inQuotes) {
-        // Separador encontrado (fuera de comillas)
-        row.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    
-    // Agregar la última columna
+  let row = [];
+  let current = '';
+  let inQuotes = false;
+
+  const pushCell = () => {
     row.push(current.trim());
-    
-    // Solo agregar filas que tengan al menos una columna con contenido
-    if (row.length > 0 && row.some(col => col.length > 0)) {
+    current = '';
+  };
+  const pushRow = () => {
+    pushCell();
+    if (row.some(col => col.length > 0)) {
       arr.push(row);
     }
+    row = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++; // Saltar la comilla escapada
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === separator && !inQuotes) {
+      pushCell();
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      // Saltar \r suelto (viene junto con \n en CRLF) sin cerrar fila con él
+      if (char === '\r' && nextChar === '\n') continue;
+      pushRow();
+    } else {
+      current += char;
+    }
   }
-  
+  // Última fila si el archivo no termina en salto de línea
+  if (current.length > 0 || row.length > 0) {
+    pushRow();
+  }
+
   return arr;
 }
 
