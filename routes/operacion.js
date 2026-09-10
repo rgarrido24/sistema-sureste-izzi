@@ -141,6 +141,15 @@ router.post('/bulk', async (req, res) => {
     if (!Array.isArray(data)) {
       return res.status(400).json({ error: 'Se espera un array de datos' });
     }
+
+    // DIAGNÓSTICO: ver exactamente qué está llegando al servidor
+    console.log(`📦 [OPERACION] Recibidos ${data.length} registros.`);
+    if (data.length > 0) {
+      console.log('📦 [OPERACION] Keys del primer registro:', Object.keys(data[0]));
+      console.log('📦 [OPERACION] Valor de "Cliente" en primer registro:', JSON.stringify(data[0]['Cliente']));
+      console.log('📦 [OPERACION] Primer registro completo (primeras 5 keys):',
+        JSON.stringify(Object.fromEntries(Object.entries(data[0]).slice(0, 5))));
+    }
     
     let created = 0;
     let updated = 0;
@@ -282,6 +291,10 @@ router.post('/bulk', async (req, res) => {
         }
         const cuentaKey = String(cuenta || '').trim().replace(/\s+/g, '');
         if (!cuentaKey || cuentaKey.length < 3 || cuentaKey === 'undefined' || cuentaKey === 'null') {
+          if (skippedNoCuenta < 5) {
+            console.log(`📦 [OPERACION] SKIP sin cuenta. cuenta calculada="${cuenta}". Keys del item:`, Object.keys(safeItem));
+            console.log(`📦 [OPERACION] SKIP item['Cliente']=${JSON.stringify(safeItem['Cliente'])}`);
+          }
           skippedNoCuenta++;
           continue;
         }
