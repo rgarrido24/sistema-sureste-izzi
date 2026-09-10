@@ -317,25 +317,27 @@ export default function UploadModule({ currentModule }) {
           // Detectar si es M1, M2, M3, M4 por el nombre del archivo o contenido
           let result;
           // Determinar si es M1, M2, M3, M4 para aplicar reemplazo mensual si está activado
-          const isM1M2M3M4 = fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
+          const isM0M1M2M3M4 = fileNameLower.includes('m0') || fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
                             fileNameLower.includes('m3') || fileNameLower.includes('m4') || 
                             fileNameLower.includes('cosecha');
           
-          if (fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) {
+          if (fileNameLower.includes('m0')) {
+            result = await api.bulkUpsertM0(data, true, isMonthlyReplace && isM0M1M2M3M4);
+          } else if (fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) {
             // DEBUG: Verificar que replaceAll se está enviando
-            const shouldReplace = isMonthlyReplace && isM1M2M3M4;
+            const shouldReplace = isMonthlyReplace && isM0M1M2M3M4;
             console.log('📋 DEBUG - Cargando M1:');
             console.log('   - isMonthlyReplace:', isMonthlyReplace);
-            console.log('   - isM1M2M3M4:', isM1M2M3M4);
+            console.log('   - isM0M1M2M3M4:', isM0M1M2M3M4);
             console.log('   - replaceAll que se enviará:', shouldReplace);
             console.log('   - Total de registros a cargar:', data.length);
             result = await api.bulkUpsertM1(data, true, shouldReplace);
           } else if (fileNameLower.includes('m2')) {
-            result = await api.bulkUpsertM2(data, true, isMonthlyReplace && isM1M2M3M4);
+            result = await api.bulkUpsertM2(data, true, isMonthlyReplace && isM0M1M2M3M4);
           } else if (fileNameLower.includes('m3')) {
-            result = await api.bulkUpsertM3(data, true, isMonthlyReplace && isM1M2M3M4);
+            result = await api.bulkUpsertM3(data, true, isMonthlyReplace && isM0M1M2M3M4);
           } else if (fileNameLower.includes('m4')) {
-            result = await api.bulkUpsertM4(data, true, isMonthlyReplace && isM1M2M3M4);
+            result = await api.bulkUpsertM4(data, true, isMonthlyReplace && isM0M1M2M3M4);
           } else if (fileNameLower.includes('operacion') || fileNameLower.includes('output')) {
             result = await api.bulkUpsertOperacion(data, true);
           } else if (currentModule === MODULES.SALES) {
@@ -462,7 +464,7 @@ export default function UploadModule({ currentModule }) {
         </div>
 
         {/* Checkbox para carga mensual (solo para M1, M2, M3, M4) */}
-        {file && (file.name.toLowerCase().includes('m1') || file.name.toLowerCase().includes('m2') || 
+        {file && (file.name.toLowerCase().includes('m0') || file.name.toLowerCase().includes('m1') || file.name.toLowerCase().includes('m2') || 
                  file.name.toLowerCase().includes('m3') || file.name.toLowerCase().includes('m4') || 
                  file.name.toLowerCase().includes('cosecha')) && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -518,6 +520,7 @@ export default function UploadModule({ currentModule }) {
           </p>
           <div className="flex gap-2 flex-wrap">
             {[
+              { key: 'm0', label: 'M0', fn: api.deleteAllM0 },
               { key: 'm2', label: 'M2', fn: api.deleteAllM2 },
               { key: 'm3', label: 'M3', fn: api.deleteAllM3 },
               { key: 'm4', label: 'M4', fn: api.deleteAllM4 },

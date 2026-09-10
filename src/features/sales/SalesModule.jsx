@@ -13,7 +13,7 @@ export default function SalesModule({ activeTab }) {
   const [filterRegion, setFilterRegion] = useState('');
 
   // Determinar qué vista mostrar - cada vista carga sus propios datos
-  if (activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') {
+  if (activeTab === 'm0' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') {
     const status = activeTab.toUpperCase();
     return (
       <SalesStatusView 

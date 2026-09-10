@@ -25,7 +25,9 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
       }
       
       // Llamar al endpoint correspondiente según el status
-      if (status === 'M1') {
+      if (status === 'M0') {
+        await api.updateM0Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+      } else if (status === 'M1') {
         await api.updateM1Contacto(itemId, editTelefono, editNota, editFechaPromesa);
       } else if (status === 'M2') {
         await api.updateM2Contacto(itemId, editTelefono, editNota, editFechaPromesa);
@@ -493,7 +495,9 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
         
         // Cargar datos según el status (M1, M2, M3, M4) con filtro de vendedor si aplica
         let allData = [];
-        if (status === 'M1') {
+        if (status === 'M0') {
+          allData = await api.getM0Master(vendorFilter);
+        } else if (status === 'M1') {
           allData = await api.getM1Master(vendorFilter);
         } else if (status === 'M2') {
           allData = await api.getM2Master(vendorFilter);
@@ -545,7 +549,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     // Filtro de estatus (solo para M1 y M2)
     let matchesEstatus = true;
     // Aplicar filtro de estatus para M1, M2, M3, M4
-    if ((status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus) {
+    if ((status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus) {
       const itemEstatusFPD = getEstatusFPD(item, status);
       matchesEstatus = itemEstatusFPD === filterEstatus;
     }
@@ -591,7 +595,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
               />
             </div>
-            {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+            {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
               <select
                 value={filterEstatus}
                 onChange={(e) => setFilterEstatus(e.target.value)}

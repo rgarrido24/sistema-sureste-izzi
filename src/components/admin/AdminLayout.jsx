@@ -129,6 +129,16 @@ export default function AdminLayout({
             {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx') && (
               <>
                 <button 
+                  onClick={() => setActiveTab('m0')} 
+                  className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    activeTab === 'm0' 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                  }`}
+                >
+                  M0
+                </button>
+                <button 
                   onClick={() => setActiveTab('m1')} 
                   className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
                     activeTab === 'm1' 
@@ -178,6 +188,18 @@ export default function AdminLayout({
                     }`}
                   >
                     Cargar
+                  </button>
+                )}
+                {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'mesa_control') && (
+                  <button 
+                    onClick={() => setActiveTab('whatsapp')} 
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                      activeTab === 'whatsapp' 
+                        ? 'bg-gradient-to-r from-[#16a34a] to-[#15803d] text-white shadow-md' 
+                        : 'text-slate-600 hover:text-[#16a34a] hover:bg-slate-50'
+                    }`}
+                  >
+                    Automatización
                   </button>
                 )}
                 <button 

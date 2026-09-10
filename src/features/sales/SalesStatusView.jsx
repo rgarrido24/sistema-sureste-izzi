@@ -25,7 +25,9 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
       }
       
       // Llamar al endpoint correspondiente según el status
-      if (status === 'M1') {
+      if (status === 'M0') {
+        await api.updateM0Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+      } else if (status === 'M1') {
         await api.updateM1Contacto(itemId, editTelefono, editNota, editFechaPromesa);
       } else if (status === 'M2') {
         await api.updateM2Contacto(itemId, editTelefono, editNota, editFechaPromesa);
@@ -216,7 +218,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     }
     
     // Si aún no se encuentra, buscar cualquier plantilla activa para cobranza en general
-    if (!activeTemplate && (status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4')) {
+    if (!activeTemplate && (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4')) {
       activeTemplate = allTemplates.find(t => 
         t.isActive && (
           t.module?.toLowerCase().includes('cobranza') ||
@@ -229,7 +231,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     }
     
     // Si aún no se encuentra, buscar plantillas con módulo "general" para M1/M2/M3/M4
-    if (!activeTemplate && (status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4')) {
+    if (!activeTemplate && (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4')) {
       activeTemplate = allTemplates.find(t => 
         t.isActive && (
           t.module?.toLowerCase() === 'general' ||
@@ -601,7 +603,9 @@ export default function SalesStatusView({
         
         // Cargar desde la colección específica (M1, M2, M3, M4)
         let data = [];
-        if (status === 'M1') {
+        if (status === 'M0') {
+          data = await api.getM0Master(vendorFilter);
+        } else if (status === 'M1') {
           data = await api.getM1Master(vendorFilter);
         } else if (status === 'M2') {
           data = await api.getM2Master(vendorFilter);
@@ -957,7 +961,7 @@ export default function SalesStatusView({
   };
   
   // Calcular estadísticas por región (para M1, M2, M3, M4)
-  const regionStats = (status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') ? (() => {
+  const regionStats = (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') ? (() => {
     const stats = {};
     const regionValues = new Set(); // Para debugging
     
@@ -996,14 +1000,14 @@ export default function SalesStatusView({
       const region = getRegionGroup(regionRaw, hub, plaza);
       
       if (!stats[region]) {
-        const statusKey = status === 'M1' ? 'm1' : status === 'M2' ? 'm2' : status === 'M3' ? 'm3' : 'm4';
+        const statusKey = status.toLowerCase();
         // M2, M3, M4 no tienen pérdidas, solo M1
         stats[region] = { total: 0, [statusKey]: 0, perdidas: status === 'M1' ? 0 : undefined, fpdCorriente: 0 };
       }
       stats[region].total++;
       
       const estatusFPD = getEstatusFPD(item);
-      const statusKey = status === 'M1' ? 'm1' : status === 'M2' ? 'm2' : status === 'M3' ? 'm3' : 'm4';
+      const statusKey = status.toLowerCase();
       
       // Solo M1 tiene pérdidas, M2, M3, M4 no
       if (status === 'M1' && estatusFPD === 'FPD PÉRDIDA') {
@@ -1023,8 +1027,8 @@ export default function SalesStatusView({
     // Calcular porcentajes
     Object.keys(stats).forEach(region => {
       const s = stats[region];
-      const statusKey = status === 'M1' ? 'm1' : status === 'M2' ? 'm2' : status === 'M3' ? 'm3' : 'm4';
-      const statusLabel = status === 'M1' ? 'M1' : status === 'M2' ? 'M2' : status === 'M3' ? 'M3' : 'M4';
+      const statusKey = status.toLowerCase();
+      const statusLabel = status;
       s[`porcentaje${statusLabel}`] = s.total > 0 ? ((s[statusKey] / s.total) * 100).toFixed(1) : 0;
       // Solo M1 tiene pérdidas, M2, M3, M4 no
       if (status === 'M1') {
@@ -1075,7 +1079,7 @@ export default function SalesStatusView({
     
     // Filtrar por estatus (para M1, M2, M3, M4)
     let matchesEstatus = true;
-    if ((status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus) {
+    if ((status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus) {
       const itemEstatus = getEstatusFPD(item);
       matchesEstatus = itemEstatus === filterEstatus;
     }
@@ -1103,7 +1107,7 @@ export default function SalesStatusView({
             : `Total de clientes: ${count}`
           }
         </p>
-        {Array.isArray(cobranzaLastUploads) && (status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+        {Array.isArray(cobranzaLastUploads) && (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
           (() => {
             const key = status.toLowerCase();
             const row = cobranzaLastUploads.find(r => String(r?._id || '').toLowerCase() === key);
@@ -1120,7 +1124,7 @@ export default function SalesStatusView({
       </div>
 
       {/* Estadísticas por Región (para M1, M2, M3, M4) */}
-      {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+      {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <h3 className="text-xl font-bold mb-4">Estadísticas por Región</h3>
           {Object.keys(regionStats).length > 0 ? (
@@ -1182,7 +1186,7 @@ export default function SalesStatusView({
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
             />
           </div>
-          {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
             <select
               value={filterEstatus || ''}
               onChange={(e) => {
@@ -1236,7 +1240,7 @@ export default function SalesStatusView({
               <option key={plaza} value={plaza}>{plaza}</option>
             ))}
           </select>
-          {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
             <select
               value={filterRegion || ''}
               onChange={(e) => {
@@ -1257,7 +1261,7 @@ export default function SalesStatusView({
         </div>
         <p className="text-sm text-slate-600 mt-2">
           Mostrando {filteredData.length} de {count} clientes • Estatus: {status}
-          {(status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus && ` • Filtrado: ${filterEstatus}`}
+          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus && ` • Filtrado: ${filterEstatus}`}
         </p>
         
         {/* Paginación */}

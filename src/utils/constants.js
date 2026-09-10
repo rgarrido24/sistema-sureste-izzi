@@ -36,6 +36,7 @@ export const COLLECTIONS = {
 };
 
 export const STATUS_TYPES = {
+  M0: 'M0',
   M1: 'M1',
   M2: 'M2',
   M3: 'M3',

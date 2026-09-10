@@ -15,6 +15,12 @@ const ESSENTIAL_FIELDS = {
     // Para estadísticas
     'Centro', 'Organización', 'Ciudad', 'Municipio', 'Localidad'
   ],
+  m0: [
+    'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',
+    'Cliente', 'Nombre', 'Nº de cuenta', 'Cuenta', 'Teléfono', 'Teléfonos',
+    'NotaContacto', 'Nota', 'FechaPromesaPago', 'Fecha Perdida FPD', 'FechaPerdidaFPD',
+    'VendedorAsignado', 'Vendedor', 'Saldo'
+  ],
   m1: [
     'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',
     'Cliente', 'Nombre', 'Nº de cuenta', 'Cuenta', 'Teléfono', 'Teléfonos',

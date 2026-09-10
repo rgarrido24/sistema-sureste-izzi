@@ -365,6 +365,46 @@ export async function logWhatsAppEvent({ module = 'cobranza', status = '', cuent
   });
 }
 
+// ========== M0 MASTER ==========
+export async function getM0Master(vendedor = null) {
+  const endpoint = vendedor ? `/m0?vendedor=${encodeURIComponent(vendedor)}` : '/m0';
+  return apiRequest(endpoint);
+}
+
+export async function getM0MasterCount() {
+  const result = await apiRequest('/m0/count');
+  return result.count;
+}
+
+export async function bulkUpsertM0(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m0/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function getM0ByCuenta(cuenta) {
+  return apiRequest(`/m0/cuenta/${encodeURIComponent(cuenta)}`);
+}
+
+export async function updateM0Estado(id, estado) {
+  return apiRequest(`/m0/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM0Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m0/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+  });
+}
+
+export async function deleteAllM0() {
+  return apiRequest('/m0/all', { method: 'DELETE' });
+}
+
 // ========== M1 MASTER ==========
 export async function getM1Master(vendedor = null) {
   const endpoint = vendedor ? `/m1?vendedor=${encodeURIComponent(vendedor)}` : '/m1';
@@ -644,4 +684,25 @@ export async function updatePDF(id, updates) {
     method: 'PUT',
     body: JSON.stringify(updates)
   });
+}
+
+// ========== WHATSAPP (envío masivo, API oficial) ==========
+export async function getWhatsAppTemplates() {
+  return apiRequest('/whatsapp/templates');
+}
+
+export async function sendWhatsAppBulk({ modulo, cuentas, templateName, languageCode, variableFields, telefonoField }) {
+  return apiRequest('/whatsapp/send-bulk', {
+    method: 'POST',
+    body: JSON.stringify({ modulo, cuentas, templateName, languageCode, variableFields, telefonoField }),
+  });
+}
+
+export async function getWhatsAppLogs(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return apiRequest(`/whatsapp/logs${query ? `?${query}` : ''}`);
+}
+
+export async function getWhatsAppBatchSummary(batchId) {
+  return apiRequest(`/whatsapp/logs/summary/${encodeURIComponent(batchId)}`);
 }

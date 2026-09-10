@@ -26,7 +26,7 @@ export default function VendorDashboard({ user, myName }) {
       myName={myName}
       activeView={activeView === 'cobranza' ? cobranzaView : activeView}
       setActiveView={(view) => {
-        if (view === 'm1' || view === 'm2' || view === 'm3' || view === 'm4') {
+        if (view === 'm0' || view === 'm1' || view === 'm2' || view === 'm3' || view === 'm4') {
           setCobranzaView(view);
           setActiveView('cobranza');
         } else {
@@ -35,7 +35,7 @@ export default function VendorDashboard({ user, myName }) {
       }}
       onLogout={logout}
     >
-      {(activeView === 'cobranza' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4') && (
+      {(activeView === 'cobranza' || activeView === 'm0' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4') && (
         <VendorSalesView myName={myName} status={cobranzaView.toUpperCase()} />
       )}
       {activeView === 'instalaciones' && (
