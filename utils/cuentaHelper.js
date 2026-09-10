@@ -80,7 +80,9 @@ export function normalizeCuenta(item) {
       'número de cuenta',
       'CUENTA ',                // Con espacio al final
       ' cuenta',                // Con espacio al inicio
-      ' cuenta '                // Con espacios
+      ' cuenta ',               // Con espacios
+      'Cliente',                // Formato "Operación RGO" (columna D): el número de cuenta viene aquí
+      'CLIENTE'
     ];
     
     for (const field of possibleFields) {
@@ -173,4 +175,3 @@ export function prepareDataForUpsert(item, origen = 'operacion') {
     fechaCreacion: item.fechaCreacion || new Date()
   };
 }
-
