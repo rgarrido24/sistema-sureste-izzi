@@ -70,6 +70,7 @@ export default function UploadModule({ currentModule }) {
         try {
           let rows = [];
           const fileNameLower = file.name.toLowerCase();
+          const fileNameNorm = fileNameLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
           if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
             // Para CSV/TXT, el resultado ya es texto, no necesita decodificación
@@ -120,6 +121,16 @@ export default function UploadModule({ currentModule }) {
               c.includes('cuenta de facturación')
             );
             if (hasCuentaStrong) return true;
+            // Formato nuevo "Operación RGO": no trae "cuenta", trae Cliente + No Orden / Estatus Ord
+            const hasCliente = cells.some(c => c === 'cliente');
+            const hasOperacionRgo = cells.some(c =>
+              c.includes('estatus ord') ||
+              c.includes('no orden') ||
+              c.includes('hub red') ||
+              c.includes('fecha programacion') ||
+              c.includes('usuario vendedor')
+            );
+            if (hasCliente && hasOperacionRgo) return true;
             // Fallback: otros archivos (M1-M4) traen "CUENTA"
             return cells.some(c => c === 'cuenta' || c.includes('cuenta'));
           };
@@ -159,15 +170,7 @@ export default function UploadModule({ currentModule }) {
           console.log('📋 DEBUG - Índice de "Nº de cuenta":', cuentaNumIndex);
 
           // Si no encontramos columna de cuenta, alertar antes de subir (evita miles de omitidos)
-          if (fileNameLower.includes('operacion') || fileNameLower.includes('output')) {
-            if (cuentaNumIndex === -1 && cuentaFacturacionIndex === -1) {
-              alert(
-                '⚠️ No se detectó la columna de cuenta ("Nº de cuenta" o "Cuenta de facturación") en el archivo.\n' +
-                'Esto normalmente pasa por un CSV con separador incorrecto o encabezados desfasados.\n\n' +
-                'Sugerencia: vuelve a exportar como CSV UTF-8 y reintenta.'
-              );
-            }
-          }
+          const looksLikeOperacionByName = fileNameNorm.includes('operacion') || fileNameNorm.includes('output') || fileNameNorm.includes('rgo');
           
           const data = rows.slice(headerRowIndex + 1).map((row, rowIndex) => {
             const obj = {};
@@ -234,7 +237,20 @@ export default function UploadModule({ currentModule }) {
             return '';
           };
 
-          const isOperacionFile = fileNameLower.includes('operacion') || fileNameLower.includes('output');
+          const headerNorms = headers.map(h => String(h || '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+          );
+          const looksLikeOperacionByHeaders = headerNorms.some(c => c === 'cliente') && headerNorms.some(c =>
+            c.includes('estatus ord') ||
+            c.includes('no orden') ||
+            c.includes('hub red') ||
+            c.includes('fecha programacion') ||
+            c.includes('usuario vendedor')
+          );
+          const isOperacionFile = looksLikeOperacionByName || looksLikeOperacionByHeaders || currentModule === MODULES.INSTALL;
           if (isOperacionFile) {
             const total = data.length;
             const sample = data.slice(0, 5);
@@ -318,6 +334,7 @@ export default function UploadModule({ currentModule }) {
           // Subir datos según el módulo y tipo de archivo
           // Detectar si es M0, M1, M2, M3, M4 por el nombre del archivo o contenido
           let result;
+          let destinoCarga = '';
           // Determinar si es M0/M1/M2/M3/M4 para aplicar reemplazo mensual si está activado
           const isM0M1M2M3M4 = fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
                             fileNameLower.includes('m3') || fileNameLower.includes('m4') || 
@@ -340,6 +357,7 @@ export default function UploadModule({ currentModule }) {
             console.log('   - isMonthlyReplace:', isMonthlyReplace);
             console.log('   - replaceAll que se enviará:', shouldReplace);
             console.log('   - Total de registros a cargar:', data.length);
+            destinoCarga = 'M0';
             result = await api.bulkUpsertM0(data, true, shouldReplace);
           } else if (fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) {
             // DEBUG: Verificar que replaceAll se está enviando
@@ -349,21 +367,26 @@ export default function UploadModule({ currentModule }) {
             console.log('   - isM0M1M2M3M4:', isM0M1M2M3M4);
             console.log('   - replaceAll que se enviará:', shouldReplace);
             console.log('   - Total de registros a cargar:', data.length);
+            destinoCarga = 'M1';
             result = await api.bulkUpsertM1(data, true, shouldReplace);
           } else if (fileNameLower.includes('m2')) {
+            destinoCarga = 'M2';
             result = await api.bulkUpsertM2(data, true, isMonthlyReplace && isM0M1M2M3M4);
           } else if (fileNameLower.includes('m3')) {
+            destinoCarga = 'M3';
             result = await api.bulkUpsertM3(data, true, isMonthlyReplace && isM0M1M2M3M4);
           } else if (fileNameLower.includes('m4')) {
+            destinoCarga = 'M4';
             result = await api.bulkUpsertM4(data, true, isMonthlyReplace && isM0M1M2M3M4);
-          } else if (fileNameLower.includes('operacion') || fileNameLower.includes('output')) {
+          } else if (isOperacionFile) {
+            destinoCarga = 'Operación del Día';
+            console.log('📋 DEBUG - Enviando a Operación del Día. archivo=', file.name, 'modulo=', currentModule);
             result = await api.bulkUpsertOperacion(data, true);
           } else if (currentModule === MODULES.SALES) {
+            destinoCarga = 'Sales';
             result = await api.bulkUpsertSales(data, true);
-          } else if (currentModule === MODULES.INSTALL) {
-            result = await api.bulkUpsertInstall(data, true);
           } else {
-            // Por defecto, usar sales
+            destinoCarga = 'Sales (default)';
             result = await api.bulkUpsertSales(data, true);
           }
 
@@ -377,6 +400,7 @@ export default function UploadModule({ currentModule }) {
           const skippedNoUpdateExisting = result.skippedNoUpdateExisting || 0;
           
           let message = `✅ Carga completada:\n\n`;
+          message += `🎯 Destino: ${destinoCarga}\n`;
           message += `📊 Total procesados: ${total}\n`;
           message += `✅ Creados: ${created}\n`;
           message += `🔄 Actualizados: ${updated}\n`;

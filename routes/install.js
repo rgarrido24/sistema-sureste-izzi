@@ -62,6 +62,11 @@ router.post('/bulk', async (req, res) => {
       return res.status(400).json({ error: 'Se espera un array de datos' });
     }
 
+    console.log(`📦 [INSTALL] Recibidos ${data.length} registros (esta ruta NO es Operación del Día).`);
+    if (data.length > 0) {
+      console.log('📦 [INSTALL] Keys del primer registro:', Object.keys(data[0]));
+    }
+
     // Normalizar número de orden desde varias columnas posibles
     const extractOrden = (item) => {
       const candidates = [

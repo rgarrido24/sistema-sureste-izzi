@@ -50,6 +50,15 @@ app.use(cors({
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
+// Log de cada POST para saber si la carga llega al backend y a qué ruta
+app.use((req, res, next) => {
+  if (req.method === 'POST') {
+    const n = Array.isArray(req.body?.data) ? req.body.data.length : null;
+    console.log(`📥 POST ${req.originalUrl} registros=${n ?? 'n/a'}`);
+  }
+  next();
+});
+
 // Conectar a MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/sistema-sureste';
 
