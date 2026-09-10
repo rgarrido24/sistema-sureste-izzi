@@ -13,7 +13,11 @@ const ESSENTIAL_FIELDS = {
     'Fecha solicitada', 'Teléfonos', 'Clave Vendedor', 'CVVEN', 'Estado',
     'Hub', 'Plaza', 'VendedorAsignado', 'Vendedor', 'Nota', 'Notas',
     // Para estadísticas
-    'Centro', 'Organización', 'Ciudad', 'Municipio', 'Localidad'
+    'Centro', 'Organización', 'Ciudad', 'Municipio', 'Localidad',
+    // Formato nuevo "Operación RGO"
+    'Fecha Programacion Date', 'Fecha Fst Programacion', 'Cliente', 'No Orden',
+    'Estatus Ord', 'Sub Estatus Ord', 'Horario Atencion', 'Usuario Vendedor',
+    'STATUS', 'Paquete Contratado', 'Hub Red', 'Region'
   ],
   m0: [
     'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',

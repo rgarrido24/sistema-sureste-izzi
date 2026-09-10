@@ -1799,13 +1799,14 @@ export default function OperacionModule() {
             const cliente = item['Compañia'] || item['Compañía'] || item['Compania'] || item['Companía'] || 
                           item.Cliente || item['Cliente'] || item['Nombre'] || item.Nombre || 'Sin nombre';
             
-            // Orden: Columna AL "No. VTS" y BA "Nº de orden"
+            // Orden: Columna AL "No. VTS" y BA "Nº de orden" (formato nuevo: "No Orden")
             const ordenVTS = item['No. VTS'] || item['No VTS'] || item['No.VTS'] || item['NoVTS'] || '';
             const ordenNum = item['Nº de orden'] || item['N° de orden'] || item['Nº de orden'] || 
-                           item['N° de orden'] || item['Orden'] || item['Nº Orden'] || '';
+                           item['N° de orden'] || item['Orden'] || item['Nº Orden'] || item['No Orden'] || '';
             const orden = ordenVTS || ordenNum || 'N/A';
             
             // Cuenta: Columna AT "Cuenta de facturación" Y BQ "Nº de cuenta"
+            // (o, en el formato nuevo de archivo, columna D "Cliente" trae directamente el número de cuenta)
             const cuentaFact = item['Cuenta de facturación'] || item['Cuenta de facturacion'] || 
                              item['Cuenta de Facturación'] || item['Cuenta de Facturacion'] || '';
             const cuentaNum = item['Nº de cuenta'] || item['N° de cuenta'] || item['Nº de Cuenta'] || 
@@ -1813,10 +1814,13 @@ export default function OperacionModule() {
             // Priorizar "Cuenta de facturación" (columna AT), luego "Nº de cuenta" (columna BQ) si es numérico
             const cuenta = (cuentaFact && !isNaN(cuentaFact)) ? cuentaFact : 
                          (cuentaNum && !isNaN(cuentaNum)) ? cuentaNum : 
-                         item.cuenta || item['Cuenta'] || item.CUENTA || 'N/A';
+                         item.cuenta || item['Cuenta'] || item.CUENTA || 
+                         (item.Cliente && String(item.Cliente).trim()) || 'N/A';
             
             // Estado: Columna BI "Estado" - también considerar "Instalada" como "Completa"
-            let estado = item['Estado'] || item.Estado || item.estado || item['Estatus'] || item.Estatus || 'Abierta';
+            // (formato nuevo: "Estatus Ord")
+            let estado = item['Estado'] || item.Estado || item.estado || item['Estatus'] || item.Estatus || 
+                        item['Estatus Ord'] || 'Abierta';
             // Si el estado es "Instalada", mostrarlo como "Completa" en la tarjeta
             if (estado.toUpperCase() === 'INSTALADA') {
               estado = 'Completa';
@@ -1826,9 +1830,9 @@ export default function OperacionModule() {
             const telefono = item['Teléfonos'] || item['Teléfono'] || item['Telefonos'] || item['Telefono'] || 
                            item.Teléfono || item.Telefono || item['Tel'] || item.Tel || '';
             
-            // CVVEN: Columna AM "Clave Vendedor"
+            // CVVEN: Columna AM "Clave Vendedor" (formato nuevo: "Usuario Vendedor")
             const cvven = item['Clave Vendedor'] || item['Clave vendedor'] || 
-                         item['CVVEN'] || item.CVVEN || item['Cvven'] || 'N/A';
+                         item['CVVEN'] || item.CVVEN || item['Cvven'] || item['Usuario Vendedor'] || 'N/A';
 
             // Nombre de vendedor asignado (NO debe sustituir el CVVEN)
             const vendedorAsignado =
@@ -1863,7 +1867,14 @@ export default function OperacionModule() {
             }
             const fechaInstalacion = item['Fecha Instalacion'] || item['Fecha Instalación'] || item['FechaInstalacion'] || 
                                     item['Fecha instalacion'] || item['Fecha instalación'] || '';
-            const fecha = fechaSolicitada || fechaInstalacion || item.Fecha || item['Fecha'] || item['Fecha de instalación'] || '';
+            const fecha = fechaSolicitada || fechaInstalacion || item.Fecha || item['Fecha'] || item['Fecha de instalación'] || 
+                        item['Fecha Programacion Date'] || item['Fecha Fst Programacion'] || '';
+
+            // Campos nuevos del formato "Operación RGO": Sub Estatus Ord, Horario Atención, STATUS, Hub Red
+            const subEstatusOrd = item['Sub Estatus Ord'] || '';
+            const horarioAtencion = item['Horario Atencion'] || item['Horario Atención'] || '';
+            const statusDistribuidor = item['STATUS'] || '';
+            const hubRed = item['Hub Red'] || '';
             
             // Hub: Columna AD "Hub"
             const hub = item['Hub'] || item['HUB'] || item.Hub || item['hub'] || '';
@@ -1962,10 +1973,36 @@ export default function OperacionModule() {
                       <span>{hub}</span>
                     </div>
                   )}
+                  {hubRed && (
+                    <div className="flex items-center gap-2">
+                      <MapPin size={12} className="text-slate-400" />
+                      <span>Hub Red: {hubRed}</span>
+                    </div>
+                  )}
                   {region && (
                     <div className="flex items-center gap-2">
                       <Building2 size={12} className="text-slate-400" />
                       <span className="font-semibold text-blue-600">{region}</span>
+                    </div>
+                  )}
+                  {subEstatusOrd && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                        {subEstatusOrd}
+                      </span>
+                    </div>
+                  )}
+                  {horarioAtencion && (
+                    <div className="flex items-center gap-2">
+                      <Calendar size={12} className="text-slate-400" />
+                      <span>Horario: {horarioAtencion}</span>
+                    </div>
+                  )}
+                  {statusDistribuidor && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                        STATUS: {statusDistribuidor}
+                      </span>
                     </div>
                   )}
                 </div>

@@ -314,15 +314,32 @@ export default function UploadModule({ currentModule }) {
           setProgress(`Procesando ${data.length} registros...`);
 
           // Subir datos según el módulo y tipo de archivo
-          // Detectar si es M1, M2, M3, M4 por el nombre del archivo o contenido
+          // Detectar si es M0, M1, M2, M3, M4 por el nombre del archivo o contenido
           let result;
-          // Determinar si es M1, M2, M3, M4 para aplicar reemplazo mensual si está activado
+          // Determinar si es M0/M1/M2/M3/M4 para aplicar reemplazo mensual si está activado
           const isM0M1M2M3M4 = fileNameLower.includes('m0') || fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
                             fileNameLower.includes('m3') || fileNameLower.includes('m4') || 
                             fileNameLower.includes('cosecha');
-          
-          if (fileNameLower.includes('m0')) {
-            result = await api.bulkUpsertM0(data, true, isMonthlyReplace && isM0M1M2M3M4);
+
+          // Dentro de los archivos "cosecha"/M1, distinguir M0 (cosecha nueva, sin Estatus FPD
+          // todavía resuelto, solo trae "Fecha Perdida FPD") de M1 (ya trae "Estatus FPD" resuelto)
+          const headerHasEstatusFPD = headers.some(h => 
+            String(h || '').trim().toLowerCase().replace(/[\s\u00A0]+/g, ' ') === 'estatus fpd'
+          );
+          const headerHasFechaPerdidaFPD = headers.some(h => 
+            String(h || '').trim().toLowerCase().includes('fecha perdida fpd')
+          );
+          const isM0File = fileNameLower.includes('m0') ||
+                            ((fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) &&
+                            !headerHasEstatusFPD && headerHasFechaPerdidaFPD);
+
+          if (isM0File) {
+            const shouldReplace = isMonthlyReplace && isM0M1M2M3M4;
+            console.log('📋 DEBUG - Cargando M0 (cosecha nueva, sin Estatus FPD resuelto):');
+            console.log('   - isMonthlyReplace:', isMonthlyReplace);
+            console.log('   - replaceAll que se enviará:', shouldReplace);
+            console.log('   - Total de registros a cargar:', data.length);
+            result = await api.bulkUpsertM0(data, true, shouldReplace);
           } else if (fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) {
             // DEBUG: Verificar que replaceAll se está enviando
             const shouldReplace = isMonthlyReplace && isM0M1M2M3M4;
@@ -520,6 +537,7 @@ export default function UploadModule({ currentModule }) {
           </p>
           <div className="flex gap-2 flex-wrap">
             {[
+              { key: 'operacion', label: 'Operación del Día', fn: api.deleteAllOperacion },
               { key: 'm0', label: 'M0', fn: api.deleteAllM0 },
               { key: 'm2', label: 'M2', fn: api.deleteAllM2 },
               { key: 'm3', label: 'M3', fn: api.deleteAllM3 },

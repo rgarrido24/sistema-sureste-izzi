@@ -94,7 +94,7 @@ const generateMessageFromTemplate = async (client) => {
       const nombre = client['Compañia'] || client['Compañía'] || client.Cliente || client['Cliente'] || 'Cliente';
       const cuentaFact = client['Cuenta de facturación'] || client['Cuenta de facturacion'] || '';
       const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
-      const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || 'N/A';
+      const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (client.Cliente && String(client.Cliente).trim()) || 'N/A';
       const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
       const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
       const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
@@ -107,7 +107,7 @@ const generateMessageFromTemplate = async (client) => {
     const nombre = client['Compañia'] || client['Compañía'] || client.Cliente || client['Cliente'] || 'Cliente';
     const cuentaFact = client['Cuenta de facturación'] || client['Cuenta de facturacion'] || '';
     const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
-    const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || 'N/A';
+    const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (client.Cliente && String(client.Cliente).trim()) || 'N/A';
     const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
     const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
     const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
@@ -151,7 +151,7 @@ const generateMessageFromTemplate = async (client) => {
     const nombre = client['Compañia'] || client['Compañía'] || client.Cliente || client['Cliente'] || 'Cliente';
     const cuentaFact = client['Cuenta de facturación'] || client['Cuenta de facturacion'] || '';
     const cuentaNum = client['Nº de cuenta'] || client['N° de cuenta'] || '';
-    const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || 'N/A';
+    const cuenta = cuentaFact || cuentaNum || client.cuenta || client['Cuenta'] || (client.Cliente && String(client.Cliente).trim()) || 'N/A';
     const ordenVTS = client['No. VTS'] || client['No VTS'] || '';
     const ordenNum = client['Nº de orden'] || client['N° de orden'] || '';
     const orden = ordenVTS || ordenNum || client['Orden'] || 'N/A';
@@ -400,7 +400,7 @@ export default function VendorOperacionView({ myName }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredData.map((item) => {
             const cliente = item['Compañia'] || item['Compañía'] || item.Cliente || item['Cliente'] || 'Sin nombre';
-            const cuenta = item.cuenta || item['Cuenta de facturación'] || item['Nº de cuenta'] || '-';
+            const cuenta = item.cuenta || item['Cuenta de facturación'] || item['Nº de cuenta'] || (item.Cliente && String(item.Cliente).trim()) || '-';
             const orden = item['Nº de orden'] || item['No. VTS'] || '';
             const telefono = item['Teléfonos'] || item['Teléfono'] || '';
             const estado = item['Estado'] || item.estado || 'Abierta';
