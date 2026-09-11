@@ -563,6 +563,7 @@ export default function UploadModule({ currentModule }) {
           <div className="flex gap-2 flex-wrap">
             {[
               { key: 'operacion', label: 'Operación del Día', fn: api.deleteAllOperacion },
+              { key: 'm1', label: 'M1', fn: api.deleteAllM1 },
               { key: 'm2', label: 'M2', fn: api.deleteAllM2 },
               { key: 'm3', label: 'M3', fn: api.deleteAllM3 },
               { key: 'm4', label: 'M4', fn: api.deleteAllM4 },
