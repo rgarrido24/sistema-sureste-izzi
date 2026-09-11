@@ -3,6 +3,24 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        { "type": "host", "value": "sistema-sureste-izzi.vercel.app" }
+      ],
+      "destination": "https://apprgo.agentia.software/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        { "type": "host", "value": "sistema-sureste-izzi.vercel.app" }
+      ],
+      "destination": "https://apprgo.agentia.software/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
