@@ -8,6 +8,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
+import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
 
 const router = express.Router();
@@ -373,6 +374,7 @@ router.post('/bulk', async (req, res) => {
       console.warn('⚠️ No se pudo registrar ActivityEvent upload (m4):', e?.message || e);
     }
 
+    if (created > 0 || updated > 0) { notifyAll('Sistema actualizado', `M4: ${created} creados, ${updated} actualizados`, '/').catch(() => {}); }
     res.json({ success: true, created, updated, skipped, total: data.length });
   } catch (error) {
     console.error('Error en bulk M4:', error);

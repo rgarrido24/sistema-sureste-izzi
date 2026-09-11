@@ -10,6 +10,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { applyRegionalFilterInMemory, normalizeRegion } from '../utils/regionAccess.js';
+import { notifyAll } from '../utils/pushSender.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -438,6 +439,10 @@ router.post('/bulk', async (req, res) => {
         created += result.upsertedCount || 0;
         updated += result.modifiedCount || 0;
       }
+    }
+
+    if (created > 0 || updated > 0) {
+      notifyAll('Sistema actualizado', `Operación del Día: ${created} creados, ${updated} actualizados`, '/').catch(() => {});
     }
 
     res.json({

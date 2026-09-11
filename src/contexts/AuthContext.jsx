@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import * as api from '../api.js';
+import { subscribeToPush } from '../utils/pushNotifications.js';
 
 const AuthContext = createContext(null);
 
@@ -93,6 +94,14 @@ export function AuthProvider({ children }) {
       if (intervalId) clearInterval(intervalId);
     };
   }, [token]);
+
+  // Suscribir a notificaciones push una vez que hay usuario autenticado
+  // (cubre tanto login recién hecho como sesión restaurada al refrescar)
+  useEffect(() => {
+    if (user && token) {
+      subscribeToPush();
+    }
+  }, [user, token]);
 
   const login = async (username, password) => {
     setIsAuthenticating(true);

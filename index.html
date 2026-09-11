@@ -4,12 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RGO - Sistema de Cobranza y Operación</title>
-    <link rel="icon" type="image/png" href="/LOGO%20RGO.png" />
-    <link rel="apple-touch-icon" href="/LOGO%20RGO.png" />
+    <meta name="theme-color" content="#1e40af" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch((err) => {
+            console.warn('No se pudo registrar el service worker:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
 

@@ -5,6 +5,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
+import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
 import { getEstatusFPDM1 } from '../utils/estatusFPD.js';
 
@@ -270,6 +271,10 @@ router.post('/bulk', async (req, res) => {
         console.log(`✅ Insertados ${Math.min(i + INSERT_BATCH, docs.length)}/${docs.length}`);
       }
 
+      if (created > 0) {
+        notifyAll('Sistema actualizado', `Se cargaron ${created} registros nuevos en M1`, '/').catch(() => {});
+      }
+
       // Auditoría: registrar upload
       try {
         await ActivityEvent.create({
@@ -378,6 +383,10 @@ router.post('/bulk', async (req, res) => {
       }
 
       console.log(`✅ Lote ${batchIndex + 1}/${totalBatches} OK. Acumulado: ${created} creados, ${updated} actualizados, ${skipped} omitidos`);
+    }
+
+    if (created > 0 || updated > 0) {
+      notifyAll('Sistema actualizado', `M1: ${created} creados, ${updated} actualizados`, '/').catch(() => {});
     }
 
     // Auditoría: registrar upload
