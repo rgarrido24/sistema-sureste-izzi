@@ -3,6 +3,31 @@ import Template from '../models/Template.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 
 const router = express.Router();
+// DIAGNÓSTICO TEMPORAL: contar y listar TODOS los documentos de la colección, sin ningún filtro
+router.get('/debug/raw', async (req, res) => {
+  try {
+    const total = await Template.countDocuments({});
+    const docs = await Template.find({}).limit(50).lean();
+    const dbName = Template.db?.name || Template.collection?.conn?.name || 'desconocida';
+    const collName = Template.collection?.collectionName || 'desconocida';
+    res.json({
+      baseDeDatos: dbName,
+      coleccion: collName,
+      totalSinFiltro: total,
+      documentos: docs.map(d => ({
+        id: d._id,
+        name: d.name,
+        module: d.module,
+        isActive: d.isActive,
+        visibility: d.visibility,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 router.use(requireAuth);
 
 const ADMIN_ROLES = new Set(['admin', 'admin_general']);
@@ -81,30 +106,6 @@ router.get('/', async (req, res) => {
     console.error('Detalles:', error.message);
     console.error('Stack:', error.stack);
     res.status(500).json({ error: error.message || 'Error del servidor' });
-  }
-});
-
-// DIAGNÓSTICO TEMPORAL: contar y listar TODOS los documentos de la colección, sin ningún filtro
-router.get('/debug/raw', async (req, res) => {
-  try {
-    const total = await Template.countDocuments({});
-    const docs = await Template.find({}).limit(50).lean();
-    const dbName = Template.db?.name || Template.collection?.conn?.name || 'desconocida';
-    const collName = Template.collection?.collectionName || 'desconocida';
-    res.json({
-      baseDeDatos: dbName,
-      coleccion: collName,
-      totalSinFiltro: total,
-      documentos: docs.map(d => ({
-        id: d._id,
-        name: d.name,
-        module: d.module,
-        isActive: d.isActive,
-        visibility: d.visibility,
-      })),
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
