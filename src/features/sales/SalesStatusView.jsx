@@ -5,7 +5,7 @@ import { MODULES } from '../../utils/constants.js';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
-import { calcularEstatusFPDDesdeFecha } from '../../utils/helpers.js';
+import { calcularEstatusFPDDesdeFecha, parseFlexibleDate } from '../../utils/helpers.js';
 
 // Componente para editar teléfono y notas
 function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromesaPago, onUpdate }) {
@@ -554,7 +554,11 @@ export default function SalesStatusView({
   filterPlaza,
   setFilterPlaza,
   filterRegion,
-  setFilterRegion
+  setFilterRegion,
+  filterFechaVencDesde,
+  setFilterFechaVencDesde,
+  filterFechaVencHasta,
+  setFilterFechaVencHasta
 }) {
   const { user } = useAuth();
   const [data, setData] = useState([]);
@@ -935,6 +939,19 @@ export default function SalesStatusView({
     }
   };
 
+  // Obtiene la fecha de vencimiento/FPD de un item (misma lógica que las tarjetas)
+  const getItemFechaVencimiento = (item) => {
+    const raw = item['Fecha Vencimiento'] ||
+                item['FechaVencimiento'] ||
+                item['FECHA VENCIMIENTO'] ||
+                item['Fecha de Vencimiento'] ||
+                item['FECHA DE VENCIMIENTO'] ||
+                item['Fecha Perdida FPD'] ||
+                item['FechaPerdidaFPD'] ||
+                '';
+    return parseFlexibleDate(raw);
+  };
+
   // Obtiene el grupo de región de un item (misma lógica que las Estadísticas por Región)
   const getItemRegion = (item) => {
     const regionRaw = item.SUBREGION ||
@@ -1070,6 +1087,25 @@ export default function SalesStatusView({
 
     const matchesRegion = !filterRegion || getItemRegion(item) === filterRegion;
 
+    let matchesFechaVenc = true;
+    if (filterFechaVencDesde || filterFechaVencHasta) {
+      const fechaVenc = getItemFechaVencimiento(item);
+      if (!fechaVenc) {
+        matchesFechaVenc = false;
+      } else {
+        const fechaVencSinHora = new Date(fechaVenc);
+        fechaVencSinHora.setHours(0, 0, 0, 0);
+        if (filterFechaVencDesde) {
+          const desde = new Date(filterFechaVencDesde + 'T00:00:00');
+          if (fechaVencSinHora.getTime() < desde.getTime()) matchesFechaVenc = false;
+        }
+        if (matchesFechaVenc && filterFechaVencHasta) {
+          const hasta = new Date(filterFechaVencHasta + 'T00:00:00');
+          if (fechaVencSinHora.getTime() > hasta.getTime()) matchesFechaVenc = false;
+        }
+      }
+    }
+
     // Filtro por "con/sin vendedor asignado"
     const assigned = isVendorAssigned(item);
     const matchesVendorAssigned =
@@ -1084,7 +1120,7 @@ export default function SalesStatusView({
       matchesEstatus = itemEstatus === filterEstatus;
     }
     
-    return matchesSearch && matchesVendor && matchesPlaza && matchesRegion && matchesVendorAssigned && matchesEstatus;
+    return matchesSearch && matchesVendor && matchesPlaza && matchesRegion && matchesFechaVenc && matchesVendorAssigned && matchesEstatus;
   });
 
   // Paginación
@@ -1257,6 +1293,42 @@ export default function SalesStatusView({
               <option value="OCCIDENTE">OCCIDENTE</option>
               <option value="Sin Dato">Sin Dato</option>
             </select>
+          )}
+          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500 whitespace-nowrap">Vence desde:</label>
+              <input
+                type="date"
+                value={filterFechaVencDesde || ''}
+                onChange={(e) => {
+                  setFilterFechaVencDesde(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+              <label className="text-sm text-slate-500 whitespace-nowrap">hasta:</label>
+              <input
+                type="date"
+                value={filterFechaVencHasta || ''}
+                onChange={(e) => {
+                  setFilterFechaVencHasta(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+              {(filterFechaVencDesde || filterFechaVencHasta) && (
+                <button
+                  onClick={() => {
+                    setFilterFechaVencDesde('');
+                    setFilterFechaVencHasta('');
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs text-slate-500 hover:text-red-600 underline"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
           )}
         </div>
         <p className="text-sm text-slate-600 mt-2">
