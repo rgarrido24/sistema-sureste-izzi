@@ -136,6 +136,7 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
 // Función para generar mensaje personalizado desde plantilla
 const generateMessageFromTemplate = async (client, status) => {
   try {
+    console.log('🔍 [VENDOR] Buscando plantilla para módulo:', status);
     const normalize = (v) => String(v || '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -147,7 +148,9 @@ const generateMessageFromTemplate = async (client, status) => {
 
     // Obtener plantillas activas (sin filtro) y seleccionar con match tolerante
     const templates = await api.getTemplates();
+    console.log('📋 [VENDOR] Plantillas obtenidas:', templates?.length, templates);
     const activeOnly = (Array.isArray(templates) ? templates : []).filter(t => t?.isActive && t?.content);
+    console.log('📋 [VENDOR] Plantillas activas con contenido:', activeOnly.length, activeOnly.map(t => ({ name: t.name, module: t.module, visibility: t.visibility })));
 
     const modNorm = (t) => normalize(t?.module);
     const modLoose = (t) => normalize(t?.module).replace(/\s+/g, ' ');
@@ -176,6 +179,7 @@ const generateMessageFromTemplate = async (client, status) => {
     if (!activeTemplate) {
       activeTemplate = findByExact('COBRANZA') || findByExact('GENERAL') || findByExact('GENERALES');
     }
+    console.log('✅ [VENDOR] Plantilla encontrada:', activeTemplate ? `${activeTemplate.name} (módulo: ${activeTemplate.module})` : 'NINGUNA');
     
     if (!activeTemplate) {
       // Si no hay plantilla, usar mensaje por defecto
