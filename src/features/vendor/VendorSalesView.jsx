@@ -180,6 +180,7 @@ const generateMessageFromTemplate = async (client, status) => {
       activeTemplate = findByExact('COBRANZA') || findByExact('GENERAL') || findByExact('GENERALES');
     }
     console.log('✅ [VENDOR] Plantilla encontrada:', activeTemplate ? `${activeTemplate.name} (módulo: ${activeTemplate.module})` : 'NINGUNA');
+    window.__lastTemplateDebug = `Módulo pedido: ${status}\nPlantillas recibidas: ${templates?.length ?? 0}\nActivas: ${activeOnly.length}\nNombres: ${activeOnly.map(t => `${t.name}(${t.module})`).join(', ') || 'ninguna'}\nCoincidencia: ${activeTemplate ? activeTemplate.name : 'NINGUNA - usará mensaje genérico'}`;
     
     if (!activeTemplate) {
       // Si no hay plantilla, usar mensaje por defecto
@@ -337,6 +338,11 @@ const openWhatsApp = async (phone, client, status, userRole = null) => {
     console.log('Abriendo WhatsApp con URL:', whatsappUrl.replace(/&text=.*/, '&text=[mensaje codificado]'));
     console.log('Mensaje original:', message);
     console.log('Número de teléfono:', phoneNumber);
+    
+    // DIAGNÓSTICO TEMPORAL: mostrar qué plantilla se encontró antes de salir a WhatsApp
+    if (window.__lastTemplateDebug) {
+      alert('DIAGNÓSTICO PLANTILLA (vendedor):\n\n' + window.__lastTemplateDebug);
+    }
     
     // Abrir en la misma ventana para mejor compatibilidad
     window.location.href = whatsappUrl;

@@ -241,6 +241,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     }
     
     console.log('✅ Plantilla encontrada:', activeTemplate ? activeTemplate.name : 'NINGUNA');
+    window.__lastTemplateDebug = `Módulo pedido: ${status}\nPlantillas recibidas: ${allTemplates.length}\nNombres: ${allTemplates.map(t => `${t.name}(${t.module})`).join(', ') || 'ninguna'}\nCoincidencia: ${activeTemplate ? activeTemplate.name : 'NINGUNA - usará mensaje genérico'}`;
     if (activeTemplate) {
       console.log('📝 Módulo de plantilla:', activeTemplate.module);
       console.log('📝 Contenido de plantilla:', activeTemplate.content?.substring(0, 100) + '...');
@@ -417,6 +418,11 @@ const openWhatsApp = async (phone, client, status, userRole = null, isFpdCorrien
     console.log('Abriendo WhatsApp con URL:', whatsappUrl.replace(/&text=.*/, '&text=[mensaje codificado]'));
     console.log('Mensaje original:', message);
     console.log('Número de teléfono:', phoneNumber);
+    
+    // DIAGNÓSTICO TEMPORAL: mostrar qué plantilla se encontró antes de salir a WhatsApp
+    if (window.__lastTemplateDebug) {
+      alert('DIAGNÓSTICO PLANTILLA (admin):\n\n' + window.__lastTemplateDebug);
+    }
     
     // Abrir en la misma ventana para mejor compatibilidad
     window.location.href = whatsappUrl;
