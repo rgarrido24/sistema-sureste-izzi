@@ -35,6 +35,10 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
         await api.updateM3Contacto(itemId, editTelefono, editNota, editFechaPromesa);
       } else if (status === 'M4') {
         await api.updateM4Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+      } else if (status === 'M5') {
+        await api.updateM5Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+      } else if (status === 'M6') {
+        await api.updateM6Contacto(itemId, editTelefono, editNota, editFechaPromesa);
       }
       
       setIsEditing(false);
@@ -215,23 +219,33 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
       activeTemplate = allTemplates.find(t => 
         t.isActive && (t.module === 'M4' || t.module === 'm4')
       );
+    } else if (!activeTemplate && status === 'M5') {
+      activeTemplate = allTemplates.find(t =>
+        t.isActive && (t.module === 'M5' || t.module === 'm5')
+      );
+    } else if (!activeTemplate && status === 'M6') {
+      activeTemplate = allTemplates.find(t =>
+        t.isActive && (t.module === 'M6' || t.module === 'm6')
+      );
     }
     
     // Si aún no se encuentra, buscar cualquier plantilla activa para cobranza en general
-    if (!activeTemplate && (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4')) {
+    if (!activeTemplate && (['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status))) {
       activeTemplate = allTemplates.find(t => 
         t.isActive && (
           t.module?.toLowerCase().includes('cobranza') ||
           t.module?.toLowerCase().includes('m1') ||
           t.module?.toLowerCase().includes('m2') ||
           t.module?.toLowerCase().includes('m3') ||
-          t.module?.toLowerCase().includes('m4')
+          t.module?.toLowerCase().includes('m4') ||
+          t.module?.toLowerCase().includes('m5') ||
+          t.module?.toLowerCase().includes('m6')
         )
       );
     }
     
     // Si aún no se encuentra, buscar plantillas con módulo "general" para M1/M2/M3/M4
-    if (!activeTemplate && (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4')) {
+    if (!activeTemplate && (['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status))) {
       activeTemplate = allTemplates.find(t => 
         t.isActive && (
           t.module?.toLowerCase() === 'general' ||
@@ -617,6 +631,10 @@ export default function SalesStatusView({
           data = await api.getM3Master(vendorFilter);
         } else if (status === 'M4') {
           data = await api.getM4Master(vendorFilter);
+        } else if (status === 'M5') {
+          data = await api.getM5Master(vendorFilter);
+        } else if (status === 'M6') {
+          data = await api.getM6Master(vendorFilter);
         } else {
           // Fallback: usar sales_master y filtrar
           const salesData = await api.getSalesMaster();
@@ -887,7 +905,7 @@ export default function SalesStatusView({
   // Función para obtener el estatus FPD de un item
   const getEstatusFPD = (item) => {
     // Para M2, M3, M4: verificar campo M2/M3/M4 primero: 0 = FPD CORRIENTE, 1 = M2/M3/M4 (debe)
-    if (status === 'M2' || status === 'M3' || status === 'M4') {
+    if (['M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) {
       // Si ya tiene Estatus FPD guardado, usarlo primero
       const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || '';
       if (estatusFPDRaw) {
@@ -897,7 +915,7 @@ export default function SalesStatusView({
       }
       
       // Si no, usar el campo M2/M3/M4
-      const campo = item[status] || item[status.toLowerCase()] || item[`${status} `] || item[`${status.toLowerCase()} `];
+      const campo = item[status] || item[status.toLowerCase()] || item[`${status} `] || item[`${status.toLowerCase()} `] || item.Permanencia || item.permanencia;
       
       if (campo !== null && campo !== undefined && campo !== '') {
         const campoNum = typeof campo === 'number' ? campo : parseInt(String(campo).trim(), 10);
@@ -978,7 +996,7 @@ export default function SalesStatusView({
   };
   
   // Calcular estadísticas por región (para M1, M2, M3, M4)
-  const regionStats = (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') ? (() => {
+  const regionStats = (['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) ? (() => {
     const stats = {};
     const regionValues = new Set(); // Para debugging
     
@@ -1115,7 +1133,7 @@ export default function SalesStatusView({
     
     // Filtrar por estatus (para M1, M2, M3, M4)
     let matchesEstatus = true;
-    if ((status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus) {
+    if ((['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && filterEstatus) {
       const itemEstatus = getEstatusFPD(item);
       matchesEstatus = itemEstatus === filterEstatus;
     }
@@ -1143,7 +1161,7 @@ export default function SalesStatusView({
             : `Total de clientes: ${count}`
           }
         </p>
-        {Array.isArray(cobranzaLastUploads) && (status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+        {Array.isArray(cobranzaLastUploads) && (['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && (
           (() => {
             const key = status.toLowerCase();
             const row = cobranzaLastUploads.find(r => String(r?._id || '').toLowerCase() === key);
@@ -1160,7 +1178,7 @@ export default function SalesStatusView({
       </div>
 
       {/* Estadísticas por Región (para M1, M2, M3, M4) */}
-      {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+      {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <h3 className="text-xl font-bold mb-4">Estadísticas por Región</h3>
           {Object.keys(regionStats).length > 0 ? (
@@ -1222,7 +1240,7 @@ export default function SalesStatusView({
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
             />
           </div>
-          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+          {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && (
             <select
               value={filterEstatus || ''}
               onChange={(e) => {
@@ -1276,7 +1294,7 @@ export default function SalesStatusView({
               <option key={plaza} value={plaza}>{plaza}</option>
             ))}
           </select>
-          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+          {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && (
             <select
               value={filterRegion || ''}
               onChange={(e) => {
@@ -1294,7 +1312,7 @@ export default function SalesStatusView({
               <option value="Sin Dato">Sin Dato</option>
             </select>
           )}
-          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+          {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && (
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-500 whitespace-nowrap">Vence desde:</label>
               <input
@@ -1333,7 +1351,7 @@ export default function SalesStatusView({
         </div>
         <p className="text-sm text-slate-600 mt-2">
           Mostrando {filteredData.length} de {count} clientes • Estatus: {status}
-          {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus && ` • Filtrado: ${filterEstatus}`}
+          {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && filterEstatus && ` • Filtrado: ${filterEstatus}`}
         </p>
         
         {/* Paginación */}
@@ -1476,7 +1494,7 @@ export default function SalesStatusView({
                 {/* Header con nombre y saldo (ocultar saldo en M2, M3, M4) */}
                 <div className="flex justify-between items-start mb-3">
                   <h3 className="font-bold text-slate-800 text-sm uppercase flex-1 pr-2">{cliente}</h3>
-                  {status !== 'M2' && status !== 'M3' && status !== 'M4' && (
+                  {!['M2', 'M3', 'M4', 'M5', 'M6'].includes(status) && (
                     <span className="font-mono font-bold text-green-600 text-lg whitespace-nowrap">
                       {formatCurrency(totalSaldo)}
                     </span>
@@ -1492,6 +1510,8 @@ export default function SalesStatusView({
                     estatusPrincipal === 'FPD PÉRDIDA' ? 'bg-red-100 text-red-700' :
                     status === 'M3' ? 'bg-purple-100 text-purple-700' :
                     status === 'M4' ? 'bg-pink-100 text-pink-700' :
+                    status === 'M5' ? 'bg-orange-100 text-orange-700' :
+                    status === 'M6' ? 'bg-teal-100 text-teal-700' :
                     'bg-slate-100 text-slate-500'
                   }`}>
                     {estatusPrincipal}
@@ -1541,7 +1561,7 @@ export default function SalesStatusView({
                 />
                 
                 {/* Saldos (ocultar en M2, M3, M4) */}
-                {status !== 'M2' && status !== 'M3' && status !== 'M4' && (
+                {!['M2', 'M3', 'M4', 'M5', 'M6'].includes(status) && (
                   <div className="mb-3 space-y-1 text-xs">
                     {saldoPorVencer > 0 && (
                       <div className="flex justify-between">

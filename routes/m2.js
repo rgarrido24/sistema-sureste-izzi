@@ -261,6 +261,8 @@ router.post('/bulk', async (req, res) => {
                       item['m2'] || 
                       item['M2 '] ||
                       item['m2 '] ||
+                      item['Permanencia'] ||
+                      item['permanencia'] ||
                       null;
       
       // Log para debugging (solo los primeros 5)

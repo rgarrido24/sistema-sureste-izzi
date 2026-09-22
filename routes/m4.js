@@ -259,7 +259,7 @@ router.post('/bulk', async (req, res) => {
       
       // Si no se encuentra M4, buscar M2 (porque en el archivo de M4 la columna L puede llamarse "M2")
       if (campoM4 === null || campoM4 === undefined || campoM4 === '') {
-        campoM4 = item['M2'] || item['m2'] || item['M2 '] || item['m2 '] || null;
+        campoM4 = item['Permanencia'] || item['permanencia'] || item['M2'] || item['m2'] || item['M2 '] || item['m2 '] || null;
         if (campoM4 !== null && campoM4 !== undefined && campoM4 !== '') {
           // Log solo para los primeros
           if (created + updated < 5) {

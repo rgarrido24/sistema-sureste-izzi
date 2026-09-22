@@ -6,6 +6,8 @@ import M1Master from '../models/M1Master.js';
 import M2Master from '../models/M2Master.js';
 import M3Master from '../models/M3Master.js';
 import M4Master from '../models/M4Master.js';
+import M5Master from '../models/M5Master.js';
+import M6Master from '../models/M6Master.js';
 import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js';
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -812,6 +814,8 @@ router.get('/vendors', async (req, res) => {
     allValues.push(...await collectDistinct(M2Master, vendorFields));
     allValues.push(...await collectDistinct(M3Master, vendorFields));
     allValues.push(...await collectDistinct(M4Master, vendorFields));
+    allValues.push(...await collectDistinct(M5Master, vendorFields));
+    allValues.push(...await collectDistinct(M6Master, vendorFields));
     allValues.push(...await collectDistinct(SalesMaster, vendorFields));
     allValues.push(...await collectDistinct(OperacionDia, vendorFields));
 

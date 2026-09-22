@@ -31,7 +31,7 @@ export default function VendorLayout({
             <button 
               onClick={() => setActiveView('cobranza')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
-                activeView === 'cobranza' || activeView === 'm0' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4'
+                activeView === 'cobranza' || activeView === 'm0' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4' || activeView === 'm5' || activeView === 'm6'
                   ? 'bg-blue-600 text-white' 
                   : 'text-slate-500 hover:bg-slate-50'
               }`}
@@ -82,7 +82,7 @@ export default function VendorLayout({
         </div>
 
         {/* Sub-navegación para Cobranza */}
-        {(activeView === 'cobranza' || activeView === 'm0' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4') && (
+        {(activeView === 'cobranza' || activeView === 'm0' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4' || activeView === 'm5' || activeView === 'm6') && (
           <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 mb-6">
             <div className="flex gap-2 flex-nowrap overflow-x-auto no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
               <button 
@@ -134,6 +134,26 @@ export default function VendorLayout({
                 }`}
               >
                 M4
+              </button>
+              <button 
+                onClick={() => setActiveView('m5')} 
+                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                  activeView === 'm5' 
+                    ? 'bg-orange-100 text-orange-700' 
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                M5
+              </button>
+              <button 
+                onClick={() => setActiveView('m6')} 
+                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                  activeView === 'm6' 
+                    ? 'bg-teal-100 text-teal-700' 
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                M6
               </button>
             </div>
           </div>

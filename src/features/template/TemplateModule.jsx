@@ -152,7 +152,7 @@ export default function TemplateModule() {
   };
 
   const modules = [
-    'M1', 'M2', 'M3', 'M4',
+    'M1', 'M2', 'M3', 'M4', 'M5', 'M6',
     'COBRANZA', 'general',
     'operacion',
     'COBRANZA_RECOMENDACION_FPD_CORRIENTE'

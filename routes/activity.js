@@ -7,6 +7,8 @@ import M1Master from '../models/M1Master.js';
 import M2Master from '../models/M2Master.js';
 import M3Master from '../models/M3Master.js';
 import M4Master from '../models/M4Master.js';
+import M5Master from '../models/M5Master.js';
+import M6Master from '../models/M6Master.js';
 import SalesMaster from '../models/SalesMaster.js';
 import InstallMaster from '../models/InstallMaster.js';
 
@@ -22,6 +24,8 @@ async function fallbackCobranzaLastUploads() {
     { module: 'm2', model: M2Master },
     { module: 'm3', model: M3Master },
     { module: 'm4', model: M4Master },
+    { module: 'm5', model: M5Master },
+    { module: 'm6', model: M6Master },
     { module: 'sales', model: SalesMaster },
   ];
 
@@ -89,7 +93,7 @@ router.get('/admin/summary', requireRoles(['admin', 'admin_general']), async (re
     const userIds = users.map(u => u._id);
 
     // Último upload de cobranza por usuario (M1-M4 y SalesMaster)
-    const cobranzaModules = ['m0', 'm1', 'm2', 'm3', 'm4', 'sales'];
+    const cobranzaModules = ['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'sales'];
     const lastUploadByUser = await ActivityEvent.aggregate([
       { $match: { type: 'upload', module: { $in: cobranzaModules }, userId: { $in: userIds } } },
       { $sort: { createdAt: -1 } },
@@ -169,7 +173,7 @@ router.get('/admin/summary', requireRoles(['admin', 'admin_general']), async (re
 // Para mostrar "Última actualización" (visible para todos)
 router.get('/cobranza/last-update', async (req, res) => {
   try {
-    const cobranzaModules = ['m0', 'm1', 'm2', 'm3', 'm4', 'sales'];
+    const cobranzaModules = ['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'sales'];
     const lastUploadByModule = await ActivityEvent.aggregate([
       { $match: { type: 'upload', module: { $in: cobranzaModules } } },
       { $sort: { createdAt: -1 } },

@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const whatsappLogSchema = new mongoose.Schema({
   cuenta: { type: String, index: true },
   telefono: String,
-  modulo: { type: String, enum: ['m0', 'm1', 'm2', 'm3', 'm4'], index: true },
+  modulo: { type: String, enum: ['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6'], index: true },
   templateName: String,
   languageCode: String,
   status: {

@@ -8,6 +8,8 @@ const MODULOS = [
   { value: 'm2', label: 'M2' },
   { value: 'm3', label: 'M3' },
   { value: 'm4', label: 'M4' },
+  { value: 'm5', label: 'M5' },
+  { value: 'm6', label: 'M6' },
 ];
 
 // Campos comunes disponibles para mapear a las variables {{n}} de la plantilla.
@@ -74,7 +76,7 @@ export default function WhatsAppBulkModule() {
   const cargarTotalModulo = async () => {
     setLoadingTotal(true);
     try {
-      const getters = { m0: api.getM0Master, m1: api.getM1Master, m2: api.getM2Master, m3: api.getM3Master, m4: api.getM4Master };
+      const getters = { m0: api.getM0Master, m1: api.getM1Master, m2: api.getM2Master, m3: api.getM3Master, m4: api.getM4Master, m5: api.getM5Master, m6: api.getM6Master };
       const data = await getters[modulo]();
       setTotalDisponibles(data.length);
     } catch (e) {
@@ -95,7 +97,7 @@ export default function WhatsAppBulkModule() {
 
     let cuentas = [];
     if (enviarATodas) {
-      const getters = { m0: api.getM0Master, m1: api.getM1Master, m2: api.getM2Master, m3: api.getM3Master, m4: api.getM4Master };
+      const getters = { m0: api.getM0Master, m1: api.getM1Master, m2: api.getM2Master, m3: api.getM3Master, m4: api.getM4Master, m5: api.getM5Master, m6: api.getM6Master };
       try {
         const data = await getters[modulo]();
         cuentas = data.map(d => d.cuenta).filter(Boolean);

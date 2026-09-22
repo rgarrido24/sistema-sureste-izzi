@@ -592,6 +592,88 @@ export async function deleteAllM4() {
   return apiRequest('/m4/all', { method: 'DELETE' });
 }
 
+// ========== M5 MASTER ==========
+export async function getM5Master(vendedor = null) {
+  const endpoint = vendedor ? `/m5?vendedor=${encodeURIComponent(vendedor)}` : '/m5';
+  return apiRequest(endpoint);
+}
+
+export async function getM5MasterCount(estatusFPD = null, vendedor = null) {
+  let endpoint = '/m5/count';
+  const params = [];
+  if (estatusFPD) params.push(`estatusFPD=${encodeURIComponent(estatusFPD)}`);
+  if (vendedor) params.push(`vendedor=${encodeURIComponent(vendedor)}`);
+  if (params.length > 0) endpoint += `?${params.join('&')}`;
+  const result = await apiRequest(endpoint);
+  return result.count;
+}
+
+export async function bulkUpsertM5(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m5/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function updateM5Estado(id, estado) {
+  return apiRequest(`/m5/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM5Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m5/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+  });
+}
+
+export async function deleteAllM5() {
+  return apiRequest('/m5/all', { method: 'DELETE' });
+}
+
+// ========== M6 MASTER ==========
+export async function getM6Master(vendedor = null) {
+  const endpoint = vendedor ? `/m6?vendedor=${encodeURIComponent(vendedor)}` : '/m6';
+  return apiRequest(endpoint);
+}
+
+export async function getM6MasterCount(estatusFPD = null, vendedor = null) {
+  let endpoint = '/m6/count';
+  const params = [];
+  if (estatusFPD) params.push(`estatusFPD=${encodeURIComponent(estatusFPD)}`);
+  if (vendedor) params.push(`vendedor=${encodeURIComponent(vendedor)}`);
+  if (params.length > 0) endpoint += `?${params.join('&')}`;
+  const result = await apiRequest(endpoint);
+  return result.count;
+}
+
+export async function bulkUpsertM6(data, updateExisting = true, replaceAll = false) {
+  return apiRequest('/m6/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ data, updateExisting, replaceAll }),
+  });
+}
+
+export async function updateM6Estado(id, estado) {
+  return apiRequest(`/m6/${id}/estado`, {
+    method: 'PUT',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function updateM6Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+  return apiRequest(`/m6/${id}/contacto`, {
+    method: 'PUT',
+    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+  });
+}
+
+export async function deleteAllM6() {
+  return apiRequest('/m6/all', { method: 'DELETE' });
+}
+
 // ========== TEMPLATES ==========
 export async function getTemplates(module = null) {
   // Si se especifica un módulo, buscar plantillas para ese módulo

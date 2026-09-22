@@ -41,6 +41,8 @@ export const STATUS_TYPES = {
   M2: 'M2',
   M3: 'M3',
   M4: 'M4',
+  M5: 'M5',
+  M6: 'M6',
   FPD_CORRIENTE: 'FPD Corriente'
 };
 

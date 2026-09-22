@@ -35,6 +35,10 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
         await api.updateM3Contacto(itemId, editTelefono, editNota, editFechaPromesa);
       } else if (status === 'M4') {
         await api.updateM4Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+      } else if (status === 'M5') {
+        await api.updateM5Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+      } else if (status === 'M6') {
+        await api.updateM6Contacto(itemId, editTelefono, editNota, editFechaPromesa);
       }
       
       setIsEditing(false);
@@ -144,7 +148,7 @@ const generateMessageFromTemplate = async (client, status) => {
       .trim();
 
     const normStatus = normalize(status);
-    const isCobranza = ['M1', 'M2', 'M3', 'M4'].includes(normStatus);
+    const isCobranza = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(normStatus);
 
     // Obtener plantillas activas (sin filtro) y seleccionar con match tolerante
     const templates = await api.getTemplates();
@@ -429,7 +433,7 @@ const getMesInstalacion = (data, status) => {
 // Función para obtener el estatus FPD de un item
 const getEstatusFPD = (item, status) => {
   // Para M2, M3, M4: verificar campo M2/M3/M4 primero: 0 = FPD CORRIENTE, 1 = M2/M3/M4 (debe)
-  if (status === 'M2' || status === 'M3' || status === 'M4') {
+  if (['M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) {
     // Si ya tiene Estatus FPD guardado, usarlo primero
     const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || '';
     if (estatusFPDRaw) {
@@ -439,7 +443,7 @@ const getEstatusFPD = (item, status) => {
     }
     
     // Si no, usar el campo M2/M3/M4
-    const campo = item[status] || item[status.toLowerCase()] || item[`${status} `] || item[`${status.toLowerCase()} `];
+    const campo = item[status] || item[status.toLowerCase()] || item[`${status} `] || item[`${status.toLowerCase()} `] || item.Permanencia || item.permanencia;
     
     if (campo !== null && campo !== undefined && campo !== '') {
       const campoNum = typeof campo === 'number' ? campo : parseInt(String(campo).trim(), 10);
@@ -509,6 +513,10 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
           allData = await api.getM3Master(vendorFilter);
         } else if (status === 'M4') {
           allData = await api.getM4Master(vendorFilter);
+        } else if (status === 'M5') {
+          allData = await api.getM5Master(vendorFilter);
+        } else if (status === 'M6') {
+          allData = await api.getM6Master(vendorFilter);
         } else {
           // Fallback a M1
           allData = await api.getM1Master(vendorFilter);
@@ -553,7 +561,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     // Filtro de estatus (solo para M1 y M2)
     let matchesEstatus = true;
     // Aplicar filtro de estatus para M1, M2, M3, M4
-    if ((status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && filterEstatus) {
+    if ((['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && filterEstatus) {
       const itemEstatusFPD = getEstatusFPD(item, status);
       matchesEstatus = itemEstatusFPD === filterEstatus;
     }
@@ -599,7 +607,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
               />
             </div>
-            {(status === 'M0' || status === 'M1' || status === 'M2' || status === 'M3' || status === 'M4') && (
+            {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && (
               <select
                 value={filterEstatus}
                 onChange={(e) => setFilterEstatus(e.target.value)}
@@ -643,6 +651,10 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
               estatusColor = 'bg-purple-100 text-purple-700';
             } else if (estatusPrincipal === 'M4') {
               estatusColor = 'bg-pink-100 text-pink-700';
+            } else if (estatusPrincipal === 'M5') {
+              estatusColor = 'bg-orange-100 text-orange-700';
+            } else if (estatusPrincipal === 'M6') {
+              estatusColor = 'bg-teal-100 text-teal-700';
             }
             
             // Leer saldos correctamente

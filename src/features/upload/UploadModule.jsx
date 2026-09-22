@@ -4,6 +4,12 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { parseCSV, parseExcel } from '../../utils/fileParser.js';
 import * as api from '../../api.js';
 import { MODULES, COLLECTIONS } from '../../utils/constants.js';
+import {
+  fileLooksLikePermanencia,
+  fileLooksLikeSingleMn,
+  groupLatestByModule,
+  stampModuleFlag,
+} from '../../utils/permanenciaUpload.js';
 
 export default function UploadModule({ currentModule }) {
   const { user } = useAuth();
@@ -170,7 +176,10 @@ export default function UploadModule({ currentModule }) {
           console.log('📋 DEBUG - Índice de "Nº de cuenta":', cuentaNumIndex);
 
           // Si no encontramos columna de cuenta, alertar antes de subir (evita miles de omitidos)
-          const looksLikeOperacionByName = fileNameNorm.includes('operacion') || fileNameNorm.includes('output') || fileNameNorm.includes('rgo');
+          const looksLikePermanencia = fileLooksLikePermanencia(file.name, headers);
+          const looksLikeOperacionByName = !looksLikePermanencia && (
+            fileNameNorm.includes('operacion') || fileNameNorm.includes('output') || fileNameNorm.includes('rgo')
+          );
           
           const data = rows.slice(headerRowIndex + 1).map((row, rowIndex) => {
             const obj = {};
@@ -181,6 +190,10 @@ export default function UploadModule({ currentModule }) {
               // Si se guarda como key "", Mongo truena con: "An empty update path is not valid" (code 56)
               if (!cleanHeader || cleanHeader === 'undefined' || cleanHeader === 'null') return;
               const value = row[index] !== undefined && row[index] !== null ? String(row[index]).trim() : '';
+              // En Permanencia hay dos columnas "Plaza": la primera es la real, la segunda es el cruce.
+              if (obj[cleanHeader] !== undefined && String(obj[cleanHeader]).trim() !== '') {
+                return;
+              }
               obj[cleanHeader] = value;
               
               // DEBUG: Para los primeros 3 registros, mostrar valores de cuenta
@@ -336,9 +349,11 @@ export default function UploadModule({ currentModule }) {
           let result;
           let destinoCarga = '';
           // Determinar si es M0/M1/M2/M3/M4 para aplicar reemplazo mensual si está activado
-          const isM0M1M2M3M4 = fileNameLower.includes('m1') || fileNameLower.includes('m2') || 
-                            fileNameLower.includes('m3') || fileNameLower.includes('m4') || 
-                            fileNameLower.includes('cosecha');
+          const isMnMonthlyFile = fileNameLower.includes('m1') || fileNameLower.includes('m2') ||
+                            fileNameLower.includes('m3') || fileNameLower.includes('m4') ||
+                            fileNameLower.includes('m5') || fileNameLower.includes('m6') ||
+                            fileNameLower.includes('cosecha') || looksLikePermanencia;
+          const isSingleMnFile = fileLooksLikeSingleMn(file.name);
 
           // Dentro de los archivos "cosecha"/M1, distinguir M0 (cosecha nueva, sin Estatus FPD
           // todavía resuelto, solo trae "Fecha Perdida FPD") de M1 (ya trae "Estatus FPD" resuelto)
@@ -352,32 +367,52 @@ export default function UploadModule({ currentModule }) {
                             !headerHasEstatusFPD && headerHasFechaPerdidaFPD;
 
           if (isM0File) {
-            const shouldReplace = isMonthlyReplace && isM0M1M2M3M4;
-            console.log('📋 DEBUG - Cargando M0 (cosecha nueva, sin Estatus FPD resuelto):');
-            console.log('   - isMonthlyReplace:', isMonthlyReplace);
-            console.log('   - replaceAll que se enviará:', shouldReplace);
-            console.log('   - Total de registros a cargar:', data.length);
+            const shouldReplace = isMonthlyReplace && isMnMonthlyFile;
             destinoCarga = 'M0';
             result = await api.bulkUpsertM0(data, true, shouldReplace);
-          } else if (fileNameLower.includes('m1') || fileNameLower.includes('cosecha')) {
-            // DEBUG: Verificar que replaceAll se está enviando
-            const shouldReplace = isMonthlyReplace && isM0M1M2M3M4;
-            console.log('📋 DEBUG - Cargando M1:');
-            console.log('   - isMonthlyReplace:', isMonthlyReplace);
-            console.log('   - isM0M1M2M3M4:', isM0M1M2M3M4);
-            console.log('   - replaceAll que se enviará:', shouldReplace);
-            console.log('   - Total de registros a cargar:', data.length);
+          } else if (!looksLikePermanencia && (fileNameLower.includes('m1') || fileNameLower.includes('cosecha'))) {
+            const shouldReplace = isMonthlyReplace && isMnMonthlyFile;
             destinoCarga = 'M1';
             result = await api.bulkUpsertM1(data, true, shouldReplace);
+          } else if (looksLikePermanencia && !isSingleMnFile) {
+            setProgress('Partiendo Permanencia por mes actual (M2-M6)...');
+            const groups = groupLatestByModule(data);
+            const upserts = [
+              { label: 'M2', rows: groups.m2, fn: api.bulkUpsertM2 },
+              { label: 'M3', rows: groups.m3, fn: api.bulkUpsertM3 },
+              { label: 'M4', rows: groups.m4, fn: api.bulkUpsertM4 },
+              { label: 'M5', rows: groups.m5, fn: api.bulkUpsertM5 },
+              { label: 'M6', rows: groups.m6, fn: api.bulkUpsertM6 },
+            ];
+            let created = 0;
+            let updated = 0;
+            let skipped = 0;
+            const detail = [];
+            for (const part of upserts) {
+              setProgress(`Cargando ${part.label} (${part.rows.length} cuentas)...`);
+              const partResult = await part.fn(part.rows, true, true);
+              created += partResult.created || 0;
+              updated += partResult.updated || 0;
+              skipped += partResult.skipped || 0;
+              detail.push(`${part.label}: ${part.rows.length}`);
+            }
+            destinoCarga = `Permanencia (${detail.join(' · ')})`;
+            result = { created, updated, skipped, total: created + updated + skipped };
           } else if (fileNameLower.includes('m2')) {
             destinoCarga = 'M2';
-            result = await api.bulkUpsertM2(data, true, isMonthlyReplace && isM0M1M2M3M4);
+            result = await api.bulkUpsertM2(data.map((row) => stampModuleFlag(row, 'M2')), true, isMonthlyReplace && isMnMonthlyFile);
           } else if (fileNameLower.includes('m3')) {
             destinoCarga = 'M3';
-            result = await api.bulkUpsertM3(data, true, isMonthlyReplace && isM0M1M2M3M4);
+            result = await api.bulkUpsertM3(data.map((row) => stampModuleFlag(row, 'M3')), true, isMonthlyReplace && isMnMonthlyFile);
           } else if (fileNameLower.includes('m4')) {
             destinoCarga = 'M4';
-            result = await api.bulkUpsertM4(data, true, isMonthlyReplace && isM0M1M2M3M4);
+            result = await api.bulkUpsertM4(data.map((row) => stampModuleFlag(row, 'M4')), true, isMonthlyReplace && isMnMonthlyFile);
+          } else if (fileNameLower.includes('m5')) {
+            destinoCarga = 'M5';
+            result = await api.bulkUpsertM5(data.map((row) => stampModuleFlag(row, 'M5')), true, isMonthlyReplace && isMnMonthlyFile);
+          } else if (fileNameLower.includes('m6')) {
+            destinoCarga = 'M6';
+            result = await api.bulkUpsertM6(data.map((row) => stampModuleFlag(row, 'M6')), true, isMonthlyReplace && isMnMonthlyFile);
           } else if (isOperacionFile) {
             destinoCarga = 'Operación del Día';
             console.log('📋 DEBUG - Enviando a Operación del Día. archivo=', file.name, 'modulo=', currentModule);
@@ -507,8 +542,9 @@ export default function UploadModule({ currentModule }) {
 
         {/* Checkbox para carga mensual (solo para M1, M2, M3, M4) */}
         {file && (file.name.toLowerCase().includes('m1') || file.name.toLowerCase().includes('m2') || 
-                 file.name.toLowerCase().includes('m3') || file.name.toLowerCase().includes('m4') || 
-                 file.name.toLowerCase().includes('cosecha')) && (
+                 file.name.toLowerCase().includes('m3') || file.name.toLowerCase().includes('m4') ||
+                 file.name.toLowerCase().includes('m5') || file.name.toLowerCase().includes('m6') ||
+                 file.name.toLowerCase().includes('cosecha') || file.name.toLowerCase().includes('permanencia')) && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -567,6 +603,8 @@ export default function UploadModule({ currentModule }) {
               { key: 'm2', label: 'M2', fn: api.deleteAllM2 },
               { key: 'm3', label: 'M3', fn: api.deleteAllM3 },
               { key: 'm4', label: 'M4', fn: api.deleteAllM4 },
+              { key: 'm5', label: 'M5', fn: api.deleteAllM5 },
+              { key: 'm6', label: 'M6', fn: api.deleteAllM6 },
             ].map(({ key, label, fn }) => (
               <button
                 key={key}

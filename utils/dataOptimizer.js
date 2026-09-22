@@ -45,6 +45,16 @@ const ESSENTIAL_FIELDS = {
     'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',
     'Cliente', 'Nombre', 'Nº de cuenta', 'Cuenta', 'Teléfono', 'Teléfonos',
     'NotaContacto', 'Nota', 'FechaPromesaPago', 'VendedorAsignado', 'Vendedor', 'Saldo'
+  ],
+  m5: [
+    'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',
+    'Cliente', 'Nombre', 'Nº de cuenta', 'Cuenta', 'Teléfono', 'Teléfonos',
+    'NotaContacto', 'Nota', 'FechaPromesaPago', 'VendedorAsignado', 'Vendedor', 'Saldo'
+  ],
+  m6: [
+    'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',
+    'Cliente', 'Nombre', 'Nº de cuenta', 'Cuenta', 'Teléfono', 'Teléfonos',
+    'NotaContacto', 'Nota', 'FechaPromesaPago', 'VendedorAsignado', 'Vendedor', 'Saldo'
   ]
 };
 

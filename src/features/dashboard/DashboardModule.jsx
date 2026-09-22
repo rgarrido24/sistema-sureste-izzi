@@ -537,6 +537,8 @@ export default function DashboardModule({ currentModule }) {
   const [m2Count, setM2Count] = useState(0);
   const [m3Count, setM3Count] = useState(0);
   const [m4Count, setM4Count] = useState(0);
+  const [m5Count, setM5Count] = useState(0);
+  const [m6Count, setM6Count] = useState(0);
   const [totalClientesAdeudo, setTotalClientesAdeudo] = useState(0);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false); // Prevenir múltiples cargas simultáneas
@@ -555,19 +557,21 @@ export default function DashboardModule({ currentModule }) {
       loadingRef.current = true;
       setLoading(true);
       try {
-        let salesCountResult, installCountResult, operacionCountResult, m1CountResult, m2CountResult, m3CountResult, m4CountResult;
+        let salesCountResult, installCountResult, operacionCountResult, m1CountResult, m2CountResult, m3CountResult, m4CountResult, m5CountResult, m6CountResult;
         
         // Si el usuario es vendedor, filtrar por su nombre
         if (user.role === 'vendedor' || user.role === 'user') {
           // Cargar todos los datos y filtrar por vendedor usando la función helper
-          const [salesData, installData, operacionData, m1Data, m2Data, m3Data, m4Data] = await Promise.all([
+          const [salesData, installData, operacionData, m1Data, m2Data, m3Data, m4Data, m5Data, m6Data] = await Promise.all([
             api.getSalesMaster(),
             api.getInstallMaster(),
             api.getOperacionDia(),
             api.getM1Master(),
             api.getM2Master(),
             api.getM3Master(),
-            api.getM4Master()
+            api.getM4Master(),
+            api.getM5Master(),
+            api.getM6Master()
           ]);
           
           // Filtrar usando la función helper
@@ -578,6 +582,8 @@ export default function DashboardModule({ currentModule }) {
           const filteredM2 = filterByVendor(m2Data, user);
           const filteredM3 = filterByVendor(m3Data, user);
           const filteredM4 = filterByVendor(m4Data, user);
+          const filteredM5 = filterByVendor(m5Data, user);
+          const filteredM6 = filterByVendor(m6Data, user);
           
           salesCountResult = filteredSales.length;
           installCountResult = filteredInstall.length;
@@ -629,14 +635,18 @@ export default function DashboardModule({ currentModule }) {
             const estatusFPD = getEstatusFPD(item, 'M4');
             return estatusFPD === 'M4';
           }).length;
+          m5CountResult = filteredM5.filter(item => getEstatusFPD(item, 'M5') === 'M5').length;
+          m6CountResult = filteredM6.filter(item => getEstatusFPD(item, 'M6') === 'M6').length;
         } else if (user.role === 'regionales') {
           // Regionales: NO usar endpoints de count globales. Tomar datos (ya filtrados por región en backend)
           // y contar con la misma lógica que las pestañas.
-          const [m1Data, m2Data, m3Data, m4Data, operacionData] = await Promise.all([
+          const [m1Data, m2Data, m3Data, m4Data, m5Data, m6Data, operacionData] = await Promise.all([
             api.getM1Master(null),
             api.getM2Master(null),
             api.getM3Master(null),
             api.getM4Master(null),
+            api.getM5Master(null),
+            api.getM6Master(null),
             api.getOperacionDia(),
           ]);
 
@@ -675,18 +685,22 @@ export default function DashboardModule({ currentModule }) {
           m2CountResult = (m2Data || []).filter(item => getEstatusFPD(item, 'M2') === 'M2').length;
           m3CountResult = (m3Data || []).filter(item => getEstatusFPD(item, 'M3') === 'M3').length;
           m4CountResult = (m4Data || []).filter(item => getEstatusFPD(item, 'M4') === 'M4').length;
+          m5CountResult = (m5Data || []).filter(item => getEstatusFPD(item, 'M5') === 'M5').length;
+          m6CountResult = (m6Data || []).filter(item => getEstatusFPD(item, 'M6') === 'M6').length;
         } else {
           // Para admin, cargar todos los conteos
           // Para M1, contar solo los que tienen estatus M1 (no FPD CORRIENTE ni FPD PÉRDIDA)
           // Para M2, M3, M4: usar la misma lógica que la pestaña: cargar todos y filtrar en frontend
-          const [salesCountResultTemp, installCountResultTemp, operacionCountResultTemp, m1CountResultTemp, m2Data, m3Data, m4Data] = await Promise.all([
+          const [salesCountResultTemp, installCountResultTemp, operacionCountResultTemp, m1CountResultTemp, m2Data, m3Data, m4Data, m5Data, m6Data] = await Promise.all([
             api.getSalesMasterCount(),
             api.getInstallMasterCount(),
             api.getOperacionDiaCount(),
-            api.getM1MasterCount('M1'), // Pasar 'M1' para contar solo los que tienen estatus M1
-            api.getM2Master(null),  // Cargar todos los datos de M2 para filtrar en frontend
-            api.getM3Master(null),  // Cargar todos los datos de M3 para filtrar en frontend
-            api.getM4Master(null)   // Cargar todos los datos de M4 para filtrar en frontend
+            api.getM1MasterCount('M1'),
+            api.getM2Master(null),
+            api.getM3Master(null),
+            api.getM4Master(null),
+            api.getM5Master(null),
+            api.getM6Master(null)
           ]);
           
           salesCountResult = salesCountResultTemp;
@@ -731,6 +745,8 @@ export default function DashboardModule({ currentModule }) {
             const estatusFPD = getEstatusFPD(item, 'M4');
             return estatusFPD === 'M4';
           }).length;
+          m5CountResult = (m5Data || []).filter(item => getEstatusFPD(item, 'M5') === 'M5').length;
+          m6CountResult = (m6Data || []).filter(item => getEstatusFPD(item, 'M6') === 'M6').length;
         }
         
         setSalesCount(salesCountResult || 0);
@@ -740,9 +756,10 @@ export default function DashboardModule({ currentModule }) {
         setM2Count(m2CountResult || 0);
         setM3Count(m3CountResult || 0);
         setM4Count(m4CountResult || 0);
+        setM5Count(m5CountResult || 0);
+        setM6Count(m6CountResult || 0);
         
-        // Calcular total de clientes con adeudo (M1 + M2 + M3 + M4)
-        const totalAdeudo = (m1CountResult || 0) + (m2CountResult || 0) + (m3CountResult || 0) + (m4CountResult || 0);
+        const totalAdeudo = (m1CountResult || 0) + (m2CountResult || 0) + (m3CountResult || 0) + (m4CountResult || 0) + (m5CountResult || 0) + (m6CountResult || 0);
         setTotalClientesAdeudo(totalAdeudo);
         
         // Para operación: contar por estado (incluyendo todas: Abiertas, Canceladas, Completas)
@@ -946,7 +963,7 @@ export default function DashboardModule({ currentModule }) {
           <p className="text-blue-100 text-sm">Clientes en Sistema con Adeudo para Seguimiento</p>
           <div className="mt-3 pt-3 border-t border-blue-400/30">
             <div className="text-xs text-blue-100 space-y-1">
-              <p className="mb-2">Haz clic en M1, M2, M3 o M4 para ver detalles</p>
+              <p className="mb-2">Haz clic en M1 a M6 para ver detalles</p>
               <div className="bg-blue-400/20 rounded p-2 space-y-1">
                 <div className="flex justify-between items-center">
                   <p className="font-bold text-sm">M1</p>
@@ -963,6 +980,14 @@ export default function DashboardModule({ currentModule }) {
                 <div className="flex justify-between items-center">
                   <p className="font-bold text-sm">M4</p>
                   <p className="text-lg font-bold">{loading ? '...' : m4Count}</p>
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="font-bold text-sm">M5</p>
+                  <p className="text-lg font-bold">{loading ? '...' : m5Count}</p>
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="font-bold text-sm">M6</p>
+                  <p className="text-lg font-bold">{loading ? '...' : m6Count}</p>
                 </div>
               </div>
             </div>

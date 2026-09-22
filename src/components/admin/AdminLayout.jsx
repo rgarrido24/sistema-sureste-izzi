@@ -178,6 +178,26 @@ export default function AdminLayout({
                 >
                   M4
                 </button>
+                <button 
+                  onClick={() => setActiveTab('m5')} 
+                  className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    activeTab === 'm5' 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                  }`}
+                >
+                  M5
+                </button>
+                <button 
+                  onClick={() => setActiveTab('m6')} 
+                  className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
+                    activeTab === 'm6' 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                  }`}
+                >
+                  M6
+                </button>
                 {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'mesa_control') && (
                   <button 
                     onClick={() => setActiveTab('upload')} 

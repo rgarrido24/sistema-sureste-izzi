@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
       }
       
       // Para M2, M3, M4, también buscar "general"
-      if (module === 'M2' || module === 'm2' || module === 'M3' || module === 'm3' || module === 'M4' || module === 'm4') {
+      if (module === 'M2' || module === 'm2' || module === 'M3' || module === 'm3' || module === 'M4' || module === 'm4' || module === 'M5' || module === 'm5' || module === 'M6' || module === 'm6') {
         query.$or.push(
           { module: 'general' },
           { module: 'GENERAL' },

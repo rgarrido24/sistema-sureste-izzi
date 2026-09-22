@@ -7,6 +7,8 @@ import M1Master from '../models/M1Master.js';
 import M2Master from '../models/M2Master.js';
 import M3Master from '../models/M3Master.js';
 import M4Master from '../models/M4Master.js';
+import M5Master from '../models/M5Master.js';
+import M6Master from '../models/M6Master.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -17,6 +19,8 @@ const MODELS_BY_MODULE = {
   m2: M2Master,
   m3: M3Master,
   m4: M4Master,
+  m5: M5Master,
+  m6: M6Master,
 };
 
 // Roles autorizados a disparar envíos masivos
@@ -79,7 +83,7 @@ router.post('/send-bulk', async (req, res) => {
 
     const Model = MODELS_BY_MODULE[modulo];
     if (!Model) {
-      return res.status(400).json({ error: 'Módulo inválido. Usa m0, m1, m2, m3 o m4' });
+      return res.status(400).json({ error: 'Módulo inválido. Usa m0, m1, m2, m3, m4, m5 o m6' });
     }
     if (!Array.isArray(cuentas) || cuentas.length === 0) {
       return res.status(400).json({ error: 'Se requiere un array de cuentas' });

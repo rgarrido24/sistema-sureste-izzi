@@ -68,7 +68,7 @@ export default function AdminDashboard({ user }) {
       {/* Módulo de Cobranza - Para admin, admin_general, director, mesa_control y regionales */}
       {currentModule === MODULES.SALES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx') && (
         <>
-          {(activeTab === 'm0' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4' || activeTab === 'view') && (
+          {(activeTab === 'm0' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4' || activeTab === 'm5' || activeTab === 'm6' || activeTab === 'view') && (
             <SalesModule activeTab={activeTab} />
           )}
           {activeTab === 'upload' && <UploadModule currentModule={currentModule} />}

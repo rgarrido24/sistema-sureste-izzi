@@ -15,7 +15,7 @@ export default function SalesModule({ activeTab }) {
   const [filterFechaVencHasta, setFilterFechaVencHasta] = useState('');
 
   // Determinar qué vista mostrar - cada vista carga sus propios datos
-  if (activeTab === 'm0' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4') {
+  if (activeTab === 'm0' || activeTab === 'm1' || activeTab === 'm2' || activeTab === 'm3' || activeTab === 'm4' || activeTab === 'm5' || activeTab === 'm6') {
     const status = activeTab.toUpperCase();
     return (
       <SalesStatusView 

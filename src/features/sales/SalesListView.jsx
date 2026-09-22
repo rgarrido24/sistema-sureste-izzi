@@ -198,6 +198,8 @@ export default function SalesListView({
                         item.Estatus === 'M2' ? 'bg-orange-100 text-orange-700' :
                         item.Estatus === 'M3' ? 'bg-red-100 text-red-700' :
                         item.Estatus === 'M4' ? 'bg-pink-100 text-pink-700' :
+                        item.Estatus === 'M5' ? 'bg-orange-100 text-orange-700' :
+                        item.Estatus === 'M6' ? 'bg-teal-100 text-teal-700' :
                         'bg-slate-100 text-slate-700'
                       }`}>
                         {item.Estatus || '-'}

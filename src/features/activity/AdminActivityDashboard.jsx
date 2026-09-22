@@ -59,7 +59,7 @@ export default function AdminActivityDashboard() {
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
         <h3 className="text-sm font-bold text-slate-700 mb-3">Última actualización de archivos (Cobranza)</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {['m1', 'm2', 'm3', 'm4', 'sales'].map((k) => {
+          {['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'sales'].map((k) => {
             const row = cobranzaLastUploads.find(r => String(r?._id || '').toLowerCase() === k);
             return (
               <div key={k} className="border border-slate-200 rounded-xl p-3 bg-slate-50">
