@@ -89,7 +89,34 @@ function ListadoClaves() {
     }
   };
 
-  useEffect(() => { cargar(); }, []);
+  const [vendedoresCobranza, setVendedoresCobranza] = useState([]);
+  const [editandoId, setEditandoId] = useState(null);
+  const [asignInput, setAsignInput] = useState('');
+  const [guardandoAsign, setGuardandoAsign] = useState(false);
+
+  useEffect(() => {
+    cargar();
+    api.getVendedoresCobranza().then(setVendedoresCobranza).catch(() => {});
+  }, []);
+
+  const abrirAsignacion = (row) => {
+    setEditandoId(row._id);
+    setAsignInput(row.SubdistribuidorVendedor || '');
+  };
+
+  const guardarAsignacion = async (id) => {
+    if (!asignInput.trim()) return;
+    setGuardandoAsign(true);
+    try {
+      const actualizado = await api.asignarClaveVendedor(id, asignInput.trim());
+      setRows(prev => prev.map(r => r._id === id ? actualizado : r));
+      setEditandoId(null);
+    } catch (e) {
+      alert('Error asignando: ' + e.message);
+    } finally {
+      setGuardandoAsign(false);
+    }
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -148,27 +175,62 @@ function ListadoClaves() {
           <thead className="bg-slate-50">
             <tr>
               <th className="text-left px-3 py-2 whitespace-nowrap">Vendedor</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">RFC Vendedor</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Usuario de Red</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Clave</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Distribuidor</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Plaza</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Estatus</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Fecha Alta</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Subido por</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Cuándo</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">No. Empleado</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap bg-amber-50">Subdistribuidor/Vendedor (asignación)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r._id} className="border-t border-slate-100 hover:bg-slate-50">
                 <td className="px-3 py-2 whitespace-nowrap font-medium">{r['NOMBRE DEL VENDEDOR'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['RFC VENDEDOR'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{r['USUARIO DE RED'] || '-'}</td>
                 <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{r['CLAVES'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['DISTRIBUIDOR'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['PLAZA'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['ESTATUS'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['FECHA ALTA'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.subidoPorNombre || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-slate-500">
-                  {r.createdAt ? new Date(r.createdAt).toLocaleString('es-MX') : '-'}
+                <td className="px-3 py-2 whitespace-nowrap">{r['No. EMPLEADO'] || '-'}</td>
+                <td className="px-3 py-2 bg-amber-50/40 min-w-[280px]">
+                  {editandoId === r._id ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        list="datalist-vendedores-cobranza"
+                        value={asignInput}
+                        onChange={(e) => setAsignInput(e.target.value)}
+                        placeholder="Elige o escribe un nombre"
+                        className="px-2 py-1 border border-slate-300 rounded text-xs flex-1"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => guardarAsignacion(r._id)}
+                        disabled={guardandoAsign}
+                        className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-bold"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        onClick={() => setEditandoId(null)}
+                        className="px-2 py-1 text-xs text-slate-500"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => abrirAsignacion(r)}
+                      className="text-left w-full"
+                    >
+                      <div className="font-semibold text-slate-800 text-sm">
+                        {r.SubdistribuidorVendedor || <span className="text-slate-400 italic">Sin asignar — clic para asignar</span>}
+                      </div>
+                      {r.SubdistribuidorVendedorAsignadoPorNombre && (
+                        <div className="text-[11px] text-slate-500">
+                          Asignó: {r.SubdistribuidorVendedorAsignadoPorNombre}
+                          {r.SubdistribuidorVendedorAsignadoFecha && ` · ${new Date(r.SubdistribuidorVendedorAsignadoFecha).toLocaleString('es-MX')}`}
+                        </div>
+                      )}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -178,6 +240,9 @@ function ListadoClaves() {
           <p className="text-center text-slate-400 py-8">Sin registros todavía. Sube tu primera plantilla.</p>
         )}
       </div>
+      <datalist id="datalist-vendedores-cobranza">
+        {vendedoresCobranza.map(v => <option key={v} value={v} />)}
+      </datalist>
     </div>
   );
 }

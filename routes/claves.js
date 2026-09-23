@@ -1,6 +1,11 @@
 import express from 'express';
 import crypto from 'crypto';
 import ClaveAsignacion from '../models/ClaveAsignacion.js';
+import M0Master from '../models/M0Master.js';
+import M1Master from '../models/M1Master.js';
+import M2Master from '../models/M2Master.js';
+import M3Master from '../models/M3Master.js';
+import M4Master from '../models/M4Master.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -59,6 +64,62 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Error creando registro manual de clave:', error);
     res.status(500).json({ error: 'Error del servidor', message: error.message });
+  }
+});
+
+// Lista de vendedores de cobranza (M0-M4), para el dropdown de asignación de clave
+router.get('/vendedores-cobranza', async (req, res) => {
+  try {
+    const modelos = [M0Master, M1Master, M2Master, M3Master, M4Master];
+    const camposVendedor = ['Vendedor', 'VendedorAsignado'];
+    const set = new Set();
+
+    for (const Modelo of modelos) {
+      for (const campo of camposVendedor) {
+        try {
+          const valores = await Modelo.distinct(campo);
+          (valores || []).forEach(v => {
+            const nombre = String(v || '').trim();
+            if (nombre) set.add(nombre);
+          });
+        } catch (e) { /* el campo puede no existir en algún módulo, se ignora */ }
+      }
+    }
+
+    res.json(Array.from(set).sort());
+  } catch (error) {
+    console.error('Error obteniendo vendedores de cobranza:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Asignar (o reasignar) quién usa realmente esta clave — con huella digital: quién lo
+// asignó y cuándo. Se guarda separado de quién subió el registro originalmente.
+router.put('/:id/asignar', async (req, res) => {
+  try {
+    const { subdistribuidorVendedor } = req.body;
+    if (!subdistribuidorVendedor || !String(subdistribuidorVendedor).trim()) {
+      return res.status(400).json({ error: 'Falta el nombre del vendedor a asignar' });
+    }
+
+    const ahora = new Date();
+    const doc = await ClaveAsignacion.findByIdAndUpdate(
+      req.params.id,
+      {
+        SubdistribuidorVendedor: String(subdistribuidorVendedor).trim(),
+        SubdistribuidorVendedorAsignadoPorId: req.user?.id || '',
+        SubdistribuidorVendedorAsignadoPorUsername: req.user?.username || '',
+        SubdistribuidorVendedorAsignadoPorNombre: req.user?.name || req.user?.username || '',
+        SubdistribuidorVendedorAsignadoFecha: ahora,
+      },
+      { new: true }
+    );
+
+    if (!doc) return res.status(404).json({ error: 'No encontrado' });
+    res.json(doc);
+  } catch (error) {
+    console.error('Error asignando clave a vendedor:', error);
+    res.status(500).json({ error: 'Error del servidor' });
   }
 });
 

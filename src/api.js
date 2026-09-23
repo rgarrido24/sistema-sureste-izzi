@@ -824,3 +824,14 @@ export async function crearClaveManual(row) {
     body: JSON.stringify({ row }),
   });
 }
+
+export async function getVendedoresCobranza() {
+  return apiRequest('/claves/vendedores-cobranza');
+}
+
+export async function asignarClaveVendedor(id, subdistribuidorVendedor) {
+  return apiRequest(`/claves/${id}/asignar`, {
+    method: 'PUT',
+    body: JSON.stringify({ subdistribuidorVendedor }),
+  });
+}
