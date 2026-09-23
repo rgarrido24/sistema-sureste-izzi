@@ -180,6 +180,12 @@ function ListadoClaves() {
               <th className="text-left px-3 py-2 whitespace-nowrap">Clave</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">No. Empleado</th>
               <th className="text-left px-3 py-2 whitespace-nowrap bg-amber-50">Subdistribuidor/Vendedor (asignación)</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Distribuidor</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Plaza</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Estatus</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Fecha Alta</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Subido por</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Cuándo</th>
             </tr>
           </thead>
           <tbody>
@@ -231,6 +237,14 @@ function ListadoClaves() {
                       )}
                     </button>
                   )}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['DISTRIBUIDOR'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['PLAZA'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['ESTATUS'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['FECHA ALTA'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r.subidoPorNombre || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-slate-500">
+                  {r.createdAt ? new Date(r.createdAt).toLocaleString('es-MX') : '-'}
                 </td>
               </tr>
             ))}
