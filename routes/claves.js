@@ -8,6 +8,32 @@ import M3Master from '../models/M3Master.js';
 import M4Master from '../models/M4Master.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 
+function normHeader(k) {
+  return String(k || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getNoEmpleado(row) {
+  if (!row || typeof row !== 'object') return '';
+  for (const [key, v] of Object.entries(row)) {
+    const n = normHeader(key);
+    const esNumEmpleado = n.includes('empleado') && (n.includes('no') || n.includes('num') || n === 'empleado');
+    if (esNumEmpleado && v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-') {
+      return String(v).trim();
+    }
+  }
+  return '';
+}
+
+function withNoEmpleado(doc) {
+  const n = getNoEmpleado(doc);
+  if (n) doc['No. EMPLEADO'] = n;
+  return doc;
+}
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -138,11 +164,12 @@ router.get('/', async (req, res) => {
         { 'DISTRIBUIDOR': rx },
         { 'PLAZA': rx },
         { 'USUARIO DE RED': rx },
+        { 'No. EMPLEADO': rx },
       ];
     }
 
     const docs = await ClaveAsignacion.find(query).sort({ createdAt: -1 }).lean();
-    res.json(docs);
+    res.json(docs.map(withNoEmpleado));
   } catch (error) {
     console.error('Error obteniendo claves:', error);
     res.status(500).json({ error: 'Error del servidor' });
@@ -162,6 +189,7 @@ router.post('/bulk', async (req, res) => {
 
     const docs = rows.map((row) => ({
       ...row,
+      'No. EMPLEADO': getNoEmpleado(row) || row['No. EMPLEADO'] || '',
       claveId: row['CLAVES'] || row['USUARIO DE RED'] || row['ID'] || undefined,
       hojaOrigen: row.__hojaOrigen || row.hojaOrigen || '',
       batchId,
@@ -222,7 +250,7 @@ router.get('/historial', async (req, res) => {
 router.get('/historial/:batchId', async (req, res) => {
   try {
     const docs = await ClaveAsignacion.find({ batchId: req.params.batchId }).lean();
-    res.json(docs);
+    res.json(docs.map(withNoEmpleado));
   } catch (error) {
     console.error('Error obteniendo detalle de lote:', error);
     res.status(500).json({ error: 'Error del servidor' });

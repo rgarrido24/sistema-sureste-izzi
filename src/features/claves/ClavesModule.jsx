@@ -29,6 +29,38 @@ const CAMPOS_FORM_LIBRES = [
   'FECHA ALTA', 'FECHA BAJA', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'TEL. SUBDISTR.'
 ];
 
+function normHeader(k) {
+  return String(k || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getNoEmpleado(row) {
+  if (!row || typeof row !== 'object') return '';
+  const exactos = [
+    'No. EMPLEADO', 'NO. EMPLEADO', 'No EMPLEADO', 'NO EMPLEADO',
+    'No. Empleado', 'No. de Empleado', 'No. de EMPLEADO',
+    'NUM EMPLEADO', 'NUMERO EMPLEADO', 'NÚMERO EMPLEADO',
+    'N° EMPLEADO', 'Nº EMPLEADO', 'Empleado', 'EMPLEADO',
+  ];
+  for (const key of exactos) {
+    const v = row[key];
+    if (v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-') {
+      return String(v).trim();
+    }
+  }
+  for (const [key, v] of Object.entries(row)) {
+    const n = normHeader(key);
+    const esNumEmpleado = n.includes('empleado') && (n.includes('no') || n.includes('num') || n === 'empleado');
+    if (esNumEmpleado && v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-') {
+      return String(v).trim();
+    }
+  }
+  return '';
+}
+
 export default function ClavesModule() {
   const { user } = useAuth();
   const [tab, setTab] = useState(TABS.LISTADO);
@@ -129,7 +161,10 @@ function ListadoClaves() {
       const hoja = r.hojaOrigen || 'Claves';
       if (!porHoja.has(hoja)) porHoja.set(hoja, []);
       porHoja.get(hoja).push(
-        Object.fromEntries(COLUMNAS_EXPORT.map(col => [col, r[col] ?? '']))
+        Object.fromEntries(COLUMNAS_EXPORT.map(col => [
+          col,
+          col === 'No. EMPLEADO' ? (getNoEmpleado(r) || r[col] || '') : (r[col] ?? ''),
+        ]))
       );
     }
 
@@ -195,7 +230,7 @@ function ListadoClaves() {
                 <td className="px-3 py-2 whitespace-nowrap">{r['RFC VENDEDOR'] || '-'}</td>
                 <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{r['USUARIO DE RED'] || '-'}</td>
                 <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{r['CLAVES'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['No. EMPLEADO'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{getNoEmpleado(r) || '-'}</td>
                 <td className="px-3 py-2 bg-amber-50/40 min-w-[280px]">
                   {editandoId === r._id ? (
                     <div className="flex items-center gap-1">
