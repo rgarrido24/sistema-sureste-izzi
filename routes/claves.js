@@ -16,21 +16,61 @@ function normHeader(k) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function valorEmpleado(v) {
+  if (v === undefined || v === null || typeof v === 'object') return '';
+  const s = String(v).trim();
+  return (!s || s === '-') ? '' : s;
+}
+
 function getNoEmpleado(row) {
   if (!row || typeof row !== 'object') return '';
+  // Mongo interpreta "No. EMPLEADO" como { No: { EMPLEADO: "..." } }
+  const anidado = row.No && typeof row.No === 'object'
+    ? (row.No.EMPLEADO || row.No.Empleado || row.No.empleado)
+    : null;
+  const directo = valorEmpleado(anidado)
+    || valorEmpleado(row['No EMPLEADO'])
+    || valorEmpleado(row['NO EMPLEADO'])
+    || valorEmpleado(row['No. EMPLEADO']);
+  if (directo) return directo;
+
   for (const [key, v] of Object.entries(row)) {
+    if (typeof v === 'object') continue;
     const n = normHeader(key);
     const esNumEmpleado = n.includes('empleado') && (n.includes('no') || n.includes('num') || n === 'empleado');
-    if (esNumEmpleado && v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-') {
-      return String(v).trim();
-    }
+    const val = valorEmpleado(v);
+    if (esNumEmpleado && val) return val;
   }
   return '';
 }
 
+function sanitizeRowForMongo(row) {
+  const out = {};
+  for (const [k, v] of Object.entries(row || {})) {
+    if (k.includes('.')) {
+      const safe = k.replace(/\./g, '').replace(/\s+/g, ' ').trim();
+      if (out[safe] === undefined) out[safe] = v;
+      continue;
+    }
+    if (k === 'No' && v && typeof v === 'object' && !Array.isArray(v)) {
+      if (v.EMPLEADO != null || v.Empleado != null || v.empleado != null) {
+        out['No EMPLEADO'] = v.EMPLEADO || v.Empleado || v.empleado;
+      }
+      continue;
+    }
+    out[k] = v;
+  }
+  const n = getNoEmpleado({ ...row, ...out });
+  if (n) out['No EMPLEADO'] = n;
+  return out;
+}
+
 function withNoEmpleado(doc) {
   const n = getNoEmpleado(doc);
-  if (n) doc['No. EMPLEADO'] = n;
+  if (n) {
+    doc['No EMPLEADO'] = n;
+    doc['No. EMPLEADO'] = n;
+  }
   return doc;
 }
 
@@ -77,7 +117,7 @@ router.post('/', async (req, res) => {
 
     const now = new Date();
     const doc = await ClaveAsignacion.create({
-      ...row,
+      ...sanitizeRowForMongo(row),
       claveId: row['CLAVES'],
       hojaOrigen: row.__hojaOrigen || row.hojaOrigen || 'Alta manual',
       batchId: `manual-${now.getTime()}`,
@@ -165,6 +205,8 @@ router.get('/', async (req, res) => {
         { 'PLAZA': rx },
         { 'USUARIO DE RED': rx },
         { 'No. EMPLEADO': rx },
+        { 'No EMPLEADO': rx },
+        { 'No.EMPLEADO': rx },
       ];
     }
 
@@ -188,8 +230,7 @@ router.post('/bulk', async (req, res) => {
     const now = new Date();
 
     const docs = rows.map((row) => ({
-      ...row,
-      'No. EMPLEADO': getNoEmpleado(row) || row['No. EMPLEADO'] || '',
+      ...sanitizeRowForMongo(row),
       claveId: row['CLAVES'] || row['USUARIO DE RED'] || row['ID'] || undefined,
       hojaOrigen: row.__hojaOrigen || row.hojaOrigen || '',
       batchId,

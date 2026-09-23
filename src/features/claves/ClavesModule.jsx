@@ -39,23 +39,30 @@ function normHeader(k) {
 
 function getNoEmpleado(row) {
   if (!row || typeof row !== 'object') return '';
-  const exactos = [
-    'No. EMPLEADO', 'NO. EMPLEADO', 'No EMPLEADO', 'NO EMPLEADO',
-    'No. Empleado', 'No. de Empleado', 'No. de EMPLEADO',
-    'NUM EMPLEADO', 'NUMERO EMPLEADO', 'NÚMERO EMPLEADO',
-    'N° EMPLEADO', 'Nº EMPLEADO', 'Empleado', 'EMPLEADO',
+  // Columna S "No. EMPLEADO": Mongo la guarda anidada como { No: { EMPLEADO } }
+  const anidado = row.No && typeof row.No === 'object'
+    ? (row.No.EMPLEADO || row.No.Empleado || row.No.empleado)
+    : null;
+  const candidatos = [
+    anidado,
+    row['No EMPLEADO'],
+    row['NO EMPLEADO'],
+    row['No. EMPLEADO'],
+    row['NO. EMPLEADO'],
   ];
-  for (const key of exactos) {
-    const v = row[key];
-    if (v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-') {
-      return String(v).trim();
+  for (const v of candidatos) {
+    if (v !== undefined && v !== null && typeof v !== 'object') {
+      const s = String(v).trim();
+      if (s && s !== '-') return s;
     }
   }
   for (const [key, v] of Object.entries(row)) {
+    if (typeof v === 'object') continue;
     const n = normHeader(key);
     const esNumEmpleado = n.includes('empleado') && (n.includes('no') || n.includes('num') || n === 'empleado');
-    if (esNumEmpleado && v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-') {
-      return String(v).trim();
+    if (esNumEmpleado && v !== undefined && v !== null) {
+      const s = String(v).trim();
+      if (s && s !== '-') return s;
     }
   }
   return '';
