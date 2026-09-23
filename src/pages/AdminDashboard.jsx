@@ -21,8 +21,7 @@ import ClavesModule from '../features/claves/ClavesModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
-  // Si es rol 'usuarios', iniciar directamente en Administración > Usuarios
-  // Si es rol 'usuarios', forzar que siempre esté en Administración
+  // Rol 'usuarios' inicia en Administración > Usuarios; también puede entrar a Claves
   const initialModule =
     user?.role === 'usuarios'
       ? MODULES.ADMIN
@@ -42,10 +41,9 @@ export default function AdminDashboard({ user }) {
   const [currentModule, setCurrentModule] = useState(initialModule);
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  // Si el rol es 'usuarios' y cambia a otro módulo, forzar volver a Administración
+  // Rol 'usuarios': Administración (crear usuarios) y Claves CVVEN
   const handleModuleChange = (module) => {
-    if (user?.role === 'usuarios' && module !== MODULES.ADMIN) {
-      // No permitir cambiar a otros módulos
+    if (user?.role === 'usuarios' && module !== MODULES.ADMIN && module !== MODULES.CLAVES) {
       return;
     }
     if (user?.role === 'cobranza_mx' && module !== MODULES.SALES) {
@@ -62,7 +60,7 @@ export default function AdminDashboard({ user }) {
   return (
     <AdminLayout
       user={user}
-      currentModule={user?.role === 'usuarios' ? MODULES.ADMIN : user?.role === 'coordinador_claves' ? MODULES.CLAVES : currentModule}
+      currentModule={user?.role === 'coordinador_claves' ? MODULES.CLAVES : currentModule}
       setModule={handleModuleChange}
       activeTab={activeTab}
       setActiveTab={setActiveTab}
@@ -97,8 +95,8 @@ export default function AdminDashboard({ user }) {
         </>
       )}
 
-      {/* Módulo de Claves CVVEN - Solo admin, admin_general, director y coordinador_claves */}
-      {currentModule === MODULES.CLAVES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves') && (
+      {/* Módulo de Claves CVVEN */}
+      {currentModule === MODULES.CLAVES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves' || user?.role === 'usuarios') && (
         <>
           {activeTab === 'claves' && <ClavesModule />}
         </>

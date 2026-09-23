@@ -101,7 +101,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 // Solo el/la coordinador(a) de claves y los directores/admin pueden ver o subir esta información.
-const CAN_ACCESS = ['admin', 'admin_general', 'director', 'coordinador_claves'];
+const CAN_ACCESS = ['admin', 'admin_general', 'director', 'coordinador_claves', 'usuarios'];
 router.use(requireRoles(CAN_ACCESS));
 
 // Valores distintos ya usados por campo, para autocompletar el formulario de alta manual

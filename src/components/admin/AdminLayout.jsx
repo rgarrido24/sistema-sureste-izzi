@@ -65,7 +65,7 @@ export default function AdminLayout({
                   Instalaciones
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves' || user?.role === 'usuarios') && (
                 <button 
                   onClick={() => { setModule(MODULES.CLAVES); setActiveTab('claves'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
