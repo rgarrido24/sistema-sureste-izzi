@@ -5,7 +5,29 @@ import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 
-const TABS = { LISTADO: 'listado', SUBIR: 'subir', HISTORIAL: 'historial' };
+const TABS = { LISTADO: 'listado', SUBIR: 'subir', AGREGAR: 'agregar', HISTORIAL: 'historial' };
+
+// Orden de columnas para el Excel de exportación (mismo formato que la plantilla de Izzi)
+const COLUMNAS_EXPORT = [
+  'REGION', 'SUBREGION', 'HUB', 'PLAZA', 'NOMBRE DEL VENDEDOR', 'DISTRIBUIDOR', 'RAZON SOCIAL',
+  'KAM', 'ESTATUS', 'JORNADA', 'SUPERVISOR INTERNO (IZZI)', 'GERENTE INTERNO (IZZI)',
+  'CANAL DE DISTRIBUCION', 'TIPO DE USUARIO', 'CLASIFICACION DE CLAVE', 'RFC VENDEDOR',
+  'USUARIO DE RED', 'CLAVES', 'No. EMPLEADO', 'SALES FORCE (SKY)', 'FECHA ALTA', 'FECHA BAJA',
+  'SUPERVISOR', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR',
+  'TEL. SUBDISTR.', 'ID'
+];
+
+// Campos del formulario de alta manual: los repetitivos usan datalist (autocompletar),
+// los únicos por persona son texto libre.
+const CAMPOS_FORM_DATALIST = [
+  'REGION', 'SUBREGION', 'HUB', 'PLAZA', 'DISTRIBUIDOR', 'RAZON SOCIAL', 'KAM', 'ESTATUS',
+  'JORNADA', 'SUPERVISOR INTERNO (IZZI)', 'GERENTE INTERNO (IZZI)', 'CANAL DE DISTRIBUCION',
+  'TIPO DE USUARIO', 'CLASIFICACION DE CLAVE', 'SUPERVISOR', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR'
+];
+const CAMPOS_FORM_LIBRES = [
+  'NOMBRE DEL VENDEDOR', 'RFC VENDEDOR', 'USUARIO DE RED', 'CLAVES', 'No. EMPLEADO',
+  'FECHA ALTA', 'FECHA BAJA', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'TEL. SUBDISTR.'
+];
 
 export default function ClavesModule() {
   const { user } = useAuth();
@@ -27,6 +49,7 @@ export default function ClavesModule() {
         {[
           { key: TABS.LISTADO, label: 'Listado actual' },
           { key: TABS.SUBIR, label: 'Subir plantilla' },
+          { key: TABS.AGREGAR, label: 'Agregar vendedor' },
           { key: TABS.HISTORIAL, label: 'Historial de cargas' },
         ].map(t => (
           <button
@@ -43,6 +66,7 @@ export default function ClavesModule() {
 
       {tab === TABS.LISTADO && <ListadoClaves />}
       {tab === TABS.SUBIR && <SubirPlantilla onUploaded={() => setTab(TABS.LISTADO)} />}
+      {tab === TABS.AGREGAR && <AgregarVendedor onAdded={() => setTab(TABS.LISTADO)} />}
       {tab === TABS.HISTORIAL && <HistorialCargas canDeleteAll={canDeleteAll} />}
     </div>
   );
@@ -72,6 +96,25 @@ function ListadoClaves() {
     cargar(search ? { search } : {});
   };
 
+  const handleExport = () => {
+    const porHoja = new Map();
+    for (const r of rows) {
+      const hoja = r.hojaOrigen || 'Claves';
+      if (!porHoja.has(hoja)) porHoja.set(hoja, []);
+      porHoja.get(hoja).push(
+        Object.fromEntries(COLUMNAS_EXPORT.map(col => [col, r[col] ?? '']))
+      );
+    }
+
+    const wb = XLSX.utils.book_new();
+    for (const [hoja, filas] of porHoja) {
+      const ws = XLSX.utils.json_to_sheet(filas, { header: COLUMNAS_EXPORT });
+      XLSX.utils.book_append_sheet(wb, ws, String(hoja).slice(0, 31));
+    }
+    const fecha = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Claves_CVVEN_${fecha}.xlsx`);
+  };
+
   if (loading) return <LoadingSpinner />;
 
   return (
@@ -88,6 +131,14 @@ function ListadoClaves() {
           />
         </div>
         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm">Buscar</button>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={rows.length === 0}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-300"
+        >
+          Descargar Excel
+        </button>
       </form>
 
       <p className="text-sm text-slate-500 mb-2">{rows.length} registros</p>
@@ -215,6 +266,105 @@ function SubirPlantilla({ onUploaded }) {
         </div>
       )}
     </div>
+  );
+}
+
+function AgregarVendedor({ onAdded }) {
+  const [valoresDistintos, setValoresDistintos] = useState({});
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    api.getClavesValoresDistintos().then(setValoresDistintos).catch(() => {});
+  }, []);
+
+  const handleChange = (campo, valor) => {
+    setForm(prev => ({ ...prev, [campo]: valor }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setOk(false);
+
+    if (!form['NOMBRE DEL VENDEDOR'] || !form['CLAVES']) {
+      setError('Nombre del vendedor y Clave son obligatorios.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.crearClaveManual(form);
+      setOk(true);
+      setForm({});
+      if (onAdded) setTimeout(onAdded, 1000);
+    } catch (e) {
+      setError(e.message || 'Error guardando');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-2xl">
+      <p className="text-sm text-slate-500 mb-4">
+        Los campos repetitivos (región, distribuidor, hub, etc.) te sugieren lo que ya se ha usado antes — puedes escribir uno nuevo si no está en la lista.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        {CAMPOS_FORM_LIBRES.map(campo => (
+          <div key={campo}>
+            <label className="block text-xs font-bold text-slate-600 mb-1">
+              {campo} {(campo === 'NOMBRE DEL VENDEDOR' || campo === 'CLAVES') && <span className="text-red-500">*</span>}
+            </label>
+            <input
+              type={campo.includes('FECHA') ? 'date' : 'text'}
+              value={form[campo] || ''}
+              onChange={(e) => handleChange(campo, e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        {CAMPOS_FORM_DATALIST.map(campo => (
+          <div key={campo}>
+            <label className="block text-xs font-bold text-slate-600 mb-1">{campo}</label>
+            <input
+              list={`datalist-${campo}`}
+              value={form[campo] || ''}
+              onChange={(e) => handleChange(campo, e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+            <datalist id={`datalist-${campo}`}>
+              {(valoresDistintos[campo] || []).map(v => <option key={v} value={v} />)}
+            </datalist>
+          </div>
+        ))}
+      </div>
+
+      {error && (
+        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+          <AlertTriangle size={16} /> {error}
+        </div>
+      )}
+      {ok && (
+        <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
+          <CheckCircle2 size={16} /> Vendedor agregado correctamente.
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={saving}
+        className="px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 disabled:bg-slate-400"
+      >
+        {saving ? 'Guardando...' : 'Agregar vendedor'}
+      </button>
+    </form>
   );
 }
 

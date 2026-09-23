@@ -10,6 +10,58 @@ router.use(requireAuth);
 const CAN_ACCESS = ['admin', 'admin_general', 'director', 'coordinador_claves'];
 router.use(requireRoles(CAN_ACCESS));
 
+// Valores distintos ya usados por campo, para autocompletar el formulario de alta manual
+// (evita retipear REGION, DISTRIBUIDOR, HUB, etc. cada vez)
+const CAMPOS_REPETITIVOS = [
+  'REGION', 'SUBREGION', 'HUB', 'PLAZA', 'DISTRIBUIDOR', 'RAZON SOCIAL',
+  'KAM', 'ESTATUS', 'JORNADA', 'SUPERVISOR INTERNO (IZZI)', 'GERENTE INTERNO (IZZI)',
+  'CANAL DE DISTRIBUCION', 'TIPO DE VENDEDOR', 'TIPO DE USUARIO', 'CLASIFICACION DE CLAVE',
+  'SUPERVISOR', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR'
+];
+
+router.get('/valores-distintos', async (req, res) => {
+  try {
+    const resultado = {};
+    await Promise.all(CAMPOS_REPETITIVOS.map(async (campo) => {
+      const valores = await ClaveAsignacion.distinct(campo);
+      resultado[campo] = (valores || []).filter(Boolean).sort();
+    }));
+    res.json(resultado);
+  } catch (error) {
+    console.error('Error obteniendo valores distintos:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Alta manual de un solo registro (usuario nuevo), sin necesidad de subir un Excel completo
+router.post('/', async (req, res) => {
+  try {
+    const row = req.body?.row;
+    if (!row || typeof row !== 'object') {
+      return res.status(400).json({ error: 'Se espera un objeto "row" con los datos del vendedor' });
+    }
+    if (!row['NOMBRE DEL VENDEDOR'] || !row['CLAVES']) {
+      return res.status(400).json({ error: 'Nombre del vendedor y Clave son obligatorios' });
+    }
+
+    const now = new Date();
+    const doc = await ClaveAsignacion.create({
+      ...row,
+      claveId: row['CLAVES'],
+      hojaOrigen: row.__hojaOrigen || row.hojaOrigen || 'Alta manual',
+      batchId: `manual-${now.getTime()}`,
+      subidoPorId: req.user?.id || '',
+      subidoPorUsername: req.user?.username || '',
+      subidoPorNombre: req.user?.name || req.user?.username || '',
+    });
+
+    res.json({ success: true, doc });
+  } catch (error) {
+    console.error('Error creando registro manual de clave:', error);
+    res.status(500).json({ error: 'Error del servidor', message: error.message });
+  }
+});
+
 // Listar registros actuales (la "foto" más reciente por clave)
 router.get('/', async (req, res) => {
   try {

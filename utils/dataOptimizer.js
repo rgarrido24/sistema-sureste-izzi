@@ -17,7 +17,8 @@ const ESSENTIAL_FIELDS = {
     // Formato nuevo "Operación RGO"
     'Fecha Programacion Date', 'Fecha Fst Programacion', 'Cliente', 'No Orden',
     'Estatus Ord', 'Sub Estatus Ord', 'Horario Atencion', 'Usuario Vendedor',
-    'STATUS', 'Paquete Contratado', 'Hub Red', 'Region'
+    'STATUS', 'Paquete Contratado', 'Hub Red', 'Region',
+    'VendedorAsignadoAutomatico', 'VendedorAsignadoClaveOrigen'
   ],
   m0: [
     'cuenta', 'estado', 'origen', 'fechaCreacion', 'fechaActualizacion',

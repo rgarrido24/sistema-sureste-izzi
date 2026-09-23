@@ -1,5 +1,6 @@
 import express from 'express';
 import OperacionDia from '../models/OperacionDia.js';
+import ClaveAsignacion from '../models/ClaveAsignacion.js';
 import SalesMaster from '../models/SalesMaster.js';
 import InstallMaster from '../models/InstallMaster.js';
 import M1Master from '../models/M1Master.js';
@@ -293,6 +294,24 @@ router.post('/bulk', async (req, res) => {
       return out;
     };
 
+    // 0) Cargar el roster de Claves CVVEN una sola vez, para poder asignar automáticamente
+    // el vendedor real (NOMBRE DEL VENDEDOR) a partir del código CVVEN que trae cada venta
+    // en "Usuario Vendedor" / "Clave Vendedor" / "CLAVES".
+    let cvvenToVendedor = new Map();
+    try {
+      const clavesDocs = await ClaveAsignacion.find({}, {
+        'CLAVES': 1, 'NOMBRE DEL VENDEDOR': 1, createdAt: 1
+      }).sort({ createdAt: 1 }).lean(); // ordenado ascendente: el último sobreescribe = el más reciente gana
+      for (const doc of clavesDocs) {
+        const clave = String(doc['CLAVES'] || '').trim().toUpperCase();
+        const nombre = doc['NOMBRE DEL VENDEDOR'];
+        if (clave && nombre) cvvenToVendedor.set(clave, nombre);
+      }
+      console.log(`📇 [OPERACION] Roster de claves cargado: ${cvvenToVendedor.size} claves únicas.`);
+    } catch (e) {
+      console.warn('⚠️ No se pudo cargar el roster de Claves CVVEN, se omite auto-asignación:', e?.message || e);
+    }
+
     // 1) Preparar + deduplicar por cuenta (último gana)
     const byCuenta = new Map();
     for (const item of data) {
@@ -320,6 +339,18 @@ router.post('/bulk', async (req, res) => {
         const preparedData = prepareDataForUpsert(safeItem, 'operacion');
         if (!preparedData.estado) {
           preparedData.estado = safeItem['Estado'] || safeItem.Estado || 'Abierta';
+        }
+
+        // Auto-asignación de vendedor real usando el roster de Claves CVVEN
+        if (cvvenToVendedor.size > 0 && !preparedData.VendedorAsignado) {
+          const cvvenRaw = safeItem['Usuario Vendedor'] || safeItem['Clave Vendedor'] || safeItem['CVVEN'] || safeItem['Claves'] || '';
+          const cvvenKey = String(cvvenRaw || '').trim().toUpperCase();
+          const nombreVendedor = cvvenKey ? cvvenToVendedor.get(cvvenKey) : null;
+          if (nombreVendedor) {
+            preparedData.VendedorAsignado = nombreVendedor;
+            preparedData.VendedorAsignadoAutomatico = true;
+            preparedData.VendedorAsignadoClaveOrigen = cvvenKey;
+          }
         }
 
         const optimizedData = optimizeDocument(

@@ -813,3 +813,14 @@ export async function getClavesHistorialDetalle(batchId) {
 export async function deleteAllClaves() {
   return apiRequest('/claves/all', { method: 'DELETE' });
 }
+
+export async function getClavesValoresDistintos() {
+  return apiRequest('/claves/valores-distintos');
+}
+
+export async function crearClaveManual(row) {
+  return apiRequest('/claves', {
+    method: 'POST',
+    body: JSON.stringify({ row }),
+  });
+}
