@@ -788,3 +788,28 @@ export async function getWhatsAppLogs(params = {}) {
 export async function getWhatsAppBatchSummary(batchId) {
   return apiRequest(`/whatsapp/logs/summary/${encodeURIComponent(batchId)}`);
 }
+
+// ========== CLAVES CVVEN (asignaciones a vendedores) ==========
+export async function getClaves(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return apiRequest(`/claves${query ? `?${query}` : ''}`);
+}
+
+export async function bulkUploadClaves(rows) {
+  return apiRequest('/claves/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ rows }),
+  });
+}
+
+export async function getClavesHistorial() {
+  return apiRequest('/claves/historial');
+}
+
+export async function getClavesHistorialDetalle(batchId) {
+  return apiRequest(`/claves/historial/${encodeURIComponent(batchId)}`);
+}
+
+export async function deleteAllClaves() {
+  return apiRequest('/claves/all', { method: 'DELETE' });
+}

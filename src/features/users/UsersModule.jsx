@@ -194,6 +194,7 @@ export default function UsersModule() {
                   <option value="mesa_control">Mesa de Control</option>
                   <option value="regionales">Regionales</option>
                   <option value="cobranza_mx">Cobranza MX</option>
+                  <option value="coordinador_claves">Coordinador de Claves</option>
                 </>
               )}
             </select>

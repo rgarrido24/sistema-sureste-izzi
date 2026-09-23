@@ -21,7 +21,8 @@ export const USER_ROLES = {
 export const MODULES = {
   SALES: 'sales',
   INSTALL: 'install',
-  ADMIN: 'admin'
+  ADMIN: 'admin',
+  CLAVES: 'claves'
 };
 
 export const COLLECTIONS = {

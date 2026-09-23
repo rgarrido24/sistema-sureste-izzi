@@ -17,6 +17,7 @@ import AssistantChatView from '../features/assistant/AssistantChatView.jsx';
 import KnowledgeModule from '../features/knowledge/KnowledgeModule.jsx';
 import AdminActivityDashboard from '../features/activity/AdminActivityDashboard.jsx';
 import WhatsAppBulkModule from '../features/whatsapp/WhatsAppBulkModule.jsx';
+import ClavesModule from '../features/claves/ClavesModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -27,13 +28,17 @@ export default function AdminDashboard({ user }) {
       ? MODULES.ADMIN
       : user?.role === 'cobranza_mx'
         ? MODULES.SALES
-        : MODULES.SALES;
+        : user?.role === 'coordinador_claves'
+          ? MODULES.CLAVES
+          : MODULES.SALES;
   const initialTab =
     user?.role === 'usuarios'
       ? 'users'
       : user?.role === 'cobranza_mx'
         ? 'm1'
-        : 'dashboard';
+        : user?.role === 'coordinador_claves'
+          ? 'claves'
+          : 'dashboard';
   const [currentModule, setCurrentModule] = useState(initialModule);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -47,13 +52,17 @@ export default function AdminDashboard({ user }) {
       // Cobranza MX: no permitir salir del módulo de Cobranza
       return;
     }
+    if (user?.role === 'coordinador_claves' && module !== MODULES.CLAVES) {
+      // Coordinador de claves: solo puede ver Claves CVVEN
+      return;
+    }
     setCurrentModule(module);
   };
 
   return (
     <AdminLayout
       user={user}
-      currentModule={user?.role === 'usuarios' ? MODULES.ADMIN : currentModule}
+      currentModule={user?.role === 'usuarios' ? MODULES.ADMIN : user?.role === 'coordinador_claves' ? MODULES.CLAVES : currentModule}
       setModule={handleModuleChange}
       activeTab={activeTab}
       setActiveTab={setActiveTab}
@@ -85,6 +94,13 @@ export default function AdminDashboard({ user }) {
           {activeTab === 'packages' && <PackagesModule />}
           {activeTab === 'upload' && <UploadModule currentModule={currentModule} />}
           {activeTab === 'clients' && <InstallModule activeTab={activeTab} />}
+        </>
+      )}
+
+      {/* Módulo de Claves CVVEN - Solo admin, admin_general, director y coordinador_claves */}
+      {currentModule === MODULES.CLAVES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves') && (
+        <>
+          {activeTab === 'claves' && <ClavesModule />}
         </>
       )}
 
