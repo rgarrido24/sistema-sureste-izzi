@@ -37,35 +37,55 @@ function normHeader(k) {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function getNoEmpleado(row) {
-  if (!row || typeof row !== 'object') return '';
-  // Columna S "No. EMPLEADO": Mongo la guarda anidada como { No: { EMPLEADO } }
-  const anidado = row.No && typeof row.No === 'object'
-    ? (row.No.EMPLEADO || row.No.Empleado || row.No.empleado)
-    : null;
-  const candidatos = [
-    anidado,
-    row['No EMPLEADO'],
-    row['NO EMPLEADO'],
-    row['No. EMPLEADO'],
-    row['NO. EMPLEADO'],
-  ];
-  for (const v of candidatos) {
-    if (v !== undefined && v !== null && typeof v !== 'object') {
-      const s = String(v).trim();
-      if (s && s !== '-') return s;
-    }
-  }
-  for (const [key, v] of Object.entries(row)) {
-    if (typeof v === 'object') continue;
-    const n = normHeader(key);
-    const esNumEmpleado = n.includes('empleado') && (n.includes('no') || n.includes('num') || n === 'empleado');
-    if (esNumEmpleado && v !== undefined && v !== null) {
-      const s = String(v).trim();
-      if (s && s !== '-') return s;
+function textoPlano(v) {
+  if (v === undefined || v === null || typeof v === 'object') return '';
+  const s = String(v).trim();
+  return (!s || s === '-') ? '' : s;
+}
+
+function primerTexto(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  for (const v of Object.values(obj)) {
+    const val = textoPlano(v);
+    if (val) return val;
+    if (v && typeof v === 'object') {
+      const inner = primerTexto(v);
+      if (inner) return inner;
     }
   }
   return '';
+}
+
+function getNoEmpleado(row) {
+  if (!row || typeof row !== 'object') return '';
+  const directo = textoPlano(row['No EMPLEADO'])
+    || textoPlano(row['NO EMPLEADO'])
+    || textoPlano(row['No. EMPLEADO']);
+  if (directo) return directo;
+
+  // Columna S "No. EMPLEADO" en Mongo: { No: { " EMPLEADO": "EXT..." } }
+  if (row.No && typeof row.No === 'object') {
+    const anidado = textoPlano(row.No.EMPLEADO)
+      || textoPlano(row.No[' EMPLEADO'])
+      || textoPlano(row.No.Empleado)
+      || primerTexto(row.No);
+    if (anidado) return anidado;
+  }
+
+  const walk = (node, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 3) return '';
+    for (const [key, v] of Object.entries(node)) {
+      const n = normHeader(key);
+      const val = textoPlano(v);
+      if (val && n.includes('empleado')) return val;
+      if (v && typeof v === 'object') {
+        const inner = walk(v, depth + 1);
+        if (inner) return inner;
+      }
+    }
+    return '';
+  };
+  return walk(row);
 }
 
 export default function ClavesModule() {
@@ -222,12 +242,7 @@ function ListadoClaves() {
               <th className="text-left px-3 py-2 whitespace-nowrap">Clave</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">No. Empleado</th>
               <th className="text-left px-3 py-2 whitespace-nowrap bg-amber-50">Subdistribuidor/Vendedor (asignación)</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Distribuidor</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Plaza</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Estatus</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Fecha Alta</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Subido por</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Cuándo</th>
             </tr>
           </thead>
           <tbody>
@@ -280,14 +295,7 @@ function ListadoClaves() {
                     </button>
                   )}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['DISTRIBUIDOR'] || '-'}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{r['PLAZA'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['ESTATUS'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r['FECHA ALTA'] || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.subidoPorNombre || '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-slate-500">
-                  {r.createdAt ? new Date(r.createdAt).toLocaleString('es-MX') : '-'}
-                </td>
               </tr>
             ))}
           </tbody>

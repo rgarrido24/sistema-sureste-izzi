@@ -22,26 +22,50 @@ function valorEmpleado(v) {
   return (!s || s === '-') ? '' : s;
 }
 
+function primerTexto(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  for (const v of Object.values(obj)) {
+    const val = valorEmpleado(v);
+    if (val) return val;
+    if (v && typeof v === 'object') {
+      const inner = primerTexto(v);
+      if (inner) return inner;
+    }
+  }
+  return '';
+}
+
 function getNoEmpleado(row) {
   if (!row || typeof row !== 'object') return '';
-  // Mongo interpreta "No. EMPLEADO" como { No: { EMPLEADO: "..." } }
-  const anidado = row.No && typeof row.No === 'object'
-    ? (row.No.EMPLEADO || row.No.Empleado || row.No.empleado)
-    : null;
-  const directo = valorEmpleado(anidado)
-    || valorEmpleado(row['No EMPLEADO'])
+  const directo = valorEmpleado(row['No EMPLEADO'])
     || valorEmpleado(row['NO EMPLEADO'])
     || valorEmpleado(row['No. EMPLEADO']);
   if (directo) return directo;
 
-  for (const [key, v] of Object.entries(row)) {
-    if (typeof v === 'object') continue;
-    const n = normHeader(key);
-    const esNumEmpleado = n.includes('empleado') && (n.includes('no') || n.includes('num') || n === 'empleado');
-    const val = valorEmpleado(v);
-    if (esNumEmpleado && val) return val;
+  // "No. EMPLEADO" en Mongo queda { No: { " EMPLEADO": "EXT..." } } (espacio tras el punto)
+  if (row.No && typeof row.No === 'object') {
+    const anidado = valorEmpleado(row.No.EMPLEADO)
+      || valorEmpleado(row.No[' EMPLEADO'])
+      || valorEmpleado(row.No.Empleado)
+      || valorEmpleado(row.No.empleado)
+      || primerTexto(row.No);
+    if (anidado) return anidado;
   }
-  return '';
+
+  const walk = (node, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 3) return '';
+    for (const [key, v] of Object.entries(node)) {
+      const n = normHeader(key);
+      const val = valorEmpleado(v);
+      if (val && (n.includes('empleado') || n === 'empleado')) return val;
+      if (v && typeof v === 'object') {
+        const inner = walk(v, depth + 1);
+        if (inner) return inner;
+      }
+    }
+    return '';
+  };
+  return walk(row);
 }
 
 function sanitizeRowForMongo(row) {
@@ -53,9 +77,8 @@ function sanitizeRowForMongo(row) {
       continue;
     }
     if (k === 'No' && v && typeof v === 'object' && !Array.isArray(v)) {
-      if (v.EMPLEADO != null || v.Empleado != null || v.empleado != null) {
-        out['No EMPLEADO'] = v.EMPLEADO || v.Empleado || v.empleado;
-      }
+      const extraido = primerTexto(v);
+      if (extraido) out['No EMPLEADO'] = extraido;
       continue;
     }
     out[k] = v;
