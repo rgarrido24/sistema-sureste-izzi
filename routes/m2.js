@@ -226,134 +226,129 @@ router.post('/bulk', async (req, res) => {
     // Si es reemplazo mensual, eliminar todos los registros existentes primero
     if (replaceAll) {
       console.log('🔄 Modo reemplazo mensual: Eliminando todos los registros M2 existentes...');
-      const M2Master = (await import('../models/M2Master.js')).default;
       const deleteResult = await M2Master.deleteMany({});
       console.log(`✅ Eliminados ${deleteResult.deletedCount} registros M2 anteriores`);
     }
-    
+
     let created = 0;
     let updated = 0;
     let skipped = 0;
-    
+
+    // 1) Preparar cada fila (sin tocar la base de datos todavía) y calcular Estatus FPD
+    const prepared = [];
     for (const item of data) {
       const cuenta = normalizeCuenta(item);
-      if (!cuenta) {
-        skipped++;
-        continue;
-      }
-      
-      const existingM2 = await M2Master.findOne({
-        $or: [{ cuenta }, { 'Nº de cuenta': cuenta }, { 'Cuenta': cuenta }]
-      });
-      
-      const existingM1 = await M1Master.findOne({
-        $or: [{ cuenta }, { 'Nº de cuenta': cuenta }, { 'Cuenta': cuenta }]
-      });
-      
-      const existingOperacion = await OperacionDia.findOne({
-        $or: [{ cuenta }, { 'Nº de cuenta': cuenta }, { 'Cuenta': cuenta }]
-      });
-      
+      if (!cuenta) { skipped++; continue; }
+
       const preparedData = prepareDataForUpsert(item, 'm2');
-      
+
       // Procesar campo M2: 0 = FPD CORRIENTE, 1 = M2 (debe)
-      // Buscar en todas las variaciones posibles del nombre del campo
-      const campoM2 = item['M2'] || 
-                      item['m2'] || 
-                      item['M2 '] ||
-                      item['m2 '] ||
-                      item['Permanencia'] ||
-                      item['permanencia'] ||
-                      null;
-      
-      // Log para debugging (solo los primeros 5)
-      if (created + updated < 5) {
-        console.log(`🔍 M2 - Item ${created + updated + 1}:`);
-        console.log(`   - Campo M2 encontrado:`, campoM2);
-        console.log(`   - Tipo:`, typeof campoM2);
-        console.log(`   - Keys del item:`, Object.keys(item).slice(0, 20));
-      }
-      
-      // Convertir a número si es string
+      const campoM2 = item['M2'] ?? item['m2'] ?? item['M2 '] ?? item['m2 '] ??
+                      item['Permanencia'] ?? item['permanencia'] ?? null;
+
       let campoM2Num = null;
       if (campoM2 !== null && campoM2 !== undefined && campoM2 !== '') {
         if (typeof campoM2 === 'number') {
           campoM2Num = campoM2;
         } else {
           const str = String(campoM2).trim();
-          if (str === '0' || str === '1') {
-            campoM2Num = parseInt(str, 10);
-          }
+          if (str === '0' || str === '1') campoM2Num = parseInt(str, 10);
         }
       }
-      
-      if (campoM2Num !== null) {
-        if (campoM2Num === 0) {
-          // 0 = No debe = FPD CORRIENTE
-          preparedData['Estatus FPD'] = 'FPD CORRIENTE';
-          preparedData['EstatusFPD'] = 'FPD CORRIENTE';
-          preparedData['M2'] = 0;
-          preparedData.estado = 'Completa';
-        } else if (campoM2Num === 1) {
-          // 1 = Debe = M2
-          preparedData['Estatus FPD'] = 'M2';
-          preparedData['EstatusFPD'] = 'M2';
-          preparedData['M2'] = 1;
-          preparedData.estado = 'Abierta';
-        }
+
+      if (campoM2Num === 0) {
+        preparedData['Estatus FPD'] = 'FPD CORRIENTE';
+        preparedData['EstatusFPD'] = 'FPD CORRIENTE';
+        preparedData['M2'] = 0;
+        preparedData.estado = 'Completa';
+      } else if (campoM2Num === 1) {
+        preparedData['Estatus FPD'] = 'M2';
+        preparedData['EstatusFPD'] = 'M2';
+        preparedData['M2'] = 1;
+        preparedData.estado = 'Abierta';
       } else {
-        // Si no se encuentra el campo M2, asumir M2 por defecto
         preparedData['Estatus FPD'] = 'M2';
         preparedData['EstatusFPD'] = 'M2';
         preparedData.estado = 'Abierta';
       }
-      
-      // OPTIMIZAR DATOS: Eliminar campos vacíos y normalizar antes de guardar
-      const optimizedData = optimizeDocument(preparedData, 'm2');
-      
-      if (existingM2) {
-        if (updateExisting) {
-          // Preservar teléfono y notas del registro existente
+
+      prepared.push({ cuenta, item, optimizedData: optimizeDocument(preparedData, 'm2') });
+    }
+
+    console.log(`📊 [M2] ${prepared.length} filas listas (de ${data.length}), procesando en lotes...`);
+
+    // 2) Procesar en lotes: por cada lote, UNA consulta $in a cada colección (no una por fila)
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < prepared.length; i += BATCH_SIZE) {
+      const batch = prepared.slice(i, i + BATCH_SIZE);
+      const cuentas = batch.map(b => b.cuenta);
+
+      const [existingM2Docs, existingM1Docs, existingOperacionDocs] = await Promise.all([
+        M2Master.find({ $or: [{ cuenta: { $in: cuentas } }, { 'Nº de cuenta': { $in: cuentas } }, { 'Cuenta': { $in: cuentas } }] }).lean(),
+        M1Master.find({ $or: [{ cuenta: { $in: cuentas } }, { 'Nº de cuenta': { $in: cuentas } }, { 'Cuenta': { $in: cuentas } }] }).lean(),
+        OperacionDia.find({ $or: [{ cuenta: { $in: cuentas } }, { 'Nº de cuenta': { $in: cuentas } }, { 'Cuenta': { $in: cuentas } }] }).lean(),
+      ]);
+
+      const byCuenta = (docs) => {
+        const m = new Map();
+        for (const d of docs) {
+          const key = d.cuenta || d['Nº de cuenta'] || d['Cuenta'];
+          if (key && !m.has(key)) m.set(key, d);
+        }
+        return m;
+      };
+      const mapM2 = byCuenta(existingM2Docs);
+      const mapM1 = byCuenta(existingM1Docs);
+      const mapOperacion = byCuenta(existingOperacionDocs);
+
+      const ops = [];
+      for (const { cuenta, item, optimizedData } of batch) {
+        const existingM2 = mapM2.get(cuenta);
+
+        if (existingM2) {
+          if (!updateExisting) { skipped++; continue; }
           const updateData = {
             ...optimizedData,
-            Telefono1: existingM2.Telefono1 || preparedData.Telefono1 || item.Telefono1 || '',
-            Telefono2: existingM2.Telefono2 || preparedData.Telefono2 || item.Telefono2 || '',
-            'Telefono1': existingM2['Telefono1'] || preparedData['Telefono1'] || item['Telefono1'] || '',
-            'Telefono2': existingM2['Telefono2'] || preparedData['Telefono2'] || item['Telefono2'] || '',
-            notaContacto: existingM2.notaContacto || preparedData.notaContacto || '',
-            fechaPromesaPago: existingM2.fechaPromesaPago || preparedData.fechaPromesaPago || '',
-            'Nota Contacto': existingM2['Nota Contacto'] || preparedData['Nota Contacto'] || '',
-            'Fecha Promesa Pago': existingM2['Fecha Promesa Pago'] || preparedData['Fecha Promesa Pago'] || '',
+            Telefono1: existingM2.Telefono1 || optimizedData.Telefono1 || item.Telefono1 || '',
+            Telefono2: existingM2.Telefono2 || optimizedData.Telefono2 || item.Telefono2 || '',
+            notaContacto: existingM2.notaContacto || optimizedData.notaContacto || '',
+            fechaPromesaPago: existingM2.fechaPromesaPago || optimizedData.fechaPromesaPago || '',
+            'Nota Contacto': existingM2['Nota Contacto'] || optimizedData['Nota Contacto'] || '',
+            'Fecha Promesa Pago': existingM2['Fecha Promesa Pago'] || optimizedData['Fecha Promesa Pago'] || '',
             fechaCreacion: existingM2.fechaCreacion || new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
           };
-          await M2Master.findByIdAndUpdate(existingM2._id, optimizeDocument(updateData, 'm2'));
+          ops.push({ updateOne: { filter: { _id: existingM2._id }, update: { $set: optimizeDocument(updateData, 'm2') } } });
           updated++;
         } else {
-          skipped++;
+          const existingM1 = mapM1.get(cuenta);
+          const existingOperacion = mapOperacion.get(cuenta);
+          const sourceRecord = existingM1 || existingOperacion;
+
+          if (sourceRecord) {
+            const createData = {
+              ...optimizedData,
+              Telefono1: sourceRecord.Telefono1 || optimizedData.Telefono1 || item.Telefono1 || '',
+              Telefono2: sourceRecord.Telefono2 || optimizedData.Telefono2 || item.Telefono2 || '',
+              notaContacto: sourceRecord.notaContacto || optimizedData.notaContacto || '',
+              fechaPromesaPago: sourceRecord.fechaPromesaPago || optimizedData.fechaPromesaPago || '',
+              'Nota Contacto': sourceRecord['Nota Contacto'] || optimizedData['Nota Contacto'] || '',
+              'Fecha Promesa Pago': sourceRecord['Fecha Promesa Pago'] || optimizedData['Fecha Promesa Pago'] || '',
+              origen: existingM1 ? 'm1' : 'operacion',
+              fechaCreacion: sourceRecord?.fechaCreacion || new Date(),
+            };
+            ops.push({ insertOne: { document: optimizeDocument(createData, 'm2') } });
+          } else {
+            ops.push({ insertOne: { document: optimizedData } });
+          }
+          created++;
         }
-      } else if (existingM1 || existingOperacion) {
-        // Preservar teléfono y notas del M1 o Operación anterior
-        const sourceRecord = existingM1 || existingOperacion;
-        const createData = {
-          ...optimizedData,
-          Telefono1: sourceRecord.Telefono1 || optimizedData.Telefono1 || item.Telefono1 || '',
-          Telefono2: sourceRecord.Telefono2 || optimizedData.Telefono2 || item.Telefono2 || '',
-          'Telefono1': sourceRecord['Telefono1'] || optimizedData['Telefono1'] || item['Telefono1'] || '',
-          'Telefono2': sourceRecord['Telefono2'] || optimizedData['Telefono2'] || item['Telefono2'] || '',
-          notaContacto: sourceRecord.notaContacto || optimizedData.notaContacto || '',
-          fechaPromesaPago: sourceRecord.fechaPromesaPago || optimizedData.fechaPromesaPago || '',
-          'Nota Contacto': sourceRecord['Nota Contacto'] || optimizedData['Nota Contacto'] || '',
-          'Fecha Promesa Pago': sourceRecord['Fecha Promesa Pago'] || optimizedData['Fecha Promesa Pago'] || '',
-          origen: existingM1 ? 'm1' : 'operacion',
-          fechaCreacion: sourceRecord?.fechaCreacion || new Date()
-        };
-        await M2Master.create(optimizeDocument(createData, 'm2'));
-        created++;
-      } else {
-        await M2Master.create(optimizedData);
-        created++;
       }
+
+      if (ops.length > 0) {
+        await M2Master.bulkWrite(ops, { ordered: false });
+      }
+      console.log(`✅ [M2] Lote ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(prepared.length / BATCH_SIZE)} OK. Acumulado: ${created} creados, ${updated} actualizados`);
     }
     
     // Auditoría: registrar upload

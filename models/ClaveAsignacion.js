@@ -20,7 +20,6 @@ const claveAsignacionSchema = new mongoose.Schema({
   strict: false,
 });
 
-claveAsignacionSchema.index({ batchId: 1 });
 claveAsignacionSchema.index({ createdAt: -1 });
 
 export default mongoose.model('ClaveAsignacion', claveAsignacionSchema, 'claves_asignacion');
