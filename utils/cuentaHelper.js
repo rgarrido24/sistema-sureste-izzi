@@ -82,7 +82,10 @@ export function normalizeCuenta(item) {
       ' cuenta',                // Con espacio al inicio
       ' cuenta ',               // Con espacios
       'Cliente',                // Formato "Operación RGO" (columna D): el número de cuenta viene aquí
-      'CLIENTE'
+      'CLIENTE',
+      'Num Cliente',            // Formato "Permanencia" (M2-M6): el número de cuenta viene aquí
+      'NUM CLIENTE',
+      'NumCliente'
     ];
     
     for (const field of possibleFields) {

@@ -51,7 +51,10 @@ export function stampModuleFlag(row, moduleUpper) {
 }
 
 function cuentaOf(row) {
-  return String(row.cuenta || row.Cuenta || row.CUENTA || row.NoCuenta || row.Referencia || '').trim();
+  return String(
+    row.cuenta || row.Cuenta || row.CUENTA || row.NoCuenta || row.Referencia ||
+    row['Num Cliente'] || row['NUM CLIENTE'] || row.NumCliente || ''
+  ).trim();
 }
 
 /** Se queda con la fila del mes más alto por cuenta (estatus actual). */

@@ -110,16 +110,27 @@ export function parseCSV(text) {
  */
 export function parseExcel(buffer) {
   const workbook = XLSX.read(buffer, { type: 'array' });
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-  
-  // Leer como array de arrays (mantiene los headers como primera fila)
-  const data = XLSX.utils.sheet_to_json(worksheet, { 
-    header: 1, 
-    defval: '',
-    raw: false // Convertir números a strings
+
+  // Algunos archivos (ej. Permanencia) traen varias hojas: una de catálogo pequeña,
+  // la data real en otra (ej. "BD"), y un resumen. En vez de asumir que la primera
+  // hoja es la correcta, se elige la que tenga más filas con datos.
+  let mejorNombre = workbook.SheetNames[0];
+  let mejorData = XLSX.utils.sheet_to_json(workbook.Sheets[mejorNombre], {
+    header: 1, defval: '', raw: false
   });
-  
-  return data;
+
+  if (workbook.SheetNames.length > 1) {
+    for (const sheetName of workbook.SheetNames.slice(1)) {
+      const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+        header: 1, defval: '', raw: false
+      });
+      if (data.length > mejorData.length) {
+        mejorData = data;
+        mejorNombre = sheetName;
+      }
+    }
+  }
+
+  return mejorData;
 }
 

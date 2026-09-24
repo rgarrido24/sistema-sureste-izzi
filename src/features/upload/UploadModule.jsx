@@ -82,7 +82,7 @@ export default function UploadModule({ currentModule }) {
             // Para CSV/TXT, el resultado ya es texto, no necesita decodificación
             const text = e.target.result;
             rows = parseCSV(text);
-          } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.xlsm')) {
+          } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.xlsm') || file.name.endsWith('.xlsb')) {
             // Para Excel, el resultado es ArrayBuffer
             const buffer = e.target.result;
             rows = parseExcel(buffer);
@@ -137,6 +137,11 @@ export default function UploadModule({ currentModule }) {
               c.includes('usuario vendedor')
             );
             if (hasCliente && hasOperacionRgo) return true;
+            // Formato "Permanencia" (M2-M6): no trae "cuenta", trae "Num Cliente" + "Permanencia" + "M"
+            const hasNumCliente = cells.some(c => c === 'num cliente');
+            const hasPermanenciaCols = cells.some(c => c === 'permanencia') &&
+              cells.some(c => c === 'm' || c === 'ms' || c === 'cosecha');
+            if (hasNumCliente && hasPermanenciaCols) return true;
             // Fallback: otros archivos (M1-M4) traen "CUENTA"
             return cells.some(c => c === 'cuenta' || c.includes('cuenta'));
           };
@@ -224,6 +229,7 @@ export default function UploadModule({ currentModule }) {
               'nocuenta',
               'referencia',
               'cliente',
+              'numcliente',
             ];
 
             // 1) Buscar por keys exactas normalizadas
@@ -528,7 +534,7 @@ export default function UploadModule({ currentModule }) {
           </label>
           <input
             type="file"
-            accept=".csv,.xlsx,.xls,.xlsm,.txt"
+            accept=".csv,.xlsx,.xls,.xlsm,.xlsb,.txt"
             onChange={handleFileChange}
             disabled={uploading || !canUpload}
             className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
