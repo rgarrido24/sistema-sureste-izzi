@@ -160,6 +160,37 @@ export function calcularSaldoTotal(cliente) {
   return porVencer + vencido + monto;
 }
 
+export function parseMoney(val) {
+  if (!val && val !== 0) return 0;
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  const str = String(val).trim();
+  if (!str || str === '-' || str === 'N/A') return 0;
+  const num = parseFloat(str.replace(/[$\s,]/g, '').replace(/[^0-9.-]+/g, ''));
+  return isNaN(num) ? 0 : num;
+}
+
+export function getItemSaldo(item) {
+  const saldo = parseMoney(
+    item.SALDO || item.Saldo || item['Saldo'] || item['Saldo Total'] || item['SALDO TOTAL'] || item['Total Adeudo'] || 0
+  );
+  const porVencer = parseMoney(item['SALDO POR VENCER'] || item['Saldo por vencer'] || item['Saldo Por Vencer'] || 0);
+  const vencido = parseMoney(item['SALDO VENCIDO'] || item['Saldo vencido'] || item['Saldo Vencido'] || 0);
+  return (porVencer + vencido) || saldo || 0;
+}
+
+export function getItemId(item) {
+  return String(item?.id || item?._id || '');
+}
+
+export function itemEsDecomisionable(status, estatusFPD) {
+  if (status === 'M4') return true;
+  if (status === 'M1') {
+    const e = String(estatusFPD || '').toUpperCase();
+    return e.includes('PERDIDA') || e.includes('PÉRDIDA');
+  }
+  return false;
+}
+
 /**
  * Obtiene variables de entorno de forma segura
  */

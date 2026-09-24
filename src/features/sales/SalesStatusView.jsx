@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, Phone, MessageCircle, Calendar, MapPin, Building2, User, Edit2, Save, X } from 'lucide-react';
+import { Search, Phone, MessageCircle, Calendar, MapPin, Building2, User, Edit2, Save, X, DollarSign } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { MODULES } from '../../utils/constants.js';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
-import { calcularEstatusFPDDesdeFecha, parseFlexibleDate } from '../../utils/helpers.js';
+import { calcularEstatusFPDDesdeFecha, parseFlexibleDate, getItemSaldo, getItemId, itemEsDecomisionable } from '../../utils/helpers.js';
 
 // Componente para editar teléfono y notas
 function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromesaPago, onUpdate }) {
@@ -583,6 +583,13 @@ export default function SalesStatusView({
   const [mesInstalacion, setMesInstalacion] = useState(null);
   const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [sortMonto, setSortMonto] = useState('asc');
+  const [filterMontoRango, setFilterMontoRango] = useState('');
+  const [filterMontoMin, setFilterMontoMin] = useState('');
+  const [filterMontoMax, setFilterMontoMax] = useState('');
+  const [soloDecomision, setSoloDecomision] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showVendorBreakdown, setShowVendorBreakdown] = useState(false);
 
   const isVendorAssigned = (item) => {
     const raw = String(item?.Vendedor || item?.['Vendedor'] || '').trim();
@@ -669,6 +676,11 @@ export default function SalesStatusView({
       clearInterval(interval);
     };
   }, [status, user, refreshNonce]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setCurrentPage(1);
+  }, [status]);
 
   if (loading) {
     return (
@@ -1160,14 +1172,82 @@ export default function SalesStatusView({
       matchesEstatus = itemEstatus === filterEstatus;
     }
     
-    return matchesSearch && matchesVendor && matchesPlaza && matchesRegion && matchesFechaVenc && matchesVendorAssigned && matchesEstatus;
+    const itemEstatusFPD = getEstatusFPD(item);
+    const matchesDecomision = !soloDecomision || itemEsDecomisionable(status, itemEstatusFPD);
+    const saldoItem = getItemSaldo(item);
+    let matchesMonto = true;
+    if (filterMontoRango === '0-500') matchesMonto = saldoItem <= 500;
+    else if (filterMontoRango === '501-1500') matchesMonto = saldoItem > 500 && saldoItem <= 1500;
+    else if (filterMontoRango === '1501-3000') matchesMonto = saldoItem > 1500 && saldoItem <= 3000;
+    else if (filterMontoRango === '3000+') matchesMonto = saldoItem > 3000;
+    else if (filterMontoRango === 'custom') {
+      const min = filterMontoMin === '' ? null : Number(filterMontoMin);
+      const max = filterMontoMax === '' ? null : Number(filterMontoMax);
+      if (min !== null && !Number.isNaN(min)) matchesMonto = saldoItem >= min;
+      if (max !== null && !Number.isNaN(max)) matchesMonto = matchesMonto && saldoItem <= max;
+    }
+
+    return matchesSearch && matchesVendor && matchesPlaza && matchesRegion && matchesFechaVenc && matchesVendorAssigned && matchesEstatus && matchesDecomision && matchesMonto;
   });
 
+  const sortedData = [...filteredData].sort((a, b) => {
+    if (!sortMonto) return 0;
+    const diff = getItemSaldo(a) - getItemSaldo(b);
+    return sortMonto === 'asc' ? diff : -diff;
+  });
+
+  const filteredAdeudo = sortedData.reduce((sum, item) => sum + getItemSaldo(item), 0);
+  const filteredDecomision = sortedData.reduce((sum, item) => (
+    itemEsDecomisionable(status, getEstatusFPD(item)) ? sum + getItemSaldo(item) : sum
+  ), 0);
+  const filteredDecomisionCount = sortedData.filter((item) => itemEsDecomisionable(status, getEstatusFPD(item))).length;
+  const selectedItems = data.filter((item) => selectedIds.has(getItemId(item)));
+  const selectedTotal = selectedItems.reduce((sum, item) => sum + getItemSaldo(item), 0);
+  const selectedDecomision = selectedItems.reduce((sum, item) => (
+    itemEsDecomisionable(status, getEstatusFPD(item)) ? sum + getItemSaldo(item) : sum
+  ), 0);
+  const vendorBreakdown = (() => {
+    const map = new Map();
+    selectedItems.forEach((item) => {
+      const name = String(item.Vendedor || item['Vendedor'] || 'Sin vendedor').trim() || 'Sin vendedor';
+      const prev = map.get(name) || { count: 0, total: 0 };
+      prev.count += 1;
+      prev.total += getItemSaldo(item);
+      map.set(name, prev);
+    });
+    return [...map.entries()].sort((a, b) => b[1].total - a[1].total);
+  })();
+
+  const toggleSelected = (id) => {
+    if (!id) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // Paginación
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, endIndex);
+  const paginatedData = sortedData.slice(startIndex, endIndex);
+
+  const selectPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      paginatedData.forEach((item) => {
+        const id = getItemId(item);
+        if (id) next.add(id);
+      });
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(sortedData.map(getItemId).filter(Boolean)));
+  };
 
   return (
     <div className="space-y-4">
@@ -1397,11 +1477,93 @@ export default function SalesStatusView({
               )}
             </div>
           )}
+          <select
+            value={sortMonto}
+            onChange={(e) => {
+              setSortMonto(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="asc">$ menor a mayor</option>
+            <option value="desc">$ mayor a menor</option>
+            <option value="">Sin orden por $</option>
+          </select>
+          <select
+            value={filterMontoRango}
+            onChange={(e) => {
+              setFilterMontoRango(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Todos los montos</option>
+            <option value="0-500">Hasta $500</option>
+            <option value="501-1500">$501 a $1,500</option>
+            <option value="1501-3000">$1,501 a $3,000</option>
+            <option value="3000+">Más de $3,000</option>
+            <option value="custom">Rango personalizado</option>
+          </select>
+          {filterMontoRango === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                value={filterMontoMin}
+                onChange={(e) => { setFilterMontoMin(e.target.value); setCurrentPage(1); }}
+                placeholder="Min $"
+                className="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="number"
+                min="0"
+                value={filterMontoMax}
+                onChange={(e) => { setFilterMontoMax(e.target.value); setCurrentPage(1); }}
+                placeholder="Max $"
+                className="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          )}
+          {(['M1', 'M4'].includes(status)) && (
+            <label className="flex items-center gap-2 text-sm text-red-700 bg-red-50 px-3 py-2 rounded-lg border border-red-100 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={soloDecomision}
+                onChange={(e) => {
+                  setSoloDecomision(e.target.checked);
+                  setCurrentPage(1);
+                }}
+              />
+              Solo decomisión
+            </label>
+          )}
         </div>
         <p className="text-sm text-slate-600 mt-2">
-          Mostrando {filteredData.length} de {count} clientes • Estatus: {status}
+          Mostrando {sortedData.length} de {count} clientes • Estatus: {status}
           {(['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && filterEstatus && ` • Filtrado: ${filterEstatus}`}
         </p>
+        <p className="text-sm text-slate-700 mt-1">
+          Adeudo filtrado: <span className="font-bold">{formatCurrency(filteredAdeudo)}</span>
+          {(['M1', 'M4'].includes(status)) && (
+            <>
+              {' '}• Riesgo decomisión: <span className="font-bold text-red-700">{formatCurrency(filteredDecomision)}</span>
+              <span className="text-slate-500"> ({filteredDecomisionCount} cuentas)</span>
+            </>
+          )}
+        </p>
+        <div className="flex gap-2 items-center mt-3 flex-wrap">
+          <button type="button" onClick={selectPage} className="px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg hover:bg-slate-50">
+            Seleccionar página
+          </button>
+          <button type="button" onClick={selectAllFiltered} className="px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg hover:bg-slate-50">
+            Seleccionar filtrados ({sortedData.length})
+          </button>
+          {selectedIds.size > 0 && (
+            <button type="button" onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 text-xs font-bold text-red-600 hover:underline">
+              Limpiar selección
+            </button>
+          )}
+        </div>
         
         {/* Paginación */}
         <div className="flex gap-2 items-center mt-3 flex-wrap">
@@ -1537,17 +1699,25 @@ export default function SalesStatusView({
             }
             
             const totalSaldo = saldoPorVencer + saldoVencido || saldo || 0;
+            const itemId = getItemId(item);
+            const isSelected = selectedIds.has(itemId);
+            const esDecomision = itemEsDecomisionable(status, estatusPrincipal);
             
             return (
-              <div key={item.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
-                {/* Header con nombre y saldo (ocultar saldo en M2, M3, M4) */}
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-bold text-slate-800 text-sm uppercase flex-1 pr-2">{cliente}</h3>
-                  {!['M2', 'M3', 'M4', 'M5', 'M6'].includes(status) && (
-                    <span className="font-mono font-bold text-green-600 text-lg whitespace-nowrap">
-                      {formatCurrency(totalSaldo)}
-                    </span>
-                  )}
+              <div key={item.id} className={`bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition-shadow ${isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'}`}>
+                <div className="flex justify-between items-start mb-3 gap-2">
+                  <label className="flex items-start gap-2 flex-1 min-w-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelected(itemId)}
+                      className="mt-1"
+                    />
+                    <h3 className="font-bold text-slate-800 text-sm uppercase">{cliente}</h3>
+                  </label>
+                  <span className="font-mono font-bold text-green-600 text-lg whitespace-nowrap">
+                    {formatCurrency(totalSaldo)}
+                  </span>
                 </div>
                 
                 {/* Badge de estatus */}
@@ -1565,6 +1735,11 @@ export default function SalesStatusView({
                   }`}>
                     {estatusPrincipal}
                   </span>
+                  {esDecomision && (
+                    <span className="text-[10px] px-2 py-1 rounded font-bold uppercase bg-red-100 text-red-700">
+                      Decomisión
+                    </span>
+                  )}
                 </div>
                 
                 {/* Información del cliente */}
@@ -1609,8 +1784,7 @@ export default function SalesStatusView({
                   }}
                 />
                 
-                {/* Saldos (ocultar en M2, M3, M4) */}
-                {!['M2', 'M3', 'M4', 'M5', 'M6'].includes(status) && (
+                {(saldoPorVencer > 0 || saldoVencido > 0) && (
                   <div className="mb-3 space-y-1 text-xs">
                     {saldoPorVencer > 0 && (
                       <div className="flex justify-between">
@@ -1652,10 +1826,10 @@ export default function SalesStatusView({
       )}
 
       {/* Controles de Paginación */}
-      {filteredData.length > itemsPerPage && (
+      {sortedData.length > itemsPerPage && (
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between flex-wrap gap-4">
           <div className="text-sm text-slate-600">
-            Mostrando {startIndex + 1} - {Math.min(endIndex, filteredData.length)} de {filteredData.length} clientes
+            Mostrando {startIndex + 1} - {Math.min(endIndex, sortedData.length)} de {sortedData.length} clientes
           </div>
           <div className="flex gap-2 items-center">
             <button
@@ -1676,6 +1850,49 @@ export default function SalesStatusView({
               Siguiente
             </button>
           </div>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-3 z-20 bg-slate-900 text-white rounded-2xl shadow-xl p-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <DollarSign size={16} />
+                {selectedIds.size} seleccionadas
+              </div>
+              <div className="text-lg font-bold mt-1">Adeudo: {formatCurrency(selectedTotal)}</div>
+              {(['M1', 'M4'].includes(status)) && (
+                <div className="text-sm text-red-300">Riesgo decomisión: {formatCurrency(selectedDecomision)}</div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowVendorBreakdown((v) => !v)}
+                className="px-3 py-1.5 bg-white/10 rounded-lg text-xs font-bold"
+              >
+                {showVendorBreakdown ? 'Ocultar vendedores' : 'Ver por vendedor'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 bg-white/10 rounded-lg text-xs font-bold"
+              >
+                Limpiar
+              </button>
+            </div>
+          </div>
+          {showVendorBreakdown && vendorBreakdown.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-white/20 max-h-40 overflow-y-auto space-y-1 text-xs">
+              {vendorBreakdown.map(([name, info]) => (
+                <div key={name} className="flex justify-between gap-3">
+                  <span className="truncate">{name} ({info.count})</span>
+                  <span className="font-bold whitespace-nowrap">{formatCurrency(info.total)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
