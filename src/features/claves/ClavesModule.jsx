@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { UploadCloud, Search, History, Key, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import * as api from '../../api.js';
@@ -134,17 +134,25 @@ export default function ClavesModule() {
 function ListadoClaves() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const searchRef = useRef('');
 
-  const cargar = async (params = {}) => {
-    setLoading(true);
+  const cargar = async ({ silent = false, params } = {}) => {
+    if (!silent) setLoading(true);
     try {
-      const data = await api.getClaves(params);
-      setRows(data);
+      const query = params ?? (searchRef.current ? { search: searchRef.current } : {});
+      const data = await api.getClaves(query);
+      setRows(Array.isArray(data) ? data : []);
+      setError('');
     } catch (e) {
       console.error(e);
+      if (!silent) {
+        setRows([]);
+        setError(e.message || 'No se pudo cargar el listado de claves');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -156,6 +164,8 @@ function ListadoClaves() {
   useEffect(() => {
     cargar();
     api.getVendedoresCobranza().then(setVendedoresCobranza).catch(() => {});
+    const interval = setInterval(() => cargar({ silent: true }), 20000);
+    return () => clearInterval(interval);
   }, []);
 
   const abrirAsignacion = (row) => {
@@ -179,7 +189,8 @@ function ListadoClaves() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    cargar(search ? { search } : {});
+    searchRef.current = search.trim();
+    cargar({ params: searchRef.current ? { search: searchRef.current } : {} });
   };
 
   const handleExport = () => {
@@ -230,6 +241,11 @@ function ListadoClaves() {
         </button>
       </form>
 
+      {error && (
+        <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}. Pide a admin que recargue o vuelve a entrar: el listado es el mismo para todos.
+        </div>
+      )}
       <p className="text-sm text-slate-500 mb-2">{rows.length} registros</p>
 
       <div className="overflow-x-auto border border-slate-200 rounded-lg">

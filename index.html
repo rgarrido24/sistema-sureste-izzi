@@ -15,7 +15,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js?v=claves-20260923b').catch((err) => {
+          navigator.serviceWorker.register('/sw.js?v=sync-20260924').catch((err) => {
             console.warn('No se pudo registrar el service worker:', err);
           });
         });

@@ -10,6 +10,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
 import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
+import { updateContactoInModel } from '../utils/contactoSync.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -402,35 +403,11 @@ router.put('/:id/estado', async (req, res) => {
   }
 });
 
-// Actualizar teléfono y notas de un registro
+// Actualizar teléfono y notas (misma cuenta en M0-M6 para todos los roles)
 router.put('/:id/contacto', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { telefono, notaContacto, fechaPromesaPago } = req.body;
-    
-    const updateData = { fechaActualizacion: new Date() };
-    
-    if (telefono !== undefined) {
-      updateData.Telefono1 = telefono;
-      updateData['Telefono1'] = telefono;
-    }
-    
-    if (notaContacto !== undefined) {
-      updateData.notaContacto = notaContacto;
-      updateData['Nota Contacto'] = notaContacto;
-    }
-    
-    if (fechaPromesaPago !== undefined) {
-      updateData.fechaPromesaPago = fechaPromesaPago;
-      updateData['Fecha Promesa Pago'] = fechaPromesaPago;
-    }
-    
-    const m4 = await M4Master.findByIdAndUpdate(id, updateData, { new: true });
-    
-    if (!m4) {
-      return res.status(404).json({ error: 'No encontrado' });
-    }
-    
+    const m4 = await updateContactoInModel(M4Master, req.params.id, req.body);
+    if (!m4) return res.status(404).json({ error: 'No encontrado' });
     res.json(m4);
   } catch (error) {
     console.error('Error actualizando contacto M4:', error);

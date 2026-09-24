@@ -7,6 +7,7 @@ import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.
 import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
 import { applyPermanenciaEstatus } from '../utils/permanenciaFlag.js';
+import { updateContactoInModel } from '../utils/contactoSync.js';
 
 /**
  * Router M5/M6 (misma lógica que M4) con flag Permanencia 0/1.
@@ -289,22 +290,7 @@ export function createPermanenciaMnRouter({ moduleKey, Model, priorLookups = [] 
 
   router.put('/:id/contacto', async (req, res) => {
     try {
-      const { id } = req.params;
-      const { telefono, notaContacto, fechaPromesaPago } = req.body;
-      const updateData = { fechaActualizacion: new Date() };
-      if (telefono !== undefined) {
-        updateData.Telefono1 = telefono;
-        updateData['Telefono1'] = telefono;
-      }
-      if (notaContacto !== undefined) {
-        updateData.notaContacto = notaContacto;
-        updateData['Nota Contacto'] = notaContacto;
-      }
-      if (fechaPromesaPago !== undefined) {
-        updateData.fechaPromesaPago = fechaPromesaPago;
-        updateData['Fecha Promesa Pago'] = fechaPromesaPago;
-      }
-      const doc = await Model.findByIdAndUpdate(id, updateData, { new: true });
+      const doc = await updateContactoInModel(Model, req.params.id, req.body);
       if (!doc) return res.status(404).json({ error: 'No encontrado' });
       res.json(doc);
     } catch (error) {

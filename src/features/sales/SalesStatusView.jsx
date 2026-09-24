@@ -607,12 +607,13 @@ export default function SalesStatusView({
     loadLastUpdate();
   }, []);
 
-  // Cargar datos solo cuando este componente se monta (pestaña M1, M2, etc.)
+  // Cargar datos y refrescar para que nota/teléfono coincidan entre admin, mesa y vendedor
   useEffect(() => {
-    const loadStatusData = async () => {
+    let cancelled = false;
+    const loadStatusData = async (isInitial = false) => {
       if (!user) return;
       
-      setLoading(true);
+      if (isInitial) setLoading(true);
       try {
         // Determinar si el usuario es vendedor para filtrar
         // El rol 'director' puede ver todo sin filtros
@@ -646,6 +647,7 @@ export default function SalesStatusView({
           data = filterByVendor(data, user);
         }
         
+        if (cancelled) return;
         const dataWithIds = data.map(d => ({ id: d._id || d.id, ...d }));
         setData(dataWithIds);
         setCount(dataWithIds.length);
@@ -656,11 +658,16 @@ export default function SalesStatusView({
       } catch (error) {
         console.error('Error cargando datos:', error);
       } finally {
-        setLoading(false);
+        if (isInitial && !cancelled) setLoading(false);
       }
     };
 
-    loadStatusData();
+    loadStatusData(true);
+    const interval = setInterval(() => loadStatusData(false), 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [status, user, refreshNonce]);
 
   if (loading) {

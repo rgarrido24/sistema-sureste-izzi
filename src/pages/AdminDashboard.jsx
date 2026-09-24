@@ -95,11 +95,9 @@ export default function AdminDashboard({ user }) {
         </>
       )}
 
-      {/* Módulo de Claves CVVEN */}
-      {currentModule === MODULES.CLAVES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves' || user?.role === 'usuarios') && (
-        <>
-          {activeTab === 'claves' && <ClavesModule />}
-        </>
+      {/* Módulo de Claves CVVEN — misma base para admin y rol usuarios */}
+      {currentModule === MODULES.CLAVES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves' || user?.role === 'usuarios') && activeTab !== 'chat' && (
+        <ClavesModule />
       )}
 
       {/* Módulo de Administración */}
