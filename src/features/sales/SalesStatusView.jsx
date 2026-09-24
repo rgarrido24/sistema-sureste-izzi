@@ -1094,6 +1094,21 @@ export default function SalesStatusView({
     
     return sortedStats;
   })() : {};
+
+  const nacionalStats = (() => {
+    const statusKey = status.toLowerCase();
+    const acc = { total: 0, [statusKey]: 0, perdidas: 0, fpdCorriente: 0 };
+    Object.values(regionStats).forEach((s) => {
+      acc.total += s.total || 0;
+      acc[statusKey] += s[statusKey] || 0;
+      acc.perdidas += s.perdidas || 0;
+      acc.fpdCorriente += s.fpdCorriente || 0;
+    });
+    acc[`porcentaje${status}`] = acc.total > 0 ? ((acc[statusKey] / acc.total) * 100).toFixed(1) : 0;
+    acc.porcentajePerdidas = acc.total > 0 ? ((acc.perdidas / acc.total) * 100).toFixed(1) : 0;
+    acc.porcentajeFPD = acc.total > 0 ? ((acc.fpdCorriente / acc.total) * 100).toFixed(1) : 0;
+    return acc;
+  })();
   
   // Filtrar por búsqueda, vendedor y estatus
   const filteredData = data.filter(item => {
@@ -1190,6 +1205,33 @@ export default function SalesStatusView({
           <h3 className="text-xl font-bold mb-4">Estadísticas por Región</h3>
           {Object.keys(regionStats).length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {nacionalStats.total > 0 && (
+                <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-50 md:col-span-2 lg:col-span-3">
+                  <h4 className="font-bold text-blue-900 mb-3 text-lg">Nacional (promedio)</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                    <div className="flex justify-between items-center bg-white p-2 rounded">
+                      <span className="text-slate-600 font-medium">Total:</span>
+                      <span className="font-bold text-slate-800">{nacionalStats.total}</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-amber-50 p-2 rounded">
+                      <span className="text-amber-700 font-medium">{status}:</span>
+                      <span className="font-bold text-amber-700">
+                        {nacionalStats[status.toLowerCase()] || 0} ({nacionalStats[`porcentaje${status}`] || 0}%)
+                      </span>
+                    </div>
+                    {status === 'M1' && (
+                      <div className="flex justify-between items-center bg-red-50 p-2 rounded">
+                        <span className="text-red-700 font-medium">Pérdidas:</span>
+                        <span className="font-bold text-red-700">{nacionalStats.perdidas || 0} ({nacionalStats.porcentajePerdidas || 0}%)</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center bg-green-50 p-2 rounded">
+                      <span className="text-green-700 font-medium">FPD Corriente:</span>
+                      <span className="font-bold text-green-700">{nacionalStats.fpdCorriente} ({nacionalStats.porcentajeFPD}%)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Mostrar las 5 regiones principales primero, luego "Sin Dato" */}
               {['SURESTE', 'NORESTE', 'METROPOLITANA', 'PACIFICO', 'OCCIDENTE', 'Sin Dato'].map(region => {
                 const stats = regionStats[region];
