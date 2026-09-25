@@ -397,7 +397,7 @@ router.put('/:id/estado', async (req, res) => {
 // Actualizar teléfono y notas (misma cuenta en M0-M6 para todos los roles)
 router.put('/:id/contacto', async (req, res) => {
   try {
-    const m2 = await updateContactoInModel(M2Master, req.params.id, req.body);
+    const m2 = await updateContactoInModel(M2Master, req.params.id, req.body, req.user);
     if (!m2) return res.status(404).json({ error: 'No encontrado' });
     res.json(m2);
   } catch (error) {

@@ -85,6 +85,64 @@ router.post('/whatsapp', async (req, res) => {
   }
 });
 
+router.post('/llamada', async (req, res) => {
+  try {
+    const { module = 'cobranza', status = '', cuenta = '', phone = '' } = req.body || {};
+    const phoneStr = String(phone || '').replace(/[^\d+]/g, '');
+    const maskedPhone =
+      phoneStr.length >= 6
+        ? `${phoneStr.slice(0, 2)}***${phoneStr.slice(-2)}`
+        : (phoneStr ? '***' : '');
+
+    await ActivityEvent.create({
+      type: 'llamada',
+      module: String(module || 'cobranza'),
+      userId: req.user?.id,
+      username: req.user?.username || '',
+      role: req.user?.role || '',
+      region: req.user?.region || '',
+      meta: {
+        status: String(status || ''),
+        cuenta: String(cuenta || ''),
+        phone: maskedPhone,
+      },
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error registrando evento llamada:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+router.get('/report', requireRoles(['admin', 'admin_general', 'director', 'mesa_control']), async (req, res) => {
+  try {
+    const { from, to, type } = req.query;
+    const query = {};
+    if (type) query.type = String(type);
+    if (from || to) {
+      query.createdAt = {};
+      if (from) query.createdAt.$gte = new Date(`${from}T00:00:00`);
+      if (to) query.createdAt.$lte = new Date(`${to}T23:59:59`);
+    }
+
+    const events = await ActivityEvent.find(query).sort({ createdAt: -1 }).limit(15000).lean();
+    res.json(events.map((e) => ({
+      fecha: e.createdAt,
+      tipo: e.type,
+      usuario: e.username,
+      rol: e.role,
+      region: e.region || '',
+      modulo: e.module || '',
+      cuenta: e.meta?.cuenta || '',
+      detalle: e.meta?.nota || e.meta?.phone || e.meta?.status || '',
+    })));
+  } catch (error) {
+    console.error('Error generando reporte de actividad:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
 // Dashboard de actividad (solo admin)
 router.get('/admin/summary', requireRoles(['admin', 'admin_general']), async (req, res) => {
   try {
@@ -108,19 +166,17 @@ router.get('/admin/summary', requireRoles(['admin', 'admin_general']), async (re
     ]);
     const lastUploadMap = new Map(lastUploadByUser.map(r => [String(r._id), r]));
 
-    // WhatsApp eventos (solo cobranza) por usuario
-    const whatsappByUser = await ActivityEvent.aggregate([
-      { $match: { type: 'whatsapp', module: 'cobranza', userId: { $in: userIds } } },
-      { $sort: { createdAt: -1 } },
-      {
-        $group: {
-          _id: '$userId',
-          lastWhatsAppAt: { $first: '$createdAt' },
-          whatsappCount: { $sum: 1 },
-        },
-      },
-    ]);
-    const whatsappMap = new Map(whatsappByUser.map(r => [String(r._id), r]));
+    const countByType = async (type) => {
+      const rows = await ActivityEvent.aggregate([
+        { $match: { type, userId: { $in: userIds } } },
+        { $sort: { createdAt: -1 } },
+        { $group: { _id: '$userId', lastAt: { $first: '$createdAt' }, count: { $sum: 1 } } },
+      ]);
+      return new Map(rows.map(r => [String(r._id), r]));
+    };
+    const whatsappMap = await countByType('whatsapp');
+    const notaMap = await countByType('nota');
+    const llamadaMap = await countByType('llamada');
 
     // Última actualización global de cobranza por módulo
     const lastUploadByModule = await ActivityEvent.aggregate([
@@ -145,6 +201,8 @@ router.get('/admin/summary', requireRoles(['admin', 'admin_general']), async (re
     const rows = users.map(u => {
       const upload = lastUploadMap.get(String(u._id));
       const wa = whatsappMap.get(String(u._id));
+      const nota = notaMap.get(String(u._id));
+      const llamada = llamadaMap.get(String(u._id));
       return {
         id: String(u._id),
         username: u.username,
@@ -155,8 +213,12 @@ router.get('/admin/summary', requireRoles(['admin', 'admin_general']), async (re
         lastCobranzaUploadAt: upload?.lastCobranzaUploadAt || null,
         lastCobranzaUploadModule: upload?.lastCobranzaUploadModule || null,
         lastCobranzaUploadMeta: upload?.lastCobranzaUploadMeta || null,
-        lastWhatsAppAt: wa?.lastWhatsAppAt || null,
-        whatsappCount: wa?.whatsappCount || 0,
+        lastWhatsAppAt: wa?.lastAt || null,
+        whatsappCount: wa?.count || 0,
+        lastNotaAt: nota?.lastAt || null,
+        notaCount: nota?.count || 0,
+        lastLlamadaAt: llamada?.lastAt || null,
+        llamadaCount: llamada?.count || 0,
       };
     });
 

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Search, Phone, MessageCircle, CalendarDays, MapPin, User as UserIcon, Edit2, Save, X } from 'lucide-react';
+import { Search, Phone, MessageCircle, CalendarDays, MapPin, User as UserIcon, Edit2, Save, X, DollarSign } from 'lucide-react';
 import * as api from '../../api.js';
 import { MODULES } from '../../utils/constants.js';
 import { filterByVendor } from '../../utils/vendorFilter.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { calcularEstatusFPDDesdeFecha } from '../../utils/helpers.js';
+import { calcularEstatusFPDDesdeFecha, getItemSaldo, getItemId, itemEsDecomisionable, getItemFechaVencimiento } from '../../utils/helpers.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 
 // Componente para editar teléfono y notas (compartido con SalesStatusView)
@@ -67,6 +67,12 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
             {notaContacto && (
               <div className="bg-blue-50 p-2 rounded text-slate-700">
                 <strong>Nota:</strong> {notaContacto}
+                {(item.notaContactoPorNombre || item.notaContactoPorUsername) && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Por {item.notaContactoPorNombre || item.notaContactoPorUsername}
+                    {item.notaContactoFecha ? ` · ${new Date(item.notaContactoFecha).toLocaleString('es-MX')}` : ''}
+                  </div>
+                )}
               </div>
             )}
             {fechaPromesaPago && (
@@ -489,6 +495,15 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
   const [filterEstatus, setFilterEstatus] = useState('');
   const [mesInstalacion, setMesInstalacion] = useState(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [filterFechaVencDesde, setFilterFechaVencDesde] = useState('');
+  const [filterFechaVencHasta, setFilterFechaVencHasta] = useState('');
+  const [sortMonto, setSortMonto] = useState('asc');
+  const [filterMontoRango, setFilterMontoRango] = useState('');
+  const [filterMontoMin, setFilterMontoMin] = useState('');
+  const [filterMontoMax, setFilterMontoMax] = useState('');
+  const [soloDecomision, setSoloDecomision] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showVendorBreakdown, setShowVendorBreakdown] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -558,16 +573,72 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
       (item.Telefono1 || item.Telefono2 || item['Telefono1'] || item['Telefono2'] || '').toString().includes(searchTerm) ||
       (item.PLAZA || item['PLAZA'] || item.Plaza || '').toLowerCase().includes(searchLower);
     
-    // Filtro de estatus (solo para M1 y M2)
     let matchesEstatus = true;
-    // Aplicar filtro de estatus para M1, M2, M3, M4
+    const itemEstatusFPD = getEstatusFPD(item, status);
     if ((['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].includes(status)) && filterEstatus) {
-      const itemEstatusFPD = getEstatusFPD(item, status);
       matchesEstatus = itemEstatusFPD === filterEstatus;
     }
-    
-    return matchesSearch && matchesEstatus;
+
+    let matchesFechaVenc = true;
+    if (filterFechaVencDesde || filterFechaVencHasta) {
+      const fechaVenc = getItemFechaVencimiento(item);
+      if (!fechaVenc) {
+        matchesFechaVenc = false;
+      } else {
+        const fechaVencSinHora = new Date(fechaVenc);
+        fechaVencSinHora.setHours(0, 0, 0, 0);
+        if (filterFechaVencDesde) {
+          const desde = new Date(filterFechaVencDesde + 'T00:00:00');
+          if (fechaVencSinHora.getTime() < desde.getTime()) matchesFechaVenc = false;
+        }
+        if (matchesFechaVenc && filterFechaVencHasta) {
+          const hasta = new Date(filterFechaVencHasta + 'T00:00:00');
+          if (fechaVencSinHora.getTime() > hasta.getTime()) matchesFechaVenc = false;
+        }
+      }
+    }
+
+    const matchesDecomision = !soloDecomision || itemEsDecomisionable(status, itemEstatusFPD);
+    const saldoItem = getItemSaldo(item);
+    let matchesMonto = true;
+    if (filterMontoRango === '0-500') matchesMonto = saldoItem <= 500;
+    else if (filterMontoRango === '501-1500') matchesMonto = saldoItem > 500 && saldoItem <= 1500;
+    else if (filterMontoRango === '1501-3000') matchesMonto = saldoItem > 1500 && saldoItem <= 3000;
+    else if (filterMontoRango === '3000+') matchesMonto = saldoItem > 3000;
+    else if (filterMontoRango === 'custom') {
+      const min = filterMontoMin === '' ? null : Number(filterMontoMin);
+      const max = filterMontoMax === '' ? null : Number(filterMontoMax);
+      if (min !== null && !Number.isNaN(min)) matchesMonto = saldoItem >= min;
+      if (max !== null && !Number.isNaN(max)) matchesMonto = matchesMonto && saldoItem <= max;
+    }
+
+    return matchesSearch && matchesEstatus && matchesFechaVenc && matchesDecomision && matchesMonto;
   });
+
+  const sortedData = [...filteredData].sort((a, b) => {
+    if (!sortMonto) return 0;
+    const diff = getItemSaldo(a) - getItemSaldo(b);
+    return sortMonto === 'asc' ? diff : -diff;
+  });
+  const filteredAdeudo = sortedData.reduce((sum, item) => sum + getItemSaldo(item), 0);
+  const filteredDecomision = sortedData.reduce((sum, item) => (
+    itemEsDecomisionable(status, getEstatusFPD(item, status)) ? sum + getItemSaldo(item) : sum
+  ), 0);
+  const selectedItems = data.filter((item) => selectedIds.has(getItemId(item)));
+  const selectedTotal = selectedItems.reduce((sum, item) => sum + getItemSaldo(item), 0);
+  const selectedDecomision = selectedItems.reduce((sum, item) => (
+    itemEsDecomisionable(status, getEstatusFPD(item, status)) ? sum + getItemSaldo(item) : sum
+  ), 0);
+
+  const toggleSelected = (id) => {
+    if (!id) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   if (loading) {
     return (
@@ -619,18 +690,65 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                 {status === 'M1' && <option value="FPD PÉRDIDA">FPD PÉRDIDA</option>}
               </select>
             )}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500 whitespace-nowrap">Vence desde:</label>
+              <input type="date" value={filterFechaVencDesde} onChange={(e) => setFilterFechaVencDesde(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg" />
+              <label className="text-sm text-slate-500 whitespace-nowrap">hasta:</label>
+              <input type="date" value={filterFechaVencHasta} onChange={(e) => setFilterFechaVencHasta(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <select value={sortMonto} onChange={(e) => setSortMonto(e.target.value)} className="px-4 py-2 border border-slate-300 rounded-lg">
+              <option value="asc">$ menor a mayor</option>
+              <option value="desc">$ mayor a menor</option>
+              <option value="">Sin orden por $</option>
+            </select>
+            <select value={filterMontoRango} onChange={(e) => setFilterMontoRango(e.target.value)} className="px-4 py-2 border border-slate-300 rounded-lg">
+              <option value="">Todos los montos</option>
+              <option value="0-500">Hasta $500</option>
+              <option value="501-1500">$501 a $1,500</option>
+              <option value="1501-3000">$1,501 a $3,000</option>
+              <option value="3000+">Más de $3,000</option>
+              <option value="custom">Rango personalizado</option>
+            </select>
+            {filterMontoRango === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input type="number" min="0" value={filterMontoMin} onChange={(e) => setFilterMontoMin(e.target.value)} placeholder="Min $" className="w-24 px-3 py-2 border border-slate-300 rounded-lg" />
+                <input type="number" min="0" value={filterMontoMax} onChange={(e) => setFilterMontoMax(e.target.value)} placeholder="Max $" className="w-24 px-3 py-2 border border-slate-300 rounded-lg" />
+              </div>
+            )}
+            {(['M1', 'M4'].includes(status)) && (
+              <label className="flex items-center gap-2 text-sm text-red-700 bg-red-50 px-3 py-2 rounded-lg border border-red-100 cursor-pointer">
+                <input type="checkbox" checked={soloDecomision} onChange={(e) => setSoloDecomision(e.target.checked)} />
+                Solo decomisión
+              </label>
+            )}
           </div>
           <p className="text-sm text-slate-600 mt-2">
-            Mostrando {filteredData.length} de {data.length} clientes
+            Mostrando {sortedData.length} de {data.length} clientes
             {filterEstatus && ` • Filtrado: ${filterEstatus}`}
           </p>
+          <p className="text-sm text-slate-700 mt-1">
+            Adeudo filtrado: <span className="font-bold">{formatCurrency(filteredAdeudo)}</span>
+            {(['M1', 'M4'].includes(status)) && (
+              <> • Riesgo decomisión: <span className="font-bold text-red-700">{formatCurrency(filteredDecomision)}</span></>
+            )}
+          </p>
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <button type="button" onClick={() => setSelectedIds(new Set(sortedData.map(getItemId).filter(Boolean)))} className="px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg hover:bg-slate-50">
+              Seleccionar filtrados ({sortedData.length})
+            </button>
+            {selectedIds.size > 0 && (
+              <button type="button" onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 text-xs font-bold text-red-600 hover:underline">
+                Limpiar selección
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Lista de Cards */}
-      {filteredData.length > 0 ? (
+      {sortedData.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredData.map((item) => {
+          {sortedData.map((item) => {
             // Obtener valores con diferentes nombres posibles
             const cliente = item.Cliente || item['Cliente'] || 'Sin nombre';
             const cuenta = item.CUENTA || item.Cuenta || item.cuenta || '-';
@@ -698,24 +816,34 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
             }
             
             const totalSaldo = saldoPorVencer + saldoVencido || saldo || 0;
+            const itemId = getItemId(item);
+            const isSelected = selectedIds.has(itemId);
+            const esDecomision = itemEsDecomisionable(status, estatusPrincipal);
+            const registrarLlamada = () => {
+              const cuenta = item.cuenta || item.CUENTA || item.Cuenta || '';
+              api.logLlamadaEvent({ module: 'cobranza', status, cuenta, phone: telefono }).catch(() => {});
+            };
             
             return (
-              <div key={item.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-shadow">
-                {/* Header con nombre y saldo (ocultar saldo en M2, M3, M4) */}
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-bold text-slate-800 text-sm uppercase flex-1 pr-2">{cliente}</h3>
-                  {status === 'M1' && (
-                    <span className="font-mono font-bold text-green-600 text-lg whitespace-nowrap">
-                      {formatCurrency(totalSaldo)}
-                    </span>
-                  )}
+              <div key={item.id} className={`bg-white rounded-xl border shadow-sm p-4 hover:shadow-md transition-shadow ${isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'}`}>
+                <div className="flex justify-between items-start mb-3 gap-2">
+                  <label className="flex items-start gap-2 flex-1 min-w-0 cursor-pointer">
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelected(itemId)} className="mt-1" />
+                    <h3 className="font-bold text-slate-800 text-sm uppercase">{cliente}</h3>
+                  </label>
+                  <span className="font-mono font-bold text-green-600 text-lg whitespace-nowrap">
+                    {formatCurrency(totalSaldo)}
+                  </span>
                 </div>
 
                 {/* Estatus */}
-                <div className="flex gap-2 mb-3">
+                <div className="flex gap-2 mb-3 flex-wrap">
                   <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${estatusColor}`}>
                     {estatusPrincipal}
                   </span>
+                  {esDecomision && (
+                    <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-red-100 text-red-700">Decomisión</span>
+                  )}
                 </div>
 
                 {/* Detalles */}
@@ -760,17 +888,20 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                   }}
                 />
 
-                {/* Saldos detallados (solo para M1) */}
-                {status === 'M1' && (
+                {(saldoPorVencer > 0 || saldoVencido > 0) && (
                   <div className="mt-4 pt-3 border-t border-slate-100 text-sm space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Por vencer:</span>
-                      <span className="font-bold text-blue-600">{formatCurrency(saldoPorVencer)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Vencido:</span>
-                      <span className="font-bold text-red-600">{formatCurrency(saldoVencido)}</span>
-                    </div>
+                    {saldoPorVencer > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Por vencer:</span>
+                        <span className="font-bold text-blue-600">{formatCurrency(saldoPorVencer)}</span>
+                      </div>
+                    )}
+                    {saldoVencido > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Vencido:</span>
+                        <span className="font-bold text-red-600">{formatCurrency(saldoVencido)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -787,6 +918,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
                   {telefono && (
                     <a
                       href={`tel:${telefono}`}
+                      onClick={registrarLlamada}
                       className="bg-slate-100 text-slate-700 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"
                     >
                       <Phone size={16} /> Llamar
@@ -808,6 +940,29 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
           <p className="text-slate-500 text-center py-8">
             No se encontraron clientes que coincidan con tu búsqueda
           </p>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-3 z-20 bg-slate-900 text-white rounded-2xl shadow-xl p-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <DollarSign size={16} />
+                {selectedIds.size} seleccionadas
+              </div>
+              <div className="text-lg font-bold mt-1">Adeudo: {formatCurrency(selectedTotal)}</div>
+              {(['M1', 'M4'].includes(status)) && (
+                <div className="text-sm text-red-300">Riesgo decomisión: {formatCurrency(selectedDecomision)}</div>
+              )}
+            </div>
+            <button type="button" onClick={() => setShowVendorBreakdown((v) => !v)} className="px-3 py-1.5 bg-white/10 rounded-lg text-xs font-bold">
+              {showVendorBreakdown ? 'Ocultar detalle' : 'Ver detalle'}
+            </button>
+          </div>
+          {showVendorBreakdown && (
+            <p className="text-xs mt-2 text-white/80">Suma de las cuentas que marcaste para decidir si pagas o descuentas.</p>
+          )}
         </div>
       )}
     </div>

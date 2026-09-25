@@ -365,6 +365,22 @@ export async function logWhatsAppEvent({ module = 'cobranza', status = '', cuent
   });
 }
 
+export async function logLlamadaEvent({ module = 'cobranza', status = '', cuenta = '', phone = '' } = {}) {
+  return apiRequest('/activity/llamada', {
+    method: 'POST',
+    body: JSON.stringify({ module, status, cuenta, phone }),
+  });
+}
+
+export async function getActivityReport({ from = '', to = '', type = '' } = {}) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (type) params.set('type', type);
+  const query = params.toString();
+  return apiRequest(`/activity/report${query ? `?${query}` : ''}`);
+}
+
 // ========== M0 MASTER ==========
 export async function getM0Master(vendedor = null) {
   const endpoint = vendedor ? `/m0?vendedor=${encodeURIComponent(vendedor)}` : '/m0';

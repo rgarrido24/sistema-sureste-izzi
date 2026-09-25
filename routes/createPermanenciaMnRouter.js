@@ -290,7 +290,7 @@ export function createPermanenciaMnRouter({ moduleKey, Model, priorLookups = [] 
 
   router.put('/:id/contacto', async (req, res) => {
     try {
-      const doc = await updateContactoInModel(Model, req.params.id, req.body);
+      const doc = await updateContactoInModel(Model, req.params.id, req.body, req.user);
       if (!doc) return res.status(404).json({ error: 'No encontrado' });
       res.json(doc);
     } catch (error) {

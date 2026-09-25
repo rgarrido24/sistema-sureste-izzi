@@ -5,7 +5,7 @@ const activityEventSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ['login', 'upload', 'whatsapp'],
+      enum: ['login', 'upload', 'whatsapp', 'nota', 'llamada'],
       index: true,
     },
     // Ej: 'm1', 'm2', 'm3', 'm4', 'sales', 'operacion', 'install'

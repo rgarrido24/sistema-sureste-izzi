@@ -191,6 +191,18 @@ export function itemEsDecomisionable(status, estatusFPD) {
   return false;
 }
 
+export function getItemFechaVencimiento(item) {
+  const raw = item['Fecha Vencimiento'] ||
+    item['FechaVencimiento'] ||
+    item['FECHA VENCIMIENTO'] ||
+    item['Fecha de Vencimiento'] ||
+    item['FECHA DE VENCIMIENTO'] ||
+    item['Fecha Perdida FPD'] ||
+    item['FechaPerdidaFPD'] ||
+    '';
+  return parseFlexibleDate(raw);
+}
+
 /**
  * Obtiene variables de entorno de forma segura
  */

@@ -67,6 +67,12 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
             {notaContacto && (
               <div className="bg-blue-50 p-2 rounded text-slate-700">
                 <strong>Nota:</strong> {notaContacto}
+                {(item.notaContactoPorNombre || item.notaContactoPorUsername) && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Por {item.notaContactoPorNombre || item.notaContactoPorUsername}
+                    {item.notaContactoFecha ? ` · ${new Date(item.notaContactoFecha).toLocaleString('es-MX')}` : ''}
+                  </div>
+                )}
               </div>
             )}
             {fechaPromesaPago && (
@@ -1813,6 +1819,10 @@ export default function SalesStatusView({
                   </button>
                   <a
                     href={`tel:${telefono}`}
+                    onClick={() => {
+                      const cuenta = item.cuenta || item.CUENTA || item.Cuenta || '';
+                      api.logLlamadaEvent({ module: 'cobranza', status, cuenta, phone: telefono }).catch(() => {});
+                    }}
                     className="bg-slate-50 text-slate-600 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border border-slate-200 hover:bg-slate-100 transition-colors"
                   >
                     <Phone size={16} />

@@ -399,7 +399,7 @@ router.put('/:id/estado', async (req, res) => {
 // Actualizar teléfono y notas (misma cuenta en M0-M6 para todos los roles)
 router.put('/:id/contacto', async (req, res) => {
   try {
-    const m0 = await updateContactoInModel(M0Master, req.params.id, req.body);
+    const m0 = await updateContactoInModel(M0Master, req.params.id, req.body, req.user);
     if (!m0) return res.status(404).json({ error: 'No encontrado' });
     res.json(m0);
   } catch (error) {

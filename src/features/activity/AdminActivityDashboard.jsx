@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import * as XLSX from 'xlsx';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 
@@ -16,6 +17,33 @@ export default function AdminActivityDashboard() {
   const [error, setError] = useState(null);
   const [users, setUsers] = useState([]);
   const [cobranzaLastUploads, setCobranzaLastUploads] = useState([]);
+  const [reportFrom, setReportFrom] = useState('');
+  const [reportTo, setReportTo] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  const descargarReporte = async () => {
+    setDownloading(true);
+    try {
+      const rows = await api.getActivityReport({ from: reportFrom, to: reportTo });
+      const data = (Array.isArray(rows) ? rows : []).map((r) => ({
+        Fecha: r.fecha ? new Date(r.fecha).toLocaleString('es-MX') : '',
+        Tipo: r.tipo || '',
+        Usuario: r.usuario || '',
+        Rol: r.rol || '',
+        Region: r.region || '',
+        Modulo: r.modulo || '',
+        Cuenta: r.cuenta || '',
+        Detalle: r.detalle || '',
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Actividad');
+      XLSX.writeFile(wb, `reporte_actividad_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e) {
+      alert(e?.message || 'No se pudo descargar el reporte');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -82,13 +110,15 @@ export default function AdminActivityDashboard() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Región</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Último login</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Última carga Cobranza</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">WhatsApp Cobranza</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">WhatsApp</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Llamadas</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Notas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan="8" className="px-4 py-10 text-center text-slate-500">
                     Sin datos para mostrar
                   </td>
                 </tr>
@@ -109,6 +139,14 @@ export default function AdminActivityDashboard() {
                     <td className="px-4 py-3 text-sm">
                       <div>{formatDateTime(u.lastWhatsAppAt)}</div>
                       <div className="text-xs text-slate-500">{(u.whatsappCount || 0)} envíos</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div>{formatDateTime(u.lastLlamadaAt)}</div>
+                      <div className="text-xs text-slate-500">{(u.llamadaCount || 0)} llamadas</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div>{formatDateTime(u.lastNotaAt)}</div>
+                      <div className="text-xs text-slate-500">{(u.notaCount || 0)} notas</div>
                     </td>
                   </tr>
                 ))
