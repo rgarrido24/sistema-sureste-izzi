@@ -29,6 +29,21 @@ const CAMPOS_FORM_LIBRES = [
   'Contraseña', 'FECHA ALTA', 'FECHA BAJA', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'TEL. SUBDISTR.'
 ];
 
+const CAMPOS_EDITABLES = [...new Set([
+  ...COLUMNAS_EXPORT,
+  'Contraseña',
+  'MOTIVO',
+  'No EMPLEADO',
+])];
+
+function normEstatus(v) {
+  const s = String(v || '').trim().toLowerCase();
+  if (s === 'alta') return 'Alta';
+  if (s === 'baja') return 'Baja';
+  if (s === 'activo' || s === 'activa') return 'Activo';
+  return String(v || '').trim();
+}
+
 function normHeader(k) {
   return String(k || '')
     .normalize('NFD')
@@ -189,25 +204,32 @@ function ListadoClaves() {
 
   const abrirEdicion = (row) => {
     setEditModalRow(row);
-    setEditForm({
-      contrasena: row['Contraseña'] || '',
-      supervisorRgo: row['SUPERVISOR RGO'] || '',
-      estatus: row['ESTATUS'] || '',
-      motivo: row['MOTIVO'] || '',
+    const inicial = {};
+    CAMPOS_EDITABLES.forEach((campo) => {
+      inicial[campo] = row[campo] ?? (campo === 'No. EMPLEADO' ? (getNoEmpleado(row) || '') : '');
     });
+    inicial.ESTATUS = normEstatus(row['ESTATUS']);
+    setEditForm(inicial);
     setEditError('');
   };
 
   const guardarEdicion = async () => {
     if (!editModalRow) return;
-    if (editForm.estatus === 'Baja' && !editForm.motivo.trim()) {
+    const estatus = normEstatus(editForm.ESTATUS);
+    if (estatus === 'Baja' && !String(editForm.MOTIVO || '').trim()) {
       setEditError('Especifica el motivo de la baja.');
       return;
     }
     setSavingEdit(true);
     setEditError('');
     try {
-      const actualizado = await api.editarClave(editModalRow._id, editForm);
+      const actualizado = await api.editarClave(editModalRow._id, {
+        campos: { ...editForm, ESTATUS: estatus },
+        estatus,
+        motivo: editForm.MOTIVO,
+        contrasena: editForm['Contraseña'],
+        supervisorRgo: editForm['SUPERVISOR RGO'],
+      });
       setRows(prev => prev.map(r => r._id === editModalRow._id ? { ...r, ...actualizado } : r));
       setEditModalRow(null);
     } catch (e) {
@@ -259,7 +281,7 @@ function ListadoClaves() {
   const handleSearch = (e) => {
     e.preventDefault();
     searchRef.current = search.trim();
-    cargar({ params: searchRef.current ? { search: searchRef.current } : {} });
+    cargar({ params: buildParams() });
   };
 
   const handleExport = () => {
@@ -313,7 +335,12 @@ function ListadoClaves() {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <select
           value={filterRegion}
-          onChange={(e) => setFilterRegion(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setFilterRegion(val);
+            filtersRef.current = { ...filtersRef.current, region: val };
+            cargar({ params: buildParams() });
+          }}
           className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
         >
           <option value="">Todas las regiones</option>
@@ -321,7 +348,12 @@ function ListadoClaves() {
         </select>
         <select
           value={filterEstatus}
-          onChange={(e) => setFilterEstatus(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setFilterEstatus(val);
+            filtersRef.current = { ...filtersRef.current, estatus: val };
+            cargar({ params: buildParams() });
+          }}
           className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
         >
           <option value="">Todos los estatus</option>
@@ -438,14 +470,14 @@ function ListadoClaves() {
                 <td className="px-3 py-2 whitespace-nowrap">
                   {r['ESTATUS'] ? (
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                      r['ESTATUS'] === 'Baja' ? 'bg-red-100 text-red-700' :
-                      r['ESTATUS'] === 'Alta' ? 'bg-amber-100 text-amber-700' :
+                      normEstatus(r['ESTATUS']) === 'Baja' ? 'bg-red-100 text-red-700' :
+                      normEstatus(r['ESTATUS']) === 'Alta' ? 'bg-amber-100 text-amber-700' :
                       'bg-green-100 text-green-700'
                     }`}>
-                      {r['ESTATUS']}
+                      {normEstatus(r['ESTATUS'])}
                     </span>
                   ) : '-'}
-                  {r['ESTATUS'] === 'Baja' && r['MOTIVO'] && (
+                  {normEstatus(r['ESTATUS']) === 'Baja' && r['MOTIVO'] && (
                     <div className="text-[11px] text-slate-500 mt-0.5">{r['MOTIVO']}</div>
                   )}
                 </td>
@@ -468,65 +500,52 @@ function ListadoClaves() {
 
       {editModalRow && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEditModalRow(null)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-slate-800 mb-1">Editar registro</h3>
             <p className="text-sm text-slate-500 mb-4">{editModalRow['NOMBRE DEL VENDEDOR']} — {editModalRow['CLAVES']}</p>
 
-            <div className="space-y-3 mb-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Contraseña</label>
-                <input
-                  type="text"
-                  value={editForm.contrasena}
-                  onChange={(e) => setEditForm({ ...editForm, contrasena: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
-                  placeholder="Contraseña de la clave"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Supervisor RGO</label>
-                <input
-                  type="text"
-                  value={editForm.supervisorRgo}
-                  onChange={(e) => setEditForm({ ...editForm, supervisorRgo: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Estatus</label>
-                <select
-                  value={editForm.estatus}
-                  onChange={(e) => setEditForm({ ...editForm, estatus: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                >
-                  <option value="">-- Selecciona --</option>
-                  <option value="Alta">Alta</option>
-                  <option value="Activo">Activo</option>
-                  <option value="Baja">Baja</option>
-                </select>
-                {editForm.estatus === 'Alta' && (
-                  <p className="text-[11px] text-amber-600 mt-1">Pasará a "Activo" automáticamente el lunes siguiente.</p>
-                )}
-              </div>
-              {editForm.estatus === 'Baja' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Motivo de la baja</label>
-                  <input
-                    type="text"
-                    value={editForm.motivo}
-                    onChange={(e) => setEditForm({ ...editForm, motivo: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                    placeholder="Ej. Renuncia, despido, cambio de distribuidor..."
-                  />
-                </div>
-              )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {CAMPOS_EDITABLES.map((campo) => {
+                if (campo === 'ESTATUS') {
+                  return (
+                    <div key={campo}>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">ESTATUS</label>
+                      <select
+                        value={normEstatus(editForm.ESTATUS)}
+                        onChange={(e) => setEditForm({ ...editForm, ESTATUS: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      >
+                        <option value="">-- Selecciona --</option>
+                        <option value="Alta">Alta</option>
+                        <option value="Activo">Activo</option>
+                        <option value="Baja">Baja</option>
+                      </select>
+                      {normEstatus(editForm.ESTATUS) === 'Alta' && (
+                        <p className="text-[11px] text-amber-600 mt-1">Pasará a Activo el lunes siguiente.</p>
+                      )}
+                    </div>
+                  );
+                }
+                if (campo === 'MOTIVO' && normEstatus(editForm.ESTATUS) !== 'Baja') return null;
+                return (
+                  <div key={campo} className={campo === 'MOTIVO' ? 'sm:col-span-2' : ''}>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">{campo}</label>
+                    <input
+                      type={campo.includes('FECHA') ? 'date' : 'text'}
+                      value={editForm[campo] ?? ''}
+                      onChange={(e) => setEditForm({ ...editForm, [campo]: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                );
+              })}
             </div>
 
             {editError && (
               <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">{editError}</div>
             )}
 
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-end sticky bottom-0 bg-white pt-2">
               <button onClick={() => setEditModalRow(null)} className="px-4 py-2 text-sm text-slate-600">Cancelar</button>
               <button
                 onClick={guardarEdicion}

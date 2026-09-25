@@ -139,15 +139,17 @@ router.post('/', async (req, res) => {
     }
 
     const now = new Date();
+    const estatusNorm = normEstatus(row['ESTATUS']);
     const doc = await ClaveAsignacion.create({
       ...sanitizeRowForMongo(row),
+      ...(estatusNorm ? { ESTATUS: estatusNorm } : {}),
       claveId: row['CLAVES'],
       hojaOrigen: row.__hojaOrigen || row.hojaOrigen || 'Alta manual',
       batchId: `manual-${now.getTime()}`,
       subidoPorId: req.user?.id || '',
       subidoPorUsername: req.user?.username || '',
       subidoPorNombre: req.user?.name || req.user?.username || '',
-      ...(row['ESTATUS'] === 'Alta' ? { FechaAlta: now } : {}),
+      ...(estatusNorm === 'Alta' ? { FechaAlta: now } : {}),
     });
 
     res.json({ success: true, doc });
@@ -216,6 +218,14 @@ router.put('/:id/asignar', async (req, res) => {
 // Listar registros actuales (la "foto" más reciente por clave)
 // Calcula el lunes siguiente a la semana en que se dio de "Alta" (si ya se dio de alta
 // un lunes, "el siguiente lunes" es el de la semana que sigue, no el mismo día).
+function normEstatus(v) {
+  const s = String(v || '').trim().toLowerCase();
+  if (s === 'alta') return 'Alta';
+  if (s === 'baja') return 'Baja';
+  if (s === 'activo' || s === 'activa') return 'Activo';
+  return String(v || '').trim();
+}
+
 function lunesSiguiente(fecha) {
   const d = new Date(fecha);
   d.setHours(0, 0, 0, 0);
@@ -230,7 +240,7 @@ function lunesSiguiente(fecha) {
 // para que quede reflejado también en exportaciones y filtros.
 async function aplicarTransicionAltaActivo() {
   const hoy = new Date();
-  const candidatos = await ClaveAsignacion.find({ ESTATUS: 'Alta', FechaAlta: { $exists: true, $ne: null } })
+  const candidatos = await ClaveAsignacion.find({ ESTATUS: /^alta$/i, FechaAlta: { $exists: true, $ne: null } })
     .select('_id FechaAlta')
     .lean();
 
@@ -254,8 +264,8 @@ router.get('/', async (req, res) => {
     const query = {};
     if (hoja) query.hojaOrigen = hoja;
     if (distribuidor) query['DISTRIBUIDOR'] = new RegExp(distribuidor, 'i');
-    if (region) query['REGION'] = region;
-    if (estatus) query['ESTATUS'] = estatus;
+    if (region) query['REGION'] = new RegExp(`^${String(region).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    if (estatus) query['ESTATUS'] = new RegExp(`^${String(estatus).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
     if (search) {
       const rx = new RegExp(search, 'i');
       query.$or = [
@@ -272,7 +282,10 @@ router.get('/', async (req, res) => {
     }
 
     const docs = await ClaveAsignacion.find(query).sort({ createdAt: -1 }).lean();
-    res.json(docs.map(withNoEmpleado));
+    res.json(docs.map((d) => {
+      if (d.ESTATUS) d.ESTATUS = normEstatus(d.ESTATUS);
+      return withNoEmpleado(d);
+    }));
   } catch (error) {
     console.error('Error obteniendo claves:', error);
     res.status(500).json({ error: 'Error del servidor' });
@@ -290,23 +303,38 @@ router.get('/regiones', async (req, res) => {
   }
 });
 
-// Edición completa de un registro: contraseña, supervisor RGO, estatus (Alta/Baja/Activo), motivo de baja.
+const CAMPOS_INTERNOS = new Set([
+  '_id', 'id', '__v', 'batchId', 'claveId', 'createdAt', 'updatedAt',
+  'subidoPorId', 'subidoPorUsername', 'subidoPorNombre',
+  'SubdistribuidorVendedorAsignadoPorId', 'SubdistribuidorVendedorAsignadoPorUsername',
+  'SubdistribuidorVendedorAsignadoPorNombre', 'SubdistribuidorVendedorAsignadoFecha',
+]);
+
+// Edición de cualquier campo de la fila (más los de control: contraseña, supervisor, estatus).
 router.put('/:id', async (req, res) => {
   try {
-    const { contrasena, supervisorRgo, estatus, motivo } = req.body;
+    const { campos, contrasena, supervisorRgo, estatus, motivo } = req.body;
     const update = { $set: {} };
+
+    if (campos && typeof campos === 'object') {
+      for (const [k, v] of Object.entries(campos)) {
+        if (CAMPOS_INTERNOS.has(k) || String(k).includes('.')) continue;
+        update.$set[k] = v;
+      }
+    }
 
     if (contrasena !== undefined) update.$set['Contraseña'] = contrasena;
     if (supervisorRgo !== undefined) update.$set['SUPERVISOR RGO'] = supervisorRgo;
     if (motivo !== undefined) update.$set['MOTIVO'] = motivo;
 
-    if (estatus !== undefined) {
-      update.$set['ESTATUS'] = estatus;
-      if (estatus === 'Alta') {
-        // Reinicia el conteo de la semana cada vez que se vuelve a dar de alta
-        update.$set['FechaAlta'] = new Date();
-      }
-      if (estatus === 'Baja' && !motivo) {
+    const estatusFinal = estatus !== undefined
+      ? normEstatus(estatus)
+      : (update.$set['ESTATUS'] !== undefined ? normEstatus(update.$set['ESTATUS']) : undefined);
+
+    if (estatusFinal !== undefined) {
+      update.$set['ESTATUS'] = estatusFinal;
+      if (estatusFinal === 'Alta') update.$set['FechaAlta'] = new Date();
+      if (estatusFinal === 'Baja' && !(motivo || update.$set['MOTIVO'])) {
         return res.status(400).json({ error: 'Especifica el motivo de la baja' });
       }
     }
