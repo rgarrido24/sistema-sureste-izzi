@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, History, Key, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { UploadCloud, Search, History, Key, Loader2, CheckCircle2, AlertTriangle, Eye, EyeOff, Pencil } from 'lucide-react';
 import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
@@ -13,7 +13,7 @@ const COLUMNAS_EXPORT = [
   'KAM', 'ESTATUS', 'JORNADA', 'SUPERVISOR INTERNO (IZZI)', 'GERENTE INTERNO (IZZI)',
   'CANAL DE DISTRIBUCION', 'TIPO DE USUARIO', 'CLASIFICACION DE CLAVE', 'RFC VENDEDOR',
   'USUARIO DE RED', 'CLAVES', 'No. EMPLEADO', 'SALES FORCE (SKY)', 'FECHA ALTA', 'FECHA BAJA',
-  'SUPERVISOR', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR',
+  'SUPERVISOR', 'SUPERVISOR RGO', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR',
   'TEL. SUBDISTR.', 'ID'
 ];
 
@@ -22,11 +22,11 @@ const COLUMNAS_EXPORT = [
 const CAMPOS_FORM_DATALIST = [
   'REGION', 'SUBREGION', 'HUB', 'PLAZA', 'DISTRIBUIDOR', 'RAZON SOCIAL', 'KAM', 'ESTATUS',
   'JORNADA', 'SUPERVISOR INTERNO (IZZI)', 'GERENTE INTERNO (IZZI)', 'CANAL DE DISTRIBUCION',
-  'TIPO DE USUARIO', 'CLASIFICACION DE CLAVE', 'SUPERVISOR', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR'
+  'TIPO DE USUARIO', 'CLASIFICACION DE CLAVE', 'SUPERVISOR', 'SUPERVISOR RGO', 'GERENTE DISTRIBUIDOR', 'SUBDISTRIBUIDOR'
 ];
 const CAMPOS_FORM_LIBRES = [
   'NOMBRE DEL VENDEDOR', 'RFC VENDEDOR', 'USUARIO DE RED', 'CLAVES', 'No. EMPLEADO',
-  'FECHA ALTA', 'FECHA BAJA', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'TEL. SUBDISTR.'
+  'Contraseña', 'FECHA ALTA', 'FECHA BAJA', 'RFC SUP. DISTR.', 'CLAVE SUP.', 'TEL. SUBDISTR.'
 ];
 
 function normHeader(k) {
@@ -136,12 +136,24 @@ function ListadoClaves() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
+  const [filterEstatus, setFilterEstatus] = useState('');
+  const [regiones, setRegiones] = useState([]);
   const searchRef = useRef('');
+  const filtersRef = useRef({ region: '', estatus: '' });
+
+  const buildParams = () => {
+    const p = {};
+    if (searchRef.current) p.search = searchRef.current;
+    if (filtersRef.current.region) p.region = filtersRef.current.region;
+    if (filtersRef.current.estatus) p.estatus = filtersRef.current.estatus;
+    return p;
+  };
 
   const cargar = async ({ silent = false, params } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const query = params ?? (searchRef.current ? { search: searchRef.current } : {});
+      const query = params ?? buildParams();
       const data = await api.getClaves(query);
       setRows(Array.isArray(data) ? data : []);
       setError('');
@@ -161,12 +173,69 @@ function ListadoClaves() {
   const [asignInput, setAsignInput] = useState('');
   const [guardandoAsign, setGuardandoAsign] = useState(false);
 
+  const [passwordVisibleIds, setPasswordVisibleIds] = useState(() => new Set());
+  const togglePassword = (id) => {
+    setPasswordVisibleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const [editModalRow, setEditModalRow] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const abrirEdicion = (row) => {
+    setEditModalRow(row);
+    setEditForm({
+      contrasena: row['Contraseña'] || '',
+      supervisorRgo: row['SUPERVISOR RGO'] || '',
+      estatus: row['ESTATUS'] || '',
+      motivo: row['MOTIVO'] || '',
+    });
+    setEditError('');
+  };
+
+  const guardarEdicion = async () => {
+    if (!editModalRow) return;
+    if (editForm.estatus === 'Baja' && !editForm.motivo.trim()) {
+      setEditError('Especifica el motivo de la baja.');
+      return;
+    }
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      const actualizado = await api.editarClave(editModalRow._id, editForm);
+      setRows(prev => prev.map(r => r._id === editModalRow._id ? { ...r, ...actualizado } : r));
+      setEditModalRow(null);
+    } catch (e) {
+      setEditError(e.message || 'Error guardando');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   useEffect(() => {
     cargar();
     api.getVendedoresCobranza().then(setVendedoresCobranza).catch(() => {});
-    const interval = setInterval(() => cargar({ silent: true }), 20000);
+    api.getClavesRegiones().then(setRegiones).catch(() => {});
+    const interval = setInterval(() => cargar({ silent: true, params: buildParams() }), 20000);
     return () => clearInterval(interval);
   }, []);
+
+  const aplicarFiltros = () => {
+    filtersRef.current = { region: filterRegion, estatus: filterEstatus };
+    cargar({ params: buildParams() });
+  };
+
+  const limpiarFiltros = () => {
+    setFilterRegion('');
+    setFilterEstatus('');
+    filtersRef.current = { region: '', estatus: '' };
+    cargar({ params: buildParams() });
+  };
 
   const abrirAsignacion = (row) => {
     setEditandoId(row._id);
@@ -241,6 +310,39 @@ function ListadoClaves() {
         </button>
       </form>
 
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <select
+          value={filterRegion}
+          onChange={(e) => setFilterRegion(e.target.value)}
+          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+        >
+          <option value="">Todas las regiones</option>
+          {regiones.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select
+          value={filterEstatus}
+          onChange={(e) => setFilterEstatus(e.target.value)}
+          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+        >
+          <option value="">Todos los estatus</option>
+          <option value="Alta">Alta</option>
+          <option value="Activo">Activo</option>
+          <option value="Baja">Baja</option>
+        </select>
+        <button
+          type="button"
+          onClick={aplicarFiltros}
+          className="px-4 py-2 bg-slate-700 text-white rounded-lg font-bold text-sm"
+        >
+          Filtrar
+        </button>
+        {(filterRegion || filterEstatus) && (
+          <button type="button" onClick={limpiarFiltros} className="text-sm text-slate-500 hover:text-red-600 underline">
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
       {error && (
         <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
           {error}. Pide a admin que recargue o vuelve a entrar: el listado es el mismo para todos.
@@ -259,6 +361,11 @@ function ListadoClaves() {
               <th className="text-left px-3 py-2 whitespace-nowrap">No. Empleado</th>
               <th className="text-left px-3 py-2 whitespace-nowrap bg-amber-50">Subdistribuidor/Vendedor (asignación)</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Plaza</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Región</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Contraseña</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Supervisor RGO</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Estatus</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap"></th>
             </tr>
           </thead>
           <tbody>
@@ -312,6 +419,41 @@ function ListadoClaves() {
                   )}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">{r['PLAZA'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['REGION'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {r['Contraseña'] ? (
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-xs">
+                        {passwordVisibleIds.has(r._id) ? r['Contraseña'] : '••••••••'}
+                      </span>
+                      <button onClick={() => togglePassword(r._id)} className="text-slate-400 hover:text-slate-700">
+                        {passwordVisibleIds.has(r._id) ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-slate-300 text-xs italic">Sin guardar</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">{r['SUPERVISOR RGO'] || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {r['ESTATUS'] ? (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      r['ESTATUS'] === 'Baja' ? 'bg-red-100 text-red-700' :
+                      r['ESTATUS'] === 'Alta' ? 'bg-amber-100 text-amber-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      {r['ESTATUS']}
+                    </span>
+                  ) : '-'}
+                  {r['ESTATUS'] === 'Baja' && r['MOTIVO'] && (
+                    <div className="text-[11px] text-slate-500 mt-0.5">{r['MOTIVO']}</div>
+                  )}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <button onClick={() => abrirEdicion(r)} className="text-slate-400 hover:text-blue-600">
+                    <Pencil size={14} />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -323,6 +465,80 @@ function ListadoClaves() {
       <datalist id="datalist-vendedores-cobranza">
         {vendedoresCobranza.map(v => <option key={v} value={v} />)}
       </datalist>
+
+      {editModalRow && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEditModalRow(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-slate-800 mb-1">Editar registro</h3>
+            <p className="text-sm text-slate-500 mb-4">{editModalRow['NOMBRE DEL VENDEDOR']} — {editModalRow['CLAVES']}</p>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Contraseña</label>
+                <input
+                  type="text"
+                  value={editForm.contrasena}
+                  onChange={(e) => setEditForm({ ...editForm, contrasena: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="Contraseña de la clave"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Supervisor RGO</label>
+                <input
+                  type="text"
+                  value={editForm.supervisorRgo}
+                  onChange={(e) => setEditForm({ ...editForm, supervisorRgo: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Estatus</label>
+                <select
+                  value={editForm.estatus}
+                  onChange={(e) => setEditForm({ ...editForm, estatus: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="">-- Selecciona --</option>
+                  <option value="Alta">Alta</option>
+                  <option value="Activo">Activo</option>
+                  <option value="Baja">Baja</option>
+                </select>
+                {editForm.estatus === 'Alta' && (
+                  <p className="text-[11px] text-amber-600 mt-1">Pasará a "Activo" automáticamente el lunes siguiente.</p>
+                )}
+              </div>
+              {editForm.estatus === 'Baja' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Motivo de la baja</label>
+                  <input
+                    type="text"
+                    value={editForm.motivo}
+                    onChange={(e) => setEditForm({ ...editForm, motivo: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    placeholder="Ej. Renuncia, despido, cambio de distribuidor..."
+                  />
+                </div>
+              )}
+            </div>
+
+            {editError && (
+              <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">{editError}</div>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditModalRow(null)} className="px-4 py-2 text-sm text-slate-600">Cancelar</button>
+              <button
+                onClick={guardarEdicion}
+                disabled={savingEdit}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-400"
+              >
+                {savingEdit ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -465,7 +681,7 @@ function AgregarVendedor({ onAdded }) {
               {campo} {(campo === 'NOMBRE DEL VENDEDOR' || campo === 'CLAVES') && <span className="text-red-500">*</span>}
             </label>
             <input
-              type={campo.includes('FECHA') ? 'date' : 'text'}
+              type={campo.includes('FECHA') ? 'date' : campo === 'Contraseña' ? 'password' : 'text'}
               value={form[campo] || ''}
               onChange={(e) => handleChange(campo, e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"

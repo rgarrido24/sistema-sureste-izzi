@@ -147,6 +147,7 @@ router.post('/', async (req, res) => {
       subidoPorId: req.user?.id || '',
       subidoPorUsername: req.user?.username || '',
       subidoPorNombre: req.user?.name || req.user?.username || '',
+      ...(row['ESTATUS'] === 'Alta' ? { FechaAlta: now } : {}),
     });
 
     res.json({ success: true, doc });
@@ -213,12 +214,48 @@ router.put('/:id/asignar', async (req, res) => {
 });
 
 // Listar registros actuales (la "foto" más reciente por clave)
+// Calcula el lunes siguiente a la semana en que se dio de "Alta" (si ya se dio de alta
+// un lunes, "el siguiente lunes" es el de la semana que sigue, no el mismo día).
+function lunesSiguiente(fecha) {
+  const d = new Date(fecha);
+  d.setHours(0, 0, 0, 0);
+  const dia = d.getDay(); // 0=Domingo,1=Lunes,...6=Sábado
+  const diasHastaProximoLunes = dia === 0 ? 1 : (dia === 1 ? 7 : (8 - dia));
+  d.setDate(d.getDate() + diasHastaProximoLunes);
+  return d;
+}
+
+// Pasa de "Alta" a "Activo" automáticamente a partir del lunes siguiente a la semana
+// en que se dio de alta. Se aplica de forma perezosa (al consultar), y se persiste
+// para que quede reflejado también en exportaciones y filtros.
+async function aplicarTransicionAltaActivo() {
+  const hoy = new Date();
+  const candidatos = await ClaveAsignacion.find({ ESTATUS: 'Alta', FechaAlta: { $exists: true, $ne: null } })
+    .select('_id FechaAlta')
+    .lean();
+
+  const idsAActivar = candidatos
+    .filter(c => c.FechaAlta && hoy >= lunesSiguiente(c.FechaAlta))
+    .map(c => c._id);
+
+  if (idsAActivar.length > 0) {
+    await ClaveAsignacion.updateMany(
+      { _id: { $in: idsAActivar } },
+      { $set: { ESTATUS: 'Activo' } }
+    );
+  }
+}
+
 router.get('/', async (req, res) => {
   try {
-    const { search, hoja, distribuidor } = req.query;
+    await aplicarTransicionAltaActivo();
+
+    const { search, hoja, distribuidor, region, estatus } = req.query;
     const query = {};
     if (hoja) query.hojaOrigen = hoja;
     if (distribuidor) query['DISTRIBUIDOR'] = new RegExp(distribuidor, 'i');
+    if (region) query['REGION'] = region;
+    if (estatus) query['ESTATUS'] = estatus;
     if (search) {
       const rx = new RegExp(search, 'i');
       query.$or = [
@@ -230,6 +267,7 @@ router.get('/', async (req, res) => {
         { 'No. EMPLEADO': rx },
         { 'No EMPLEADO': rx },
         { 'No.EMPLEADO': rx },
+        { 'SUPERVISOR RGO': rx },
       ];
     }
 
@@ -237,6 +275,47 @@ router.get('/', async (req, res) => {
     res.json(docs.map(withNoEmpleado));
   } catch (error) {
     console.error('Error obteniendo claves:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Lista de regiones distintas ya usadas, para el filtro
+router.get('/regiones', async (req, res) => {
+  try {
+    const regiones = await ClaveAsignacion.distinct('REGION');
+    res.json((regiones || []).filter(Boolean).sort());
+  } catch (error) {
+    console.error('Error obteniendo regiones:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Edición completa de un registro: contraseña, supervisor RGO, estatus (Alta/Baja/Activo), motivo de baja.
+router.put('/:id', async (req, res) => {
+  try {
+    const { contrasena, supervisorRgo, estatus, motivo } = req.body;
+    const update = { $set: {} };
+
+    if (contrasena !== undefined) update.$set['Contraseña'] = contrasena;
+    if (supervisorRgo !== undefined) update.$set['SUPERVISOR RGO'] = supervisorRgo;
+    if (motivo !== undefined) update.$set['MOTIVO'] = motivo;
+
+    if (estatus !== undefined) {
+      update.$set['ESTATUS'] = estatus;
+      if (estatus === 'Alta') {
+        // Reinicia el conteo de la semana cada vez que se vuelve a dar de alta
+        update.$set['FechaAlta'] = new Date();
+      }
+      if (estatus === 'Baja' && !motivo) {
+        return res.status(400).json({ error: 'Especifica el motivo de la baja' });
+      }
+    }
+
+    const doc = await ClaveAsignacion.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!doc) return res.status(404).json({ error: 'No encontrado' });
+    res.json(doc);
+  } catch (error) {
+    console.error('Error editando clave:', error);
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
@@ -262,6 +341,7 @@ router.post('/bulk', async (req, res) => {
       subidoPorNombre: req.user?.name || req.user?.username || '',
       createdAt: now,
       updatedAt: now,
+      ...(row['ESTATUS'] === 'Alta' ? { FechaAlta: now } : {}),
     }));
 
     await ClaveAsignacion.insertMany(docs, { ordered: false });

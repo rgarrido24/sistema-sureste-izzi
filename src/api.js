@@ -829,6 +829,17 @@ export async function getVendedoresCobranza() {
   return apiRequest('/claves/vendedores-cobranza');
 }
 
+export async function getClavesRegiones() {
+  return apiRequest('/claves/regiones');
+}
+
+export async function editarClave(id, cambios) {
+  return apiRequest(`/claves/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(cambios),
+  });
+}
+
 export async function asignarClaveVendedor(id, subdistribuidorVendedor) {
   return apiRequest(`/claves/${id}/asignar`, {
     method: 'PUT',
