@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import { requireAuth, requireRoles, signAuthToken } from '../middleware/auth.js';
 import ActivityEvent from '../models/ActivityEvent.js';
+import M1Master from '../models/M1Master.js';
+import OperacionDia from '../models/OperacionDia.js';
 
 const router = express.Router();
 
@@ -61,6 +63,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         email: user.email || '',
         region: user.region || '',
+        plazas: Array.isArray(user.plazas) ? user.plazas : [],
         lastLoginAt: user.lastLoginAt || null,
       }
     });
@@ -73,11 +76,15 @@ router.post('/login', async (req, res) => {
 // Crear usuario
 router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
-    const { username, password, name, role, email, region } = req.body;
+    const { username, password, name, role, email, region, plazas } = req.body;
     const cleanUsername = username.trim().toLowerCase();
     
     if (!password || password.length < 6) {
       return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
+
+    if (role === 'supervisor' && (!Array.isArray(plazas) || plazas.length === 0)) {
+      return res.status(400).json({ success: false, error: 'Selecciona al menos una plaza para el supervisor' });
     }
     
     const existingUser = await User.findOne({ username: cleanUsername });
@@ -93,7 +100,8 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       name: name.trim(),
       role,
       email: email?.trim() || '',
-      region: (role === 'regionales' && region) ? region.trim() : ''
+      region: (role === 'regionales' && region) ? region.trim() : '',
+      plazas: (role === 'supervisor' && Array.isArray(plazas)) ? plazas.map(p => String(p).trim()).filter(Boolean) : []
     });
     
     await user.save();
@@ -105,7 +113,8 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
         username: user.username,
         name: user.name,
         role: user.role,
-        region: user.region || ''
+        region: user.region || '',
+        plazas: user.plazas || []
       }
     });
   } catch (error) {
@@ -122,6 +131,25 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       return res.status(400).json({ success: false, error: 'El usuario ya existe' });
     }
     res.status(500).json({ success: false, error: 'Error del servidor: ' + error.message });
+  }
+});
+
+// Lista de plazas disponibles, para el selector múltiple al crear un supervisor
+router.get('/plazas-disponibles', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
+  try {
+    const [plazasM1, plazasOperacion] = await Promise.all([
+      M1Master.distinct('PLAZA'),
+      OperacionDia.distinct('Plaza'),
+    ]);
+    const set = new Set();
+    [...(plazasM1 || []), ...(plazasOperacion || [])].forEach(p => {
+      const v = String(p || '').trim().toUpperCase();
+      if (v) set.add(v);
+    });
+    res.json(Array.from(set).sort());
+  } catch (error) {
+    console.error('Error obteniendo plazas disponibles:', error);
+    res.status(500).json({ error: 'Error del servidor' });
   }
 });
 
@@ -174,13 +202,16 @@ router.put('/:id/password', requireAuth, requireRoles(['admin', 'admin_general',
 // Actualizar usuario (nombre, role, email)
 router.put('/:id', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
-    const { name, role, email, region } = req.body;
+    const { name, role, email, region, plazas } = req.body;
     const updateData = {};
     
     if (name) updateData.name = name.trim();
     if (role) updateData.role = role;
     if (email !== undefined) updateData.email = email.trim();
     if (region !== undefined) updateData.region = region.trim();
+    if (plazas !== undefined) {
+      updateData.plazas = Array.isArray(plazas) ? plazas.map(p => String(p).trim()).filter(Boolean) : [];
+    }
     
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -200,7 +231,8 @@ router.put('/:id', requireAuth, requireRoles(['admin', 'admin_general', 'usuario
         name: user.name,
         role: user.role,
         email: user.email || '',
-        region: user.region || ''
+        region: user.region || '',
+        plazas: user.plazas || []
       }
     });
   } catch (error) {

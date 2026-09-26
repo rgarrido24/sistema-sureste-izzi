@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     required: true,
-    enum: ['admin', 'user', 'vendedor', 'director', 'usuarios', 'mesa_control', 'regionales', 'cobranza_mx', 'coordinador_claves']
+    enum: ['admin', 'user', 'vendedor', 'director', 'usuarios', 'mesa_control', 'regionales', 'cobranza_mx', 'coordinador_claves', 'supervisor']
   },
   email: {
     type: String,
@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '',
     trim: true
+  },
+  plazas: {
+    type: [String],
+    default: []
   },
   lastLoginAt: {
     type: Date,

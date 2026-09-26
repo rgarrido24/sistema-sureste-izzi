@@ -13,16 +13,26 @@ export default function UsersModule() {
     name: '', 
     role: 'vendedor', 
     email: '',
-    region: '' 
+    region: '',
+    plazas: []
   });
   const [creating, setCreating] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+  const [plazasDisponibles, setPlazasDisponibles] = useState([]);
 
   useEffect(() => {
     loadUsers();
+    api.getPlazasDisponibles().then(setPlazasDisponibles).catch(() => {});
   }, []);
+
+  const togglePlazaNuevo = (plaza) => {
+    setNewUser(prev => {
+      const yaEsta = prev.plazas.includes(plaza);
+      return { ...prev, plazas: yaEsta ? prev.plazas.filter(p => p !== plaza) : [...prev.plazas, plaza] };
+    });
+  };
 
   const loadUsers = async () => {
     try {
@@ -51,6 +61,10 @@ export default function UsersModule() {
         alert('Los usuarios regionales deben tener una región asignada');
         return;
       }
+      if (newUser.role === 'supervisor' && newUser.plazas.length === 0) {
+        alert('Selecciona al menos una plaza para el supervisor');
+        return;
+      }
       
       await api.createUser(
         newUser.username,
@@ -58,9 +72,10 @@ export default function UsersModule() {
         newUser.name,
         newUser.role,
         newUser.email,
-        newUser.region
+        newUser.region,
+        newUser.plazas
       );
-      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '' });
+      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [] });
       loadUsers();
     } catch (error) {
       alert('Error creando usuario: ' + error.message);
@@ -179,7 +194,12 @@ export default function UsersModule() {
               value={newUser.role}
               onChange={(e) => {
                 const newRole = e.target.value;
-                setNewUser({ ...newUser, role: newRole, region: newRole === 'regionales' ? newUser.region : '' });
+                setNewUser({
+                  ...newUser,
+                  role: newRole,
+                  region: newRole === 'regionales' ? newUser.region : '',
+                  plazas: newRole === 'supervisor' ? newUser.plazas : [],
+                });
               }}
               className="px-4 py-2 border rounded-lg"
               disabled={isUsuariosRole}
@@ -193,6 +213,7 @@ export default function UsersModule() {
                   <option value="usuarios">Usuarios</option>
                   <option value="mesa_control">Mesa de Control</option>
                   <option value="regionales">Regionales</option>
+                  <option value="supervisor">Supervisor (por plaza)</option>
                   <option value="cobranza_mx">Cobranza MX</option>
                   <option value="coordinador_claves">Coordinador de Claves</option>
                 </>
@@ -214,6 +235,28 @@ export default function UsersModule() {
               </select>
             )}
           </div>
+          {newUser.role === 'supervisor' && (
+            <div className="border border-slate-200 rounded-lg p-3">
+              <p className="text-sm font-bold text-slate-700 mb-2">
+                Plazas que va a supervisar ({newUser.plazas.length} seleccionadas)
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-48 overflow-y-auto">
+                {plazasDisponibles.map(plaza => (
+                  <label key={plaza} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newUser.plazas.includes(plaza)}
+                      onChange={() => togglePlazaNuevo(plaza)}
+                    />
+                    {plaza}
+                  </label>
+                ))}
+              </div>
+              {plazasDisponibles.length === 0 && (
+                <p className="text-xs text-slate-400">No hay plazas disponibles todavía (sube datos a M1 u Operación primero).</p>
+              )}
+            </div>
+          )}
           <button
             type="submit"
             disabled={creating}

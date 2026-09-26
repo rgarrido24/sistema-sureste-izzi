@@ -46,7 +46,8 @@ export async function requireAuth(req, res, next) {
       name: user.name,
       role: user.role,
       email: user.email || '',
-      region: user.region || ''
+      region: user.region || '',
+      plazas: Array.isArray(user.plazas) ? user.plazas : []
     };
 
     next();

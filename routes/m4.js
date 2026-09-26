@@ -8,6 +8,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
+import { filterByAccessScope, isScopedRole } from '../utils/accessScope.js';
 import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
 import { updateContactoInModel } from '../utils/contactoSync.js';
@@ -18,15 +19,11 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   try {
     const role = req.user?.role;
-    const isScopedByRegion = role === 'regionales' || role === 'cobranza_mx';
-    const userRegion = role === 'regionales'
-      ? normalizeRegion(req.user.region || '')
-      : role === 'cobranza_mx'
-        ? normalizeRegion('METROPOLITANA')
-        : '';
-
-    if (isScopedByRegion && !userRegion) {
+    if (role === 'regionales' && !normalizeRegion(req.user.region || '')) {
       return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
+    }
+    if (role === 'supervisor' && (!Array.isArray(req.user.plazas) || req.user.plazas.length === 0)) {
+      return res.status(403).json({ error: 'Usuario supervisor sin plazas asignadas. Pide a Admin que las configure.' });
     }
     const { estado, fecha, vendedor } = req.query;
     const query = {};
@@ -44,42 +41,8 @@ router.get('/', async (req, res) => {
     // lean() para acelerar (no necesitamos métodos de Mongoose en lectura)
     const m4 = await M4Master.find(query).sort({ createdAt: -1 }).lean();
 
-    if (isScopedByRegion) {
-      // Filtro robusto: si el registro no trae región, inferir por cuenta cruzando con OperacionDia (Hub/Plaza)
-      const regionByCuenta = new Map();
-      const missingCuentas = [];
-
-      for (const doc of m4) {
-        const obj = doc?.toObject ? doc.toObject() : doc;
-        const cuenta = normalizeCuenta(obj) || obj?.cuenta;
-        const reg = extractRegionFromRecord(obj);
-        if (cuenta && reg) regionByCuenta.set(cuenta, reg);
-        else if (cuenta) missingCuentas.push(cuenta);
-      }
-
-      if (missingCuentas.length > 0) {
-        const uniqueMissing = Array.from(new Set(missingCuentas)).slice(0, 50000);
-        const opDocs = await OperacionDia.find(
-          { cuenta: { $in: uniqueMissing } },
-          { cuenta: 1, Hub: 1, HUB: 1, Plaza: 1, PLAZA: 1, REGION: 1, Region: 1, 'Región': 1, 'REGIÓN': 1, SUBREGION: 1, 'SUBREGION': 1 }
-        ).lean();
-
-        for (const od of opDocs) {
-          const cuenta = od?.cuenta;
-          if (!cuenta) continue;
-          if (regionByCuenta.has(cuenta)) continue;
-          const reg = extractRegionFromRecord(od);
-          if (reg) regionByCuenta.set(cuenta, reg);
-        }
-      }
-
-      const filtered = m4.filter(doc => {
-        const obj = doc?.toObject ? doc.toObject() : doc;
-        const cuenta = normalizeCuenta(obj) || obj?.cuenta;
-        const reg = (cuenta && regionByCuenta.get(cuenta)) ? regionByCuenta.get(cuenta) : extractRegionFromRecord(obj);
-        return normalizeRegion(reg) === userRegion;
-      });
-
+    if (isScopedRole(role)) {
+      const filtered = await filterByAccessScope(m4, req.user, OperacionDia);
       return res.json(filtered);
     }
 
