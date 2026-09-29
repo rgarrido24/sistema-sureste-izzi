@@ -1,3 +1,5 @@
+import { getItemVendedores } from './helpers.js';
+
 /**
  * Función para comparar nombres de vendedor de forma flexible
  * Maneja diferencias en mayúsculas, espacios, acentos, etc.
@@ -251,18 +253,9 @@ export function filterByVendor(data, user) {
     }
     
     const filtered = data.filter(item => {
-      const vendedor = item.Vendedor || item['Vendedor'] || '';
-      
-      if (!vendedor) return false;
-      
-      const matches = matchVendorName(userName, vendedor);
-      
-      // Log para debugging (solo los primeros 5)
-      if (data.indexOf(item) < 5) {
-        console.log(`🔍 Comparando: "${userName}" vs "${vendedor}" = ${matches}`);
-      }
-      
-      return matches;
+      const nombres = getItemVendedores(item);
+      if (nombres.length === 0) return false;
+      return nombres.some((vendedor) => matchVendorName(userName, vendedor));
     });
     
     console.log(`📊 Usuario: ${userName} | Total datos: ${data.length} | Filtrados: ${filtered.length}`);

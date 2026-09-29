@@ -75,6 +75,11 @@ const FIELD_NORMALIZATION = {
   // Vendedor
   'CVVEN': 'Clave Vendedor',
   'Vendedor Asignado': 'VendedorAsignado',
+  'VENDEDOR': 'Vendedor',
+  'Nombre Vendedor': 'Vendedor',
+  'NOMBRE VENDEDOR': 'Vendedor',
+  'Vendedor RGO': 'Vendedor',
+  'VENDEDOR RGO': 'Vendedor',
   
   // Notas
   'Notas': 'Nota',

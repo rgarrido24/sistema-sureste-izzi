@@ -5,7 +5,7 @@ import { MODULES } from '../../utils/constants.js';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
-import { calcularEstatusFPDDesdeFecha, parseFlexibleDate, getItemSaldo, getItemId, itemEsDecomisionable } from '../../utils/helpers.js';
+import { calcularEstatusFPDDesdeFecha, parseFlexibleDate, getItemSaldo, getItemId, itemEsDecomisionable, getItemVendedor, getItemVendedores } from '../../utils/helpers.js';
 
 // Componente para editar teléfono y notas
 function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromesaPago, onUpdate }) {
@@ -171,7 +171,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
         const monto = client['Saldo Total'] || client['SaldoTotal'] || client.saldoTotal || client['Total Adeudo'] || client.totalAdeudo || 0;
         const porVencer = client['Por Vencer'] || client['PorVencer'] || client.porVencer || 0;
         const vencido = client['Vencido'] || client.vencido || 0;
-        const vendedor = client.Vendedor || client['Vendedor'] || client.vendedor || 'N/A';
+        const vendedor = getItemVendedor(client) || client.Vendedor || client['Vendedor'] || client.vendedor || 'N/A';
         const plaza = client.PLAZA || client['PLAZA'] || client.Plaza || client.plaza || 'N/A';
         const estatus = status || 'N/A';
 
@@ -282,7 +282,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     const monto = client['Saldo Total'] || client['SaldoTotal'] || client.saldoTotal || client['Total Adeudo'] || client.totalAdeudo || 0;
     const porVencer = client['Por Vencer'] || client['PorVencer'] || client.porVencer || 0;
     const vencido = client['Vencido'] || client.vencido || 0;
-    const vendedor = client.Vendedor || client['Vendedor'] || client.vendedor || 'N/A';
+    const vendedor = getItemVendedor(client) || client.Vendedor || client['Vendedor'] || client.vendedor || 'N/A';
     const plaza = client.PLAZA || client['PLAZA'] || client.Plaza || client.plaza || 'N/A';
     const estatus = status || 'N/A';
 
@@ -601,15 +601,7 @@ export default function SalesStatusView({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showVendorBreakdown, setShowVendorBreakdown] = useState(false);
 
-  const isVendorAssigned = (item) => {
-    const raw = String(item?.Vendedor || item?.['Vendedor'] || '').trim();
-    if (!raw) return false;
-    const up = raw.toUpperCase();
-    if (up === 'SIN DATO' || up === 'SINDATO' || up === 'N/A' || up === 'NA' || up === '-' || up === '0') return false;
-    // Evitar códigos tipo "CVVEN..."
-    if (up.includes('CVVEN')) return false;
-    return true;
-  };
+  const isVendorAssigned = (item) => Boolean(getItemVendedor(item));
 
   // Cargar "última actualización" de cobranza (para todos los usuarios)
   useEffect(() => {
@@ -726,8 +718,8 @@ export default function SalesStatusView({
   }
 
   const vendors = [...new Set(
-    data.map(item => item.Vendedor || item['Vendedor']).filter(Boolean)
-  )].sort();
+    data.flatMap((item) => getItemVendedores(item))
+  )].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 
   const plazas = [...new Set(
     data
@@ -1182,7 +1174,7 @@ export default function SalesStatusView({
           saldo: getSaldoNumerico(item),
           play: getPaqueteContratado(item),
           plaza: item.PLAZA || item['PLAZA'] || item.Plaza || 'Sin dato',
-          vendedor: item.Vendedor || item['Vendedor'] || 'Sin dato',
+          vendedor: getItemVendedor(item) || 'Sin dato',
         });
       }
     });
@@ -1242,10 +1234,10 @@ export default function SalesStatusView({
       (item.Cliente || item['Cliente'] || '').toLowerCase().includes(searchLower) ||
       (item.CUENTA || item.Cuenta || item.cuenta || '').toString().includes(searchTerm) ||
       (item.Telefono1 || item.Telefono2 || item['Telefono1'] || item['Telefono2'] || '').toString().includes(searchTerm) ||
-      (item.Vendedor || item['Vendedor'] || '').toLowerCase().includes(searchLower) ||
+      (item.Vendedor || item['Vendedor'] || getItemVendedor(item) || '').toLowerCase().includes(searchLower) ||
       (item.PLAZA || item['PLAZA'] || item.Plaza || '').toLowerCase().includes(searchLower);
     
-    const matchesVendor = !filterVendor || (item.Vendedor || item['Vendedor']) === filterVendor;
+    const matchesVendor = !filterVendor || getItemVendedores(item).some((name) => name === filterVendor);
 
     const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
     const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
@@ -1322,7 +1314,7 @@ export default function SalesStatusView({
   const vendorBreakdown = (() => {
     const map = new Map();
     selectedItems.forEach((item) => {
-      const name = String(item.Vendedor || item['Vendedor'] || 'Sin vendedor').trim() || 'Sin vendedor';
+      const name = getItemVendedor(item) || 'Sin vendedor';
       const prev = map.get(name) || { count: 0, total: 0 };
       prev.count += 1;
       prev.total += getItemSaldo(item);
@@ -1896,7 +1888,7 @@ export default function SalesStatusView({
             const saldoPorVencer = parseMoney(saldoPorVencerRaw);
             const saldoVencido = parseMoney(saldoVencidoRaw);
             
-            const vendedor = item.Vendedor || item['Vendedor'] || 'Sin dato';
+            const vendedor = getItemVendedor(item) || 'Sin dato';
             const plaza = item.PLAZA || item['PLAZA'] || item.Plaza || 'Sin dato';
             
             // Leer fecha de vencimiento correctamente - probar diferentes nombres de columna

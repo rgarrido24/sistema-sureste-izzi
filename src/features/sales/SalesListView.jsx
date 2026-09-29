@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
+import { getItemVendedor, getItemVendedores } from '../../utils/helpers.js';
 
 export default function SalesListView({ 
   searchTerm, 
@@ -21,14 +22,7 @@ export default function SalesListView({
   const [dbCount, setDbCount] = useState(0);
   const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
 
-  const isVendorAssigned = (item) => {
-    const raw = String(item?.Vendedor || item?.['Vendedor'] || '').trim();
-    if (!raw) return false;
-    const up = raw.toUpperCase();
-    if (up === 'SIN DATO' || up === 'SINDATO' || up === 'N/A' || up === 'NA' || up === '-' || up === '0') return false;
-    if (up.includes('CVVEN')) return false;
-    return true;
-  };
+  const isVendorAssigned = (item) => Boolean(getItemVendedor(item));
 
   useEffect(() => {
     const loadLastUpdate = async () => {
@@ -74,7 +68,7 @@ export default function SalesListView({
     );
   }
 
-  const vendors = [...new Set(data.map(item => item.Vendedor).filter(Boolean))].sort();
+  const vendors = [...new Set(data.flatMap((item) => getItemVendedores(item)))].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
   const plazas = [...new Set(
     data
       .map(item => item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '')
@@ -89,7 +83,7 @@ export default function SalesListView({
       (item.Cuenta || '').includes(searchTerm) ||
       (item.Telefono || '').includes(searchTerm);
     
-    const matchesVendor = !filterVendor || item.Vendedor === filterVendor;
+    const matchesVendor = !filterVendor || getItemVendedores(item).some((name) => name === filterVendor);
 
     const itemPlaza = String(item.PLAZA || item['PLAZA'] || item.Plaza || item.plaza || '').trim();
     const matchesPlaza = !filterPlaza || itemPlaza === filterPlaza;
@@ -205,7 +199,7 @@ export default function SalesListView({
                         {item.Estatus || '-'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm">{item.Vendedor || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{getItemVendedor(item) || '-'}</td>
                   </tr>
                 ))
               )}

@@ -183,6 +183,62 @@ export function getItemId(item) {
   return String(item?.id || item?._id || '');
 }
 
+const VENDEDOR_JUNK = new Set(['', 'SIN DATO', 'SINDATO', 'N/A', 'NA', '-', '0', 'NULL', 'UNDEFINED']);
+
+function esNombreVendedorUtil(value) {
+  const str = String(value ?? '').trim();
+  if (!str) return '';
+  const up = str.toUpperCase();
+  if (VENDEDOR_JUNK.has(up)) return '';
+  if (up.includes('CVVEN')) return '';
+  return str;
+}
+
+/**
+ * Nombres de vendedor que puede traer un registro M0-M6
+ * (Excel usa VENDEDOR / Usuario Vendedor; el sistema guarda VendedorAsignado).
+ */
+export function getItemVendedores(item) {
+  const names = [];
+  const seen = new Set();
+  if (!item || typeof item !== 'object') return names;
+
+  const add = (raw) => {
+    const str = esNombreVendedorUtil(raw);
+    if (!str) return;
+    const key = str.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    names.push(str);
+  };
+
+  add(item.VendedorAsignado);
+  add(item['Vendedor Asignado']);
+  add(item.Vendedor);
+  add(item['Vendedor']);
+  add(item.VENDEDOR);
+  add(item['Usuario Vendedor']);
+  add(item['USUARIO VENDEDOR']);
+  add(item['Nombre Vendedor']);
+  add(item['NOMBRE VENDEDOR']);
+  add(item['Vendedor RGO']);
+  add(item['VENDEDOR RGO']);
+  add(item.vendedor);
+
+  for (const [key, value] of Object.entries(item)) {
+    const kn = String(key).toLowerCase();
+    if (!kn.includes('vendedor')) continue;
+    if (kn.includes('modificado') || kn.includes('automatico') || kn.includes('claveorigen')) continue;
+    add(value);
+  }
+
+  return names;
+}
+
+export function getItemVendedor(item) {
+  return getItemVendedores(item)[0] || '';
+}
+
 export function itemEsDecomisionable(status, estatusFPD) {
   if (status === 'M4') return true;
   if (status === 'M1') {
