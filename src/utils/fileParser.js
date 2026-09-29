@@ -105,32 +105,70 @@ export function parseCSV(text) {
   return arr;
 }
 
+// Revisa las primeras filas de una hoja buscando un encabezado reconocible
+// (cuenta, o el patrón de Permanencia). No es la detección final de fila de
+// encabezado (esa la hace UploadModule.jsx), solo sirve para decidir CUÁL hoja
+// usar cuando el archivo trae varias.
+function hojaTieneEncabezadoReconocible(data) {
+  const normalize = (v) => String(v || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  for (let i = 0; i < Math.min(15, data.length); i++) {
+    const row = data[i];
+    if (!Array.isArray(row)) continue;
+    const cells = row.map(normalize).filter(Boolean);
+    if (cells.length < 3) continue;
+
+    const tieneCuenta = cells.some(c => c === 'cuenta' || c.includes('cuenta') || c === 'num cliente');
+    if (tieneCuenta) return true;
+
+    const tienePermanencia = cells.some(c => c === 'permanencia') &&
+      cells.some(c => c === 'm' || c === 'ms' || c === 'cosecha');
+    if (tienePermanencia) return true;
+  }
+  return false;
+}
+
 /**
  * Parsea un archivo Excel
  */
 export function parseExcel(buffer) {
   const workbook = XLSX.read(buffer, { type: 'array' });
 
-  // Algunos archivos (ej. Permanencia) traen varias hojas: una de catálogo pequeña,
-  // la data real en otra (ej. "BD"), y un resumen. En vez de asumir que la primera
-  // hoja es la correcta, se elige la que tenga más filas con datos.
-  let mejorNombre = workbook.SheetNames[0];
-  let mejorData = XLSX.utils.sheet_to_json(workbook.Sheets[mejorNombre], {
-    header: 1, defval: '', raw: false
-  });
+  // Algunos archivos traen varias hojas: catálogos, resúmenes/pivotes, glosarios,
+  // y en algún lado la data real (a veces no es la primera hoja, ni la más grande —
+  // una hoja auxiliar puede tener más filas que la real). Se prioriza la hoja cuyo
+  // encabezado se reconoce como de cuenta/cliente; si ninguna lo tiene, se cae de
+  // regreso a elegir la de más filas (mejor esfuerzo).
+  const hojas = workbook.SheetNames.map(sheetName => ({
+    nombre: sheetName,
+    data: XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false }),
+  }));
 
-  if (workbook.SheetNames.length > 1) {
-    for (const sheetName of workbook.SheetNames.slice(1)) {
-      const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        header: 1, defval: '', raw: false
-      });
-      if (data.length > mejorData.length) {
-        mejorData = data;
-        mejorNombre = sheetName;
-      }
+  const conEncabezado = hojas.filter(h => hojaTieneEncabezadoReconocible(h.data));
+  const candidatas = conEncabezado.length > 0 ? conEncabezado : hojas;
+
+  // Entre las candidatas, preferir la que traiga "Estatus FPD" (el estatus ya resuelto,
+  // como en las hojas "Cosecha ..."), aunque tenga menos filas que una hoja de solo
+  // saldos/fechas (como "Saldos ..."). Si ninguna trae ese campo, usar la de más filas.
+  const normalize = (v) => String(v || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const tieneEstatusFPD = (data) => {
+    for (let i = 0; i < Math.min(15, data.length); i++) {
+      const row = data[i];
+      if (Array.isArray(row) && row.some(c => normalize(c) === 'estatus fpd')) return true;
     }
+    return false;
+  };
+
+  const conEstatusFPD = candidatas.filter(h => tieneEstatusFPD(h.data));
+  const finalistas = conEstatusFPD.length > 0 ? conEstatusFPD : candidatas;
+
+  let mejor = finalistas[0];
+  for (const h of finalistas.slice(1)) {
+    if (h.data.length > mejor.data.length) mejor = h;
   }
 
-  return mejorData;
+  return mejor.data;
 }
 
