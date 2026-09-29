@@ -1093,6 +1093,8 @@ export default function SalesStatusView({
       // Solo M1 tiene pérdidas, M2, M3, M4 no
       if (status === 'M1') {
         s.porcentajePerdidas = s.total > 0 ? ((s.perdidas / s.total) * 100).toFixed(1) : 0;
+        // % M1 Total = (M1 + Pérdidas) / Total — misma fórmula que usa Izzi en su reporte
+        s.porcentajeM1Total = s.total > 0 ? (((s.m1 || 0) + (s.perdidas || 0)) / s.total * 100).toFixed(1) : 0;
       }
       s.porcentajeFPD = s.total > 0 ? ((s.fpdCorriente / s.total) * 100).toFixed(1) : 0;
     });
@@ -1125,6 +1127,10 @@ export default function SalesStatusView({
     acc[`porcentaje${status}`] = acc.total > 0 ? ((acc[statusKey] / acc.total) * 100).toFixed(1) : 0;
     acc.porcentajePerdidas = acc.total > 0 ? ((acc.perdidas / acc.total) * 100).toFixed(1) : 0;
     acc.porcentajeFPD = acc.total > 0 ? ((acc.fpdCorriente / acc.total) * 100).toFixed(1) : 0;
+    if (status === 'M1') {
+      // % M1 Total = (M1 + Pérdidas) / Total — misma fórmula que usa Izzi en su reporte
+      acc.porcentajeM1Total = acc.total > 0 ? (((acc.m1 || 0) + (acc.perdidas || 0)) / acc.total * 100).toFixed(1) : 0;
+    }
     return acc;
   })();
   
@@ -1294,6 +1300,12 @@ export default function SalesStatusView({
               {nacionalStats.total > 0 && (
                 <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-50 md:col-span-2 lg:col-span-3">
                   <h4 className="font-bold text-blue-900 mb-3 text-lg">Nacional (promedio)</h4>
+                  {status === 'M1' && (
+                    <div className="flex justify-between items-center bg-blue-900 text-white p-3 rounded mb-3">
+                      <span className="font-bold">% M1 Total (M1 + Pérdidas):</span>
+                      <span className="font-extrabold text-lg">{nacionalStats.porcentajeM1Total}%</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
                     <div className="flex justify-between items-center bg-white p-2 rounded">
                       <span className="text-slate-600 font-medium">Total:</span>
@@ -1326,6 +1338,12 @@ export default function SalesStatusView({
                 return (
                   <div key={region} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                     <h4 className="font-bold text-slate-800 mb-3 text-lg">{region}</h4>
+                    {status === 'M1' && (
+                      <div className="flex justify-between items-center bg-slate-700 text-white p-2 rounded mb-2">
+                        <span className="font-bold text-xs">% M1 Total:</span>
+                        <span className="font-extrabold">{stats.porcentajeM1Total}%</span>
+                      </div>
+                    )}
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between items-center bg-white p-2 rounded">
                         <span className="text-slate-600 font-medium">Total:</span>

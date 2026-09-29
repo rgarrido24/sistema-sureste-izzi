@@ -615,6 +615,19 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     return matchesSearch && matchesEstatus && matchesFechaVenc && matchesDecomision && matchesMonto;
   });
 
+  // % M1 Total = (M1 pendientes + Pérdidas) / Total — misma fórmula que usa Izzi,
+  // calculado sobre TODA la cartera asignada a este vendedor (sin filtros de pantalla).
+  const porcentajeM1TotalVendedor = (() => {
+    if (status !== 'M1' || data.length === 0) return null;
+    let m1 = 0, perdidas = 0;
+    data.forEach(item => {
+      const e = getEstatusFPD(item, status);
+      if (e === 'FPD PÉRDIDA') perdidas++;
+      else if (e !== 'FPD CORRIENTE') m1++;
+    });
+    return ((m1 + perdidas) / data.length * 100).toFixed(1);
+  })();
+
   const sortedData = [...filteredData].sort((a, b) => {
     if (!sortMonto) return 0;
     const diff = getItemSaldo(a) - getItemSaldo(b);
@@ -722,6 +735,12 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
               </label>
             )}
           </div>
+          {porcentajeM1TotalVendedor !== null && (
+            <div className="flex justify-between items-center bg-slate-800 text-white p-3 rounded-lg mb-2">
+              <span className="font-bold text-sm">Tu % M1 Total (M1 + Pérdidas):</span>
+              <span className="font-extrabold text-lg">{porcentajeM1TotalVendedor}%</span>
+            </div>
+          )}
           <p className="text-sm text-slate-600 mt-2">
             Mostrando {sortedData.length} de {data.length} clientes
             {filterEstatus && ` • Filtrado: ${filterEstatus}`}
