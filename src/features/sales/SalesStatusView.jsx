@@ -590,6 +590,9 @@ export default function SalesStatusView({
   const [cobranzaLastUploads, setCobranzaLastUploads] = useState(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [sortMonto, setSortMonto] = useState('asc');
+  const [simuladorCantidad, setSimuladorCantidad] = useState(10);
+  const [simuladorPlay, setSimuladorPlay] = useState('');
+  const [simuladorRetencion, setSimuladorRetencion] = useState(10);
   const [filterMontoRango, setFilterMontoRango] = useState('');
   const [filterMontoMin, setFilterMontoMin] = useState('');
   const [filterMontoMax, setFilterMontoMax] = useState('');
@@ -1134,10 +1137,6 @@ export default function SalesStatusView({
   })() : {};
 
   // Simulador de pago: "si pago estas N cuentas más baratas de M1 pendiente, ¿a qué % bajo?"
-  const [simuladorCantidad, setSimuladorCantidad] = useState(10);
-  const [simuladorPlay, setSimuladorPlay] = useState('');
-  const [simuladorRetencion, setSimuladorRetencion] = useState(10);
-
   const simulador = (() => {
     if (status !== 'M1') return null;
 
