@@ -615,6 +615,68 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     return matchesSearch && matchesEstatus && matchesFechaVenc && matchesDecomision && matchesMonto;
   });
 
+  const getSaldoNumericoSim = (item) => {
+    const raw = item.SALDO || item['SALDO'] || item.Saldo || item['Saldo'] ||
+                item['Saldo Total'] || item['SALDO TOTAL'] || item['SALDO GLOBAL'] || 0;
+    const str = String(raw).trim();
+    if (!str || str === '-' || str === 'N/A') return 0;
+    const cleaned = str.replace(/[$\s,]/g, '').replace(/[^0-9.-]+/g, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+  };
+  const getPaqueteContratadoSim = (item) => {
+    const raw = item['PLAY CONTRATADO'] || item['Play Contratado'] || item['PLAY'] || item['Play'] || item['play'] || '';
+    return String(raw).trim().toUpperCase();
+  };
+
+  const [simuladorCantidad, setSimuladorCantidad] = useState(10);
+  const [simuladorPlay, setSimuladorPlay] = useState('');
+  const [simuladorRetencion, setSimuladorRetencion] = useState(10);
+
+  const simulador = (() => {
+    if (status !== 'M1') return null;
+
+    let totalGeneral = 0;
+    let perdidasGeneral = 0;
+    const pendientes = [];
+
+    data.forEach(item => {
+      totalGeneral++;
+      const e = getEstatusFPD(item, status);
+      if (e === 'FPD PÉRDIDA') {
+        perdidasGeneral++;
+      } else if (e !== 'FPD CORRIENTE') {
+        pendientes.push({
+          cuenta: item.cuenta || item.CUENTA || item['CUENTA'] || '',
+          cliente: item.Cliente || item['Cliente'] || item.CLIENTE || 'Sin nombre',
+          saldo: getSaldoNumericoSim(item),
+          play: getPaqueteContratadoSim(item),
+          plaza: item.PLAZA || item['PLAZA'] || item.Plaza || 'Sin dato',
+        });
+      }
+    });
+
+    const pendientesFiltrados = simuladorPlay ? pendientes.filter(p => p.play === simuladorPlay) : pendientes;
+    const ordenadas = [...pendientesFiltrados].sort((a, b) => a.saldo - b.saldo);
+    const n = Math.min(simuladorCantidad, ordenadas.length);
+    const seleccionadas = ordenadas.slice(0, n);
+    const montoTotal = seleccionadas.reduce((acc, c) => acc + c.saldo, 0);
+    const retencionEnJuego = montoTotal * (simuladorRetencion / 100);
+
+    const porcentajeActual = totalGeneral > 0 ? ((pendientes.length + perdidasGeneral) / totalGeneral * 100) : 0;
+    const porcentajeSimulado = totalGeneral > 0 ? (((pendientes.length - n) + perdidasGeneral) / totalGeneral * 100) : 0;
+
+    return {
+      porcentajeActual: porcentajeActual.toFixed(1),
+      porcentajeSimulado: porcentajeSimulado.toFixed(1),
+      puntosBajados: (porcentajeActual - porcentajeSimulado).toFixed(1),
+      montoTotal,
+      retencionEnJuego,
+      seleccionadas,
+      maxDisponible: ordenadas.length,
+    };
+  })();
+
   // % M1 Total = (M1 pendientes + Pérdidas) / Total — misma fórmula que usa Izzi,
   // calculado sobre TODA la cartera asignada a este vendedor (sin filtros de pantalla).
   const porcentajeM1TotalVendedor = (() => {
@@ -739,6 +801,74 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
             <div className="flex justify-between items-center bg-slate-800 text-white p-3 rounded-lg mb-2">
               <span className="font-bold text-sm">Tu % M1 Total (M1 + Pérdidas):</span>
               <span className="font-extrabold text-lg">{porcentajeM1TotalVendedor}%</span>
+            </div>
+          )}
+
+          {simulador && (
+            <div className="border border-slate-200 rounded-lg p-4 mb-3 bg-slate-50">
+              <p className="font-bold text-slate-700 mb-2">Simulador: si pago mis cuentas más baratas...</p>
+              <div className="flex flex-wrap gap-3 items-end mb-3">
+                <select value={simuladorPlay} onChange={(e) => setSimuladorPlay(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <option value="">Todos (2P + 3P)</option>
+                  <option value="2P">Solo 2P</option>
+                  <option value="3P">Solo 3P</option>
+                </select>
+                <div className="flex-1 min-w-[150px]">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    Cuentas a pagar: {Math.min(simuladorCantidad, simulador.maxDisponible)} de {simulador.maxDisponible}
+                  </label>
+                  <input type="range" min="0" max={Math.max(simulador.maxDisponible, 1)} value={simuladorCantidad}
+                    onChange={(e) => setSimuladorCantidad(parseInt(e.target.value))} className="w-full" />
+                </div>
+                <input type="number" min="0" max={simulador.maxDisponible} value={simuladorCantidad}
+                  onChange={(e) => setSimuladorCantidad(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-20 px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">% retención</label>
+                  <input type="number" min="0" max="100" value={simuladorRetencion}
+                    onChange={(e) => setSimuladorRetencion(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-16 px-2 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+                <div className="bg-white p-2 rounded text-center">
+                  <p className="text-[11px] text-slate-500">% Actual</p>
+                  <p className="font-extrabold text-slate-700">{simulador.porcentajeActual}%</p>
+                </div>
+                <div className="bg-green-100 p-2 rounded text-center">
+                  <p className="text-[11px] text-green-700">% Simulado</p>
+                  <p className="font-extrabold text-green-700">{simulador.porcentajeSimulado}%</p>
+                </div>
+                <div className="bg-blue-100 p-2 rounded text-center">
+                  <p className="text-[11px] text-blue-700">Baja</p>
+                  <p className="font-extrabold text-blue-700">-{simulador.puntosBajados}</p>
+                </div>
+                <div className="bg-amber-100 p-2 rounded text-center">
+                  <p className="text-[11px] text-amber-700">A cobrar</p>
+                  <p className="font-extrabold text-amber-700 text-sm">{formatCurrency(simulador.montoTotal)}</p>
+                </div>
+                <div className="bg-purple-100 p-2 rounded text-center">
+                  <p className="text-[11px] text-purple-700">Retención</p>
+                  <p className="font-extrabold text-purple-700 text-sm">{formatCurrency(simulador.retencionEnJuego)}</p>
+                </div>
+              </div>
+              {simulador.seleccionadas.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-slate-500"><th className="text-left py-1">Cuenta</th><th className="text-left py-1">Cliente</th><th className="text-left py-1">Saldo</th><th className="text-left py-1">Paquete</th></tr></thead>
+                    <tbody>
+                      {simulador.seleccionadas.map((c, i) => (
+                        <tr key={c.cuenta + i} className="border-t border-slate-200">
+                          <td className="py-1 font-mono">{c.cuenta}</td>
+                          <td className="py-1">{c.cliente}</td>
+                          <td className="py-1 font-bold">{formatCurrency(c.saldo)}</td>
+                          <td className="py-1">{c.play || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
           <p className="text-sm text-slate-600 mt-2">
