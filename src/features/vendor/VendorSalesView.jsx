@@ -443,7 +443,7 @@ const getEstatusFPD = (item, status) => {
     // Si ya tiene Estatus FPD guardado, usarlo primero
     const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || '';
     if (estatusFPDRaw) {
-      const estatusFPD = estatusFPDRaw.toUpperCase().trim();
+      const estatusFPD = String(estatusFPDRaw).toUpperCase().trim();
       if (estatusFPD === 'FPD CORRIENTE') return 'FPD CORRIENTE';
       if (estatusFPD === status) return status;
     }
@@ -476,7 +476,7 @@ const getEstatusFPD = (item, status) => {
     }
   }
 
-  const estatusFPD = estatusFPDRaw.toUpperCase().trim();
+  const estatusFPD = String(estatusFPDRaw ?? '').toUpperCase().trim();
   
   if (estatusFPD.includes('PÉRDIDA') || estatusFPD.includes('PERDIDA') || estatusFPD.includes('PERDIDO')) {
     return 'FPD PÉRDIDA';
@@ -504,6 +504,9 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
   const [soloDecomision, setSoloDecomision] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showVendorBreakdown, setShowVendorBreakdown] = useState(false);
+  const [simuladorCantidad, setSimuladorCantidad] = useState(10);
+  const [simuladorPlay, setSimuladorPlay] = useState('');
+  const [simuladorRetencion, setSimuladorRetencion] = useState(10);
 
   useEffect(() => {
     const loadData = async () => {
@@ -537,6 +540,10 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
           allData = await api.getM1Master(vendorFilter);
         }
         
+        if (!Array.isArray(allData)) {
+          throw new Error(allData?.error || 'El servidor no devolvió la lista de cuentas');
+        }
+
         console.log(`📊 Total de registros ${status} cargados:`, allData.length);
         console.log(`🔍 Filtro de vendedor aplicado:`, vendorFilter || 'Ninguno (admin)');
         
@@ -628,10 +635,6 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     const raw = item['PLAY CONTRATADO'] || item['Play Contratado'] || item['PLAY'] || item['Play'] || item['play'] || '';
     return String(raw).trim().toUpperCase();
   };
-
-  const [simuladorCantidad, setSimuladorCantidad] = useState(10);
-  const [simuladorPlay, setSimuladorPlay] = useState('');
-  const [simuladorRetencion, setSimuladorRetencion] = useState(10);
 
   const simulador = (() => {
     if (status !== 'M1') return null;

@@ -145,9 +145,10 @@ export function calcularEstatusFPDDesdeFecha(fechaPerdidaFPD) {
 
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  fecha.setHours(0, 0, 0, 0);
+  const limite = new Date(fecha.getTime());
+  limite.setHours(0, 0, 0, 0);
 
-  return fecha.getTime() < hoy.getTime() ? 'FPD PÉRDIDA' : 'FPD CORRIENTE';
+  return limite.getTime() < hoy.getTime() ? 'FPD PÉRDIDA' : 'FPD CORRIENTE';
 }
 
 /**

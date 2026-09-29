@@ -582,7 +582,8 @@ export default function SalesStatusView({
 }) {
   const { user } = useAuth();
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [count, setCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -629,7 +630,10 @@ export default function SalesStatusView({
     const loadStatusData = async (isInitial = false) => {
       if (!user) return;
       
-      if (isInitial) setLoading(true);
+      if (isInitial) {
+        setLoading(true);
+        setLoadError(null);
+      }
       try {
         // Determinar si el usuario es vendedor para filtrar
         // El rol 'director' puede ver todo sin filtros
@@ -664,6 +668,9 @@ export default function SalesStatusView({
         }
         
         if (cancelled) return;
+        if (!Array.isArray(data)) {
+          throw new Error(data?.error || 'El servidor no devolvió la lista de cuentas');
+        }
         const dataWithIds = data.map(d => ({ id: d._id || d.id, ...d }));
         setData(dataWithIds);
         setCount(dataWithIds.length);
@@ -673,6 +680,9 @@ export default function SalesStatusView({
         setMesInstalacion(mes);
       } catch (error) {
         console.error('Error cargando datos:', error);
+        if (isInitial && !cancelled) {
+          setLoadError(error.message || 'No se pudieron cargar las cuentas');
+        }
       } finally {
         if (isInitial && !cancelled) setLoading(false);
       }
@@ -695,6 +705,22 @@ export default function SalesStatusView({
     return (
       <div className="flex justify-center items-center p-8">
         <LoadingSpinner message={`Cargando clientes ${status}...`} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-200 text-center">
+        <p className="font-bold text-red-700 mb-2">No se pudo cargar {status}</p>
+        <p className="text-sm text-slate-600 mb-4">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRefreshNonce((n) => n + 1)}
+          className="px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-bold"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }
@@ -937,7 +963,7 @@ export default function SalesStatusView({
       // Si ya tiene Estatus FPD guardado, usarlo primero
       const estatusFPDRaw = item['Estatus FPD'] || item['EstatusFPD'] || '';
       if (estatusFPDRaw) {
-        const estatusFPD = estatusFPDRaw.toUpperCase().trim();
+        const estatusFPD = String(estatusFPDRaw).toUpperCase().trim();
         if (estatusFPD === 'FPD CORRIENTE') return 'FPD CORRIENTE';
         if (estatusFPD === status) return status;
       }
@@ -974,7 +1000,7 @@ export default function SalesStatusView({
       }
     }
 
-    const estatusFPD = estatusFPDRaw.toUpperCase().trim();
+    const estatusFPD = String(estatusFPDRaw ?? '').toUpperCase().trim();
     
     if (estatusFPD.includes('PÉRDIDA') || estatusFPD.includes('PERDIDA') || estatusFPD.includes('PERDIDO')) {
       return 'FPD PÉRDIDA';

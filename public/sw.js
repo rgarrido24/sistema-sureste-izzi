@@ -1,6 +1,6 @@
 // Service worker RGO: instalación como app + notificaciones push
 // (Sin cache agresivo de contenido: este sistema necesita datos siempre frescos)
-// rev=sync-20260924
+// rev=sync-20260929
 
 self.addEventListener('install', () => {
   self.skipWaiting();

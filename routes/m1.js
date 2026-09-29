@@ -35,6 +35,7 @@ router.get('/', async (req, res) => {
     
     // Usar lean() para acelerar y porque no necesitamos métodos de Mongoose aquí
     const m1 = await M1Master.find(query).sort({ createdAt: -1 }).lean();
+    console.log(`GET /m1 role=${role || 'n/a'} registros=${m1?.length ?? 0}`);
 
     if (isScopedRole(role)) {
       const filtered = await filterByAccessScope(m1, req.user, OperacionDia);
