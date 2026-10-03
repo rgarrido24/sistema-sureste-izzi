@@ -65,6 +65,38 @@ router.post('/', requireRoles(['admin', 'admin_general', 'mesa_control']), async
   }
 });
 
+// Crear conocimiento a partir de texto plano pegado directo (ej. la "gema" de promociones por plaza)
+router.post('/texto', requireRoles(['admin', 'admin_general', 'mesa_control']), async (req, res) => {
+  try {
+    const { name, description, text } = req.body;
+    const extractedText = String(text || '').trim();
+    if (!extractedText) {
+      return res.status(400).json({ error: 'Falta el texto' });
+    }
+
+    const chunksRaw = chunkText(extractedText);
+    const chunks = chunksRaw.slice(0, 300).map((t, idx) => ({ idx, text: t }));
+
+    const doc = await KnowledgePDF.create({
+      name: (name || 'Conocimiento de texto').toString().trim(),
+      url: '',
+      description: (description || '').toString().trim(),
+      extractedText,
+      chunks,
+      isActive: true,
+    });
+
+    res.json({
+      success: true,
+      pdf: doc,
+      stats: { chars: extractedText.length, chunks: chunks.length }
+    });
+  } catch (error) {
+    console.error('Error creando conocimiento de texto:', error);
+    res.status(500).json({ error: error.message || 'Error del servidor' });
+  }
+});
+
 // Subir PDF (archivo) y extraer conocimiento (RAG)
 router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control']), upload.single('pdf'), async (req, res) => {
   try {

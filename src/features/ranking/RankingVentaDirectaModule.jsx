@@ -49,6 +49,9 @@ export default function RankingVentaDirectaModule() {
       </div>
       <p className="text-sm text-slate-500 mb-4">
         Ordenado por volumen de venta (cuentas en M1). El % M1 Total es un dato de calidad, no de orden.
+        {!esVendedor && (
+          <> Solo aparecen los vendedores marcados como "Venta directa" en Comisiones → Vendedores — si alguien falta, asígnale su tipo ahí.</>
+        )}
       </p>
 
       {esVendedor && miFila && (

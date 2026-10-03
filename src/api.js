@@ -749,6 +749,13 @@ export async function assistantUsageSummary() {
 }
 
 // ========== CONOCIMIENTO (PDF) ==========
+export async function crearConocimientoTexto(text, name = '', description = '') {
+  return apiRequest('/pdfs/texto', {
+    method: 'POST',
+    body: JSON.stringify({ text, name, description }),
+  });
+}
+
 export async function uploadKnowledgePDF(file, name = '', description = '') {
   const token = (() => {
     try {

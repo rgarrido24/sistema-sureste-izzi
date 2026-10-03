@@ -19,15 +19,15 @@ router.get('/venta-directa', async (req, res) => {
   try {
     const m1 = await M1Master.find({}).lean();
 
-    // Solo incluir vendedores marcados como "venta directa" (tipo === 'directa') en VendedorFactor.
-    // Si un vendedor todavía no tiene factor asignado, se incluye por default (para no dejar el
-    // ranking vacío mientras se van dando de alta uno por uno) — en cuanto se le asigne tipo
-    // "distribuidor", sale automáticamente del ranking.
+    // Solo incluir vendedores marcados EXPLÍCITAMENTE como "venta directa" en Comisiones → Vendedores.
+    // Si todavía no se ha etiquetado a alguien (sea venta directa o distribuidor), se EXCLUYE del
+    // ranking por default — así nunca se filtra un distribuidor sin querer mientras se van dando
+    // de alta uno por uno.
     const factores = await VendedorFactor.find({}).lean();
     const tipoPorVendedor = new Map(factores.map(f => [f.vendedor.trim().toUpperCase(), f.tipo]));
     const esVentaDirecta = (nombre) => {
       const tipo = tipoPorVendedor.get(nombre.trim().toUpperCase());
-      return tipo === undefined || tipo === 'directa';
+      return tipo === 'directa';
     };
 
     const porVendedor = new Map(); // nombre -> { total, m1, perdidas, plazas: Map }
