@@ -23,7 +23,8 @@ export const MODULES = {
   INSTALL: 'install',
   ADMIN: 'admin',
   CLAVES: 'claves',
-  CAPACITACIONES: 'capacitaciones'
+  CAPACITACIONES: 'capacitaciones',
+  IMAGENES_VENTA: 'imagenesVenta'
 };
 
 export const COLLECTIONS = {

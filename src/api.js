@@ -882,3 +882,47 @@ export async function guardarCeldaCapacitacion(celda) {
 export async function eliminarCeldaCapacitacion(id) {
   return apiRequest(`/capacitaciones/${id}`, { method: 'DELETE' });
 }
+
+// ========== GALERÍA DE IMÁGENES DE VENTA ==========
+export async function getImagenesVenta() {
+  return apiRequest('/imagenes-venta');
+}
+
+export async function getImagenVentaCompleta(id) {
+  return apiRequest(`/imagenes-venta/${id}`);
+}
+
+export async function subirImagenVenta(file, titulo = '') {
+  const token = (() => {
+    try {
+      const raw = localStorage.getItem('ss_auth_v1');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.token || null;
+    } catch { return null; }
+  })();
+
+  const form = new FormData();
+  form.append('imagen', file);
+  if (titulo) form.append('titulo', titulo);
+
+  const res = await fetch(`${API_BASE_URL}/imagenes-venta`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: form
+  });
+
+  if (!res.ok) {
+    let err;
+    try { err = await res.json(); } catch { err = null; }
+    throw new Error(err?.error || `Error ${res.status}`);
+  }
+
+  return await res.json();
+}
+
+export async function eliminarImagenVenta(id) {
+  return apiRequest(`/imagenes-venta/${id}`, { method: 'DELETE' });
+}
