@@ -6,6 +6,7 @@ import VendorOperacionView from '../features/vendor/VendorOperacionView.jsx';
 import VendorReportsView from '../features/vendor/VendorReportsView.jsx';
 import VendorChatView from '../features/vendor/VendorChatView.jsx';
 import AccountModule from '../features/account/AccountModule.jsx';
+import CapacitacionesModule from '../features/capacitaciones/CapacitacionesModule.jsx';
 
 export default function VendorDashboard({ user, myName }) {
   const { logout } = useAuth();
@@ -43,6 +44,7 @@ export default function VendorDashboard({ user, myName }) {
       )}
       {activeView === 'reports' && <VendorReportsView myName={myName} />}
       {activeView === 'chat' && <VendorChatView />}
+      {activeView === 'capacitaciones' && <CapacitacionesModule />}
       {activeView === 'account' && <AccountModule />}
     </VendorLayout>
   );

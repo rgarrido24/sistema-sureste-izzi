@@ -69,6 +69,16 @@ export default function VendorLayout({
               Asistente IA
             </button>
             <button 
+              onClick={() => setActiveView('capacitaciones')} 
+              className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                activeView === 'capacitaciones' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              Capacitaciones
+            </button>
+            <button 
               onClick={() => setActiveView('account')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
                 activeView === 'account' 

@@ -22,7 +22,8 @@ export const MODULES = {
   SALES: 'sales',
   INSTALL: 'install',
   ADMIN: 'admin',
-  CLAVES: 'claves'
+  CLAVES: 'claves',
+  CAPACITACIONES: 'capacitaciones'
 };
 
 export const COLLECTIONS = {

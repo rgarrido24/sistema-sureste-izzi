@@ -18,6 +18,7 @@ import KnowledgeModule from '../features/knowledge/KnowledgeModule.jsx';
 import AdminActivityDashboard from '../features/activity/AdminActivityDashboard.jsx';
 import WhatsAppBulkModule from '../features/whatsapp/WhatsAppBulkModule.jsx';
 import ClavesModule from '../features/claves/ClavesModule.jsx';
+import CapacitacionesModule from '../features/capacitaciones/CapacitacionesModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -46,11 +47,11 @@ export default function AdminDashboard({ user }) {
     if (user?.role === 'usuarios' && module !== MODULES.ADMIN && module !== MODULES.CLAVES) {
       return;
     }
-    if (user?.role === 'cobranza_mx' && module !== MODULES.SALES) {
-      // Cobranza MX: no permitir salir del módulo de Cobranza
+    if (user?.role === 'cobranza_mx' && module !== MODULES.SALES && module !== MODULES.CAPACITACIONES) {
+      // Cobranza MX: no permitir salir del módulo de Cobranza (excepto Capacitaciones)
       return;
     }
-    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN) {
+    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES) {
       return;
     }
     if (user?.role === 'coordinador_claves' && module !== MODULES.CLAVES) {
@@ -102,6 +103,9 @@ export default function AdminDashboard({ user }) {
       {currentModule === MODULES.CLAVES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'coordinador_claves' || user?.role === 'usuarios') && activeTab !== 'chat' && (
         <ClavesModule />
       )}
+
+      {/* Calendario de capacitaciones — visible para todos los roles del panel admin */}
+      {currentModule === MODULES.CAPACITACIONES && <CapacitacionesModule />}
 
       {/* Módulo de Administración */}
       {currentModule === MODULES.ADMIN && (

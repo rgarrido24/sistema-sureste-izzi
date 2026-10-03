@@ -866,3 +866,19 @@ export async function asignarClaveVendedor(id, subdistribuidorVendedor) {
     body: JSON.stringify({ subdistribuidorVendedor }),
   });
 }
+
+// ========== CAPACITACIONES (calendario semanal) ==========
+export async function getCapacitaciones() {
+  return apiRequest('/capacitaciones');
+}
+
+export async function guardarCeldaCapacitacion(celda) {
+  return apiRequest('/capacitaciones', {
+    method: 'POST',
+    body: JSON.stringify(celda),
+  });
+}
+
+export async function eliminarCeldaCapacitacion(id) {
+  return apiRequest(`/capacitaciones/${id}`, { method: 'DELETE' });
+}

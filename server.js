@@ -16,6 +16,7 @@ import m0Routes from './routes/m0.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import pushRoutes from './routes/push.js';
 import clavesRoutes from './routes/claves.js';
+import capacitacionesRoutes from './routes/capacitaciones.js';
 import m2Routes from './routes/m2.js';
 import m3Routes from './routes/m3.js';
 import m4Routes from './routes/m4.js';
@@ -110,6 +111,7 @@ app.use('/api/assistant', assistantRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/claves', clavesRoutes);
+app.use('/api/capacitaciones', capacitacionesRoutes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {
