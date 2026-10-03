@@ -20,6 +20,8 @@ import WhatsAppBulkModule from '../features/whatsapp/WhatsAppBulkModule.jsx';
 import ClavesModule from '../features/claves/ClavesModule.jsx';
 import CapacitacionesModule from '../features/capacitaciones/CapacitacionesModule.jsx';
 import ImagenesVentaModule from '../features/imagenes-venta/ImagenesVentaModule.jsx';
+import RankingVentaDirectaModule from '../features/ranking/RankingVentaDirectaModule.jsx';
+import PuntosModule from '../features/puntos/PuntosModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -52,7 +54,7 @@ export default function AdminDashboard({ user }) {
       // Cobranza MX: no permitir salir del módulo de Cobranza (excepto Capacitaciones)
       return;
     }
-    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES && module !== MODULES.IMAGENES_VENTA) {
+    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES && module !== MODULES.IMAGENES_VENTA && module !== MODULES.RANKING && module !== MODULES.PUNTOS) {
       return;
     }
     if (user?.role === 'coordinador_claves' && module !== MODULES.CLAVES) {
@@ -110,6 +112,12 @@ export default function AdminDashboard({ user }) {
 
       {/* Imágenes de venta — visible para todos los roles del panel admin */}
       {currentModule === MODULES.IMAGENES_VENTA && <ImagenesVentaModule />}
+
+      {/* Ranking de venta directa — visible para todos los roles del panel admin */}
+      {currentModule === MODULES.RANKING && <RankingVentaDirectaModule />}
+
+      {/* Puntos de venta — visible para todos los roles del panel admin */}
+      {currentModule === MODULES.PUNTOS && <PuntosModule />}
 
       {/* Módulo de Administración */}
       {currentModule === MODULES.ADMIN && (

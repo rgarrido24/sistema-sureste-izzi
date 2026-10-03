@@ -8,6 +8,8 @@ import VendorChatView from '../features/vendor/VendorChatView.jsx';
 import AccountModule from '../features/account/AccountModule.jsx';
 import CapacitacionesModule from '../features/capacitaciones/CapacitacionesModule.jsx';
 import ImagenesVentaModule from '../features/imagenes-venta/ImagenesVentaModule.jsx';
+import RankingVentaDirectaModule from '../features/ranking/RankingVentaDirectaModule.jsx';
+import PuntosModule from '../features/puntos/PuntosModule.jsx';
 
 export default function VendorDashboard({ user, myName }) {
   const { logout } = useAuth();
@@ -47,6 +49,8 @@ export default function VendorDashboard({ user, myName }) {
       {activeView === 'chat' && <VendorChatView />}
       {activeView === 'capacitaciones' && <CapacitacionesModule />}
       {activeView === 'imagenesVenta' && <ImagenesVentaModule />}
+      {activeView === 'ranking' && <RankingVentaDirectaModule />}
+      {activeView === 'puntos' && <PuntosModule />}
       {activeView === 'account' && <AccountModule />}
     </VendorLayout>
   );

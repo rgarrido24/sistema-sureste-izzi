@@ -24,7 +24,8 @@ export const MODULES = {
   ADMIN: 'admin',
   CLAVES: 'claves',
   CAPACITACIONES: 'capacitaciones',
-  IMAGENES_VENTA: 'imagenesVenta'
+  IMAGENES_VENTA: 'imagenesVenta',
+  RANKING: 'ranking'
 };
 
 export const COLLECTIONS = {

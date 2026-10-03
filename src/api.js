@@ -926,3 +926,8 @@ export async function subirImagenVenta(file, titulo = '') {
 export async function eliminarImagenVenta(id) {
   return apiRequest(`/imagenes-venta/${id}`, { method: 'DELETE' });
 }
+
+// ========== RANKING DE VENTA DIRECTA ==========
+export async function getRankingVentaDirecta() {
+  return apiRequest('/ranking/venta-directa');
+}

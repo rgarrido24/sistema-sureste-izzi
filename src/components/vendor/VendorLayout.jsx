@@ -89,6 +89,26 @@ export default function VendorLayout({
               Imágenes
             </button>
             <button 
+              onClick={() => setActiveView('ranking')} 
+              className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                activeView === 'ranking' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              Ranking
+            </button>
+            <button 
+              onClick={() => setActiveView('puntos')} 
+              className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                activeView === 'puntos' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              Puntos
+            </button>
+            <button 
               onClick={() => setActiveView('account')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
                 activeView === 'account' 
