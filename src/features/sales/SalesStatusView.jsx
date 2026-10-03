@@ -1630,6 +1630,24 @@ export default function SalesStatusView({
               <option key={vendor} value={vendor}>{vendor}</option>
             ))}
           </select>
+          {status === 'M1' && filterVendor && (() => {
+            let total = 0, perdidas = 0, m1 = 0;
+            data.forEach(item => {
+              if (!getItemVendedores(item).some(name => name === filterVendor)) return;
+              total++;
+              const e = getEstatusFPD(item);
+              if (e === 'FPD PÉRDIDA') perdidas++;
+              else if (e !== 'FPD CORRIENTE') m1++;
+            });
+            if (total === 0) return null;
+            const pct = ((m1 + perdidas) / total * 100);
+            const colorClase = pct > 13.5 ? 'bg-red-600 text-white' : pct < 5 ? 'bg-green-600 text-white' : 'bg-amber-400 text-slate-900';
+            return (
+              <div className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${colorClase}`}>
+                {filterVendor}: {pct.toFixed(1)}%
+              </div>
+            );
+          })()}
           <select
             value={filterVendorAssigned || ''}
             onChange={(e) => {
