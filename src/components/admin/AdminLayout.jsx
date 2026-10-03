@@ -126,6 +126,18 @@ export default function AdminLayout({
                   Puntos
                 </button>
               )}
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'regionales') && (
+                <button 
+                  onClick={() => { setModule(MODULES.COMISIONES); setActiveTab('comisiones'); }} 
+                  className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                    currentModule === MODULES.COMISIONES 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb]'
+                  }`}
+                >
+                  Comisiones
+                </button>
+              )}
               {/* Administración (Mi Cuenta) disponible para todos los roles de panel */}
               {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor') && (
                 <button 

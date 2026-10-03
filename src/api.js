@@ -931,3 +931,58 @@ export async function eliminarImagenVenta(id) {
 export async function getRankingVentaDirecta() {
   return apiRequest('/ranking/venta-directa');
 }
+
+// ========== CASCARÓN DE PUNTOS ==========
+export async function getMisPuntos() {
+  return apiRequest('/puntos/mis-puntos');
+}
+
+export async function getPuntosTodos() {
+  return apiRequest('/puntos/todos');
+}
+
+export async function otorgarPuntos(vendedor, puntos, motivo, tipo) {
+  return apiRequest('/puntos', {
+    method: 'POST',
+    body: JSON.stringify({ vendedor, puntos, motivo, tipo }),
+  });
+}
+
+// ========== FACTOR DE COMISIÓN (oculto para vendedores) ==========
+export async function getComisionPaquetes() {
+  return apiRequest('/comisiones/paquetes');
+}
+
+export async function sembrarComisionPaquetes() {
+  return apiRequest('/comisiones/paquetes/seed', { method: 'POST' });
+}
+
+export async function guardarComisionPaquete(paquete, comisionBase) {
+  return apiRequest('/comisiones/paquetes', {
+    method: 'POST',
+    body: JSON.stringify({ paquete, comisionBase }),
+  });
+}
+
+export async function eliminarComisionPaquete(id) {
+  return apiRequest(`/comisiones/paquetes/${id}`, { method: 'DELETE' });
+}
+
+export async function getVendedoresFactor() {
+  return apiRequest('/comisiones/vendedores');
+}
+
+export async function guardarVendedorFactor(vendedor, tipo, factor, retencionPorcentaje) {
+  return apiRequest('/comisiones/vendedores', {
+    method: 'POST',
+    body: JSON.stringify({ vendedor, tipo, factor, retencionPorcentaje }),
+  });
+}
+
+export async function eliminarVendedorFactor(id) {
+  return apiRequest(`/comisiones/vendedores/${id}`, { method: 'DELETE' });
+}
+
+export async function getMiRiesgo() {
+  return apiRequest('/comisiones/mi-riesgo');
+}

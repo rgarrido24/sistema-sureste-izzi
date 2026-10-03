@@ -1,5 +1,6 @@
 import express from 'express';
 import M1Master from '../models/M1Master.js';
+import VendedorFactor from '../models/VendedorFactor.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getItemVendedores } from '../src/utils/helpers.js';
 
@@ -18,12 +19,24 @@ router.get('/venta-directa', async (req, res) => {
   try {
     const m1 = await M1Master.find({}).lean();
 
+    // Solo incluir vendedores marcados como "venta directa" (tipo === 'directa') en VendedorFactor.
+    // Si un vendedor todavía no tiene factor asignado, se incluye por default (para no dejar el
+    // ranking vacío mientras se van dando de alta uno por uno) — en cuanto se le asigne tipo
+    // "distribuidor", sale automáticamente del ranking.
+    const factores = await VendedorFactor.find({}).lean();
+    const tipoPorVendedor = new Map(factores.map(f => [f.vendedor.trim().toUpperCase(), f.tipo]));
+    const esVentaDirecta = (nombre) => {
+      const tipo = tipoPorVendedor.get(nombre.trim().toUpperCase());
+      return tipo === undefined || tipo === 'directa';
+    };
+
     const porVendedor = new Map(); // nombre -> { total, m1, perdidas, plazas: Map }
 
     for (const item of m1) {
       const vendedores = getItemVendedores(item);
       if (vendedores.length === 0) continue;
       const nombre = vendedores[0];
+      if (!esVentaDirecta(nombre)) continue;
 
       if (!porVendedor.has(nombre)) {
         porVendedor.set(nombre, { total: 0, m1: 0, perdidas: 0, plazas: new Map() });

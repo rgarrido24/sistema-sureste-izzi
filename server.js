@@ -19,6 +19,8 @@ import clavesRoutes from './routes/claves.js';
 import capacitacionesRoutes from './routes/capacitaciones.js';
 import imagenesVentaRoutes from './routes/imagenesVenta.js';
 import rankingRoutes from './routes/ranking.js';
+import puntosRoutes from './routes/puntos.js';
+import comisionesRoutes from './routes/comisiones.js';
 import m2Routes from './routes/m2.js';
 import m3Routes from './routes/m3.js';
 import m4Routes from './routes/m4.js';
@@ -116,6 +118,8 @@ app.use('/api/claves', clavesRoutes);
 app.use('/api/capacitaciones', capacitacionesRoutes);
 app.use('/api/imagenes-venta', imagenesVentaRoutes);
 app.use('/api/ranking', rankingRoutes);
+app.use('/api/puntos', puntosRoutes);
+app.use('/api/comisiones', comisionesRoutes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {

@@ -25,7 +25,9 @@ export const MODULES = {
   CLAVES: 'claves',
   CAPACITACIONES: 'capacitaciones',
   IMAGENES_VENTA: 'imagenesVenta',
-  RANKING: 'ranking'
+  RANKING: 'ranking',
+  PUNTOS: 'puntos',
+  COMISIONES: 'comisiones'
 };
 
 export const COLLECTIONS = {
