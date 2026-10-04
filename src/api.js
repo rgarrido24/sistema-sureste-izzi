@@ -993,3 +993,16 @@ export async function eliminarVendedorFactor(id) {
 export async function getMiRiesgo() {
   return apiRequest('/comisiones/mi-riesgo');
 }
+
+// ========== VISTAS DE CAPACITACIONES (seguimiento) ==========
+export async function registrarVistaCapacitacion(id) {
+  return apiRequest(`/capacitaciones/${id}/vista`, { method: 'POST' });
+}
+
+export async function getConteoVistasCapacitaciones() {
+  return apiRequest('/capacitaciones/vistas/conteo');
+}
+
+export async function getVistasCapacitacion(id) {
+  return apiRequest(`/capacitaciones/${id}/vistas`);
+}

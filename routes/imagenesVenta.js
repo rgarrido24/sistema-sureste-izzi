@@ -6,7 +6,7 @@ import { requireAuth, requireRoles } from '../middleware/auth.js';
 const router = express.Router();
 router.use(requireAuth);
 
-const CAN_MANAGE = ['admin', 'admin_general', 'director'];
+const CAN_MANAGE = ['admin', 'admin_general', 'director', 'marketing'];
 
 const upload = multer({
   storage: multer.memoryStorage(),

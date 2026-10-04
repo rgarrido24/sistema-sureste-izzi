@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
 });
 
 // Crear PDF
-router.post('/', requireRoles(['admin', 'admin_general', 'mesa_control']), async (req, res) => {
+router.post('/', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
     const { name, url, description } = req.body;
     
@@ -66,7 +66,7 @@ router.post('/', requireRoles(['admin', 'admin_general', 'mesa_control']), async
 });
 
 // Crear conocimiento a partir de texto plano pegado directo (ej. la "gema" de promociones por plaza)
-router.post('/texto', requireRoles(['admin', 'admin_general', 'mesa_control']), async (req, res) => {
+router.post('/texto', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
     const { name, description, text } = req.body;
     const extractedText = String(text || '').trim();
@@ -98,7 +98,7 @@ router.post('/texto', requireRoles(['admin', 'admin_general', 'mesa_control']), 
 });
 
 // Subir PDF (archivo) y extraer conocimiento (RAG)
-router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control']), upload.single('pdf'), async (req, res) => {
+router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), upload.single('pdf'), async (req, res) => {
   try {
     const file = req.file;
     const name = (req.body?.name || file?.originalname || 'PDF').toString().trim();
@@ -134,7 +134,7 @@ router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control']),
 });
 
 // Activar/desactivar PDF de conocimiento
-router.put('/:id', requireRoles(['admin', 'admin_general', 'mesa_control']), async (req, res) => {
+router.put('/:id', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
     const { id } = req.params;
     const { isActive, name, description } = req.body || {};
@@ -154,7 +154,7 @@ router.put('/:id', requireRoles(['admin', 'admin_general', 'mesa_control']), asy
 });
 
 // Eliminar PDF
-router.delete('/:id', requireRoles(['admin', 'admin_general', 'mesa_control']), async (req, res) => {
+router.delete('/:id', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
     await KnowledgePDF.findByIdAndDelete(req.params.id);
     res.json({ success: true });

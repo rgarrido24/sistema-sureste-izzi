@@ -6,7 +6,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 
 export default function ImagenesVentaModule() {
   const { user } = useAuth();
-  const canManage = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director';
+  const canManage = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'marketing';
 
   const [imagenes, setImagenes] = useState([]);
   const [loading, setLoading] = useState(true);

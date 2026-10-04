@@ -216,6 +216,7 @@ export default function UsersModule() {
                   <option value="supervisor">Supervisor (por plaza)</option>
                   <option value="cobranza_mx">Cobranza MX</option>
                   <option value="coordinador_claves">Coordinador de Claves</option>
+                  <option value="marketing">Marketing</option>
                 </>
               )}
             </select>

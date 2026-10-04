@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Link2, Plus, X, Loader2 } from 'lucide-react';
+import { Calendar, Link2, Plus, X, Loader2, Eye } from 'lucide-react';
 import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
@@ -18,6 +18,7 @@ const COLORES = [
 export default function CapacitacionesModule() {
   const { user } = useAuth();
   const canEdit = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director';
+  const canVerVistas = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'marketing';
 
   const [celdas, setCeldas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +27,10 @@ export default function CapacitacionesModule() {
   const [guardando, setGuardando] = useState(false);
   const [agregandoHorario, setAgregandoHorario] = useState(false);
   const [nuevoHorario, setNuevoHorario] = useState('');
+  const [conteoVistas, setConteoVistas] = useState({});
+  const [viendoVistasDe, setViendoVistasDe] = useState(null); // celda cuyo detalle de vistas se muestra
+  const [listaVistas, setListaVistas] = useState([]);
+  const [cargandoVistas, setCargandoVistas] = useState(false);
 
   const cargar = async () => {
     setLoading(true);
@@ -39,7 +44,25 @@ export default function CapacitacionesModule() {
     }
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    cargar();
+    if (canVerVistas) {
+      api.getConteoVistasCapacitaciones().then(setConteoVistas).catch(() => {});
+    }
+  }, []);
+
+  const verQuienVio = async (celda) => {
+    setViendoVistasDe(celda);
+    setCargandoVistas(true);
+    try {
+      const data = await api.getVistasCapacitacion(celda._id);
+      setListaVistas(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCargandoVistas(false);
+    }
+  };
 
   // Horarios únicos, ordenados por "orden" (el menor orden visto por horario)
   const horarios = (() => {
@@ -55,7 +78,10 @@ export default function CapacitacionesModule() {
   const abrirEdicion = (horario, dia) => {
     if (!canEdit) {
       const celda = getCelda(horario, dia);
-      if (celda?.link) window.open(celda.link, '_blank');
+      if (celda?.link) {
+        if (celda._id) api.registrarVistaCapacitacion(celda._id).catch(() => {});
+        window.open(celda.link, '_blank');
+      }
       return;
     }
     const celda = getCelda(horario, dia);
@@ -124,6 +150,7 @@ export default function CapacitacionesModule() {
       </div>
       <p className="text-sm text-slate-500 mb-4">
         {canEdit ? 'Haz clic en cualquier celda para editarla o agregar la liga de la sesión.' : 'Haz clic en una sesión para abrir su liga.'}
+        {canVerVistas && ' El número con el ícono de ojo bajo cada sesión muestra cuántos han abierto esa liga — haz clic ahí para ver quiénes.'}
       </p>
 
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
@@ -153,6 +180,14 @@ export default function CapacitacionesModule() {
                         {celda?.titulo || (canEdit ? <span className="text-slate-300">+ agregar</span> : '')}
                         {celda?.link && <Link2 size={12} className="text-blue-700" />}
                       </div>
+                      {canVerVistas && celda?.link && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); verQuienVio(celda); }}
+                          className="mt-1 flex items-center justify-center gap-1 text-[11px] text-slate-500 hover:text-blue-700 mx-auto"
+                        >
+                          <Eye size={11} /> {conteoVistas[celda._id] || 0}
+                        </button>
+                      )}
                     </td>
                   );
                 })}
@@ -243,6 +278,35 @@ export default function CapacitacionesModule() {
                 {guardando ? <Loader2 size={14} className="animate-spin" /> : 'Guardar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {viendoVistasDe && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setViendoVistasDe(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="font-bold text-slate-800">Quién abrió este link</h3>
+                <p className="text-xs text-slate-500">{viendoVistasDe.dia} — {viendoVistasDe.horario} — {viendoVistasDe.titulo}</p>
+              </div>
+              <button onClick={() => setViendoVistasDe(null)}><X size={18} /></button>
+            </div>
+
+            {cargandoVistas ? (
+              <Loader2 className="animate-spin mx-auto my-6" size={20} />
+            ) : listaVistas.length === 0 ? (
+              <p className="text-sm text-slate-400 py-6 text-center">Nadie ha abierto este link todavía.</p>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {listaVistas.map((v, i) => (
+                  <div key={v._id || i} className="flex justify-between items-center text-sm border-b border-slate-100 pb-1">
+                    <span className="font-medium text-slate-700">{v.usuarioNombre || v.usuarioUsername}</span>
+                    <span className="text-xs text-slate-400">{new Date(v.createdAt).toLocaleString('es-MX')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

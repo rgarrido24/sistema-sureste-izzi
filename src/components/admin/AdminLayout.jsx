@@ -78,7 +78,7 @@ export default function AdminLayout({
                   Claves
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'cobranza_mx') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'cobranza_mx' || user?.role === 'marketing') && (
                 <button 
                   onClick={() => { setModule(MODULES.CAPACITACIONES); setActiveTab('capacitaciones'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -90,7 +90,7 @@ export default function AdminLayout({
                   Capacitaciones
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing') && (
                 <button 
                   onClick={() => { setModule(MODULES.IMAGENES_VENTA); setActiveTab('imagenesVenta'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -139,12 +139,13 @@ export default function AdminLayout({
                 </button>
               )}
               {/* Administración (Mi Cuenta) disponible para todos los roles de panel */}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing') && (
                 <button 
                   onClick={() => {
                     setModule(MODULES.ADMIN);
-                    // Por defecto: Mi Cuenta. Excepción: rol 'usuarios' inicia en Users.
+                    // Por defecto: Mi Cuenta. Excepciones: 'usuarios' inicia en Users, 'marketing' en Conocimiento.
                     if (user?.role === 'usuarios') setActiveTab('users');
+                    else if (user?.role === 'marketing') setActiveTab('knowledge');
                     else setActiveTab('account');
                   }}
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -381,8 +382,21 @@ export default function AdminLayout({
                     Usuarios
                   </button>
                 )}
-                {/* El rol 'usuarios' solo ve la pestaña de Usuarios */}
-                {user?.role !== 'usuarios' && (user?.role === 'admin' || user?.role === 'admin_general') && (
+                {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'marketing') && (
+                  <button
+                    onClick={() => setActiveTab('knowledge')}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'knowledge'
+                        ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md'
+                        : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
+                    }`}
+                    title="Sube PDFs o pega texto para la Gema del Asistente IA"
+                  >
+                    Conocimiento
+                  </button>
+                )}
+                {/* El rol 'usuarios' solo ve la pestaña de Usuarios; 'marketing' solo ve Conocimiento */}
+                {user?.role !== 'usuarios' && user?.role !== 'marketing' && (user?.role === 'admin' || user?.role === 'admin_general') && (
                   <>
                     <button 
                       onClick={() => setActiveTab('template')} 
@@ -414,17 +428,6 @@ export default function AdminLayout({
                       }`}
                     >
                       Promociones
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('knowledge')}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                        activeTab === 'knowledge'
-                          ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md'
-                          : 'text-slate-600 hover:text-[#2563eb] hover:bg-slate-50'
-                      }`}
-                      title="Sube PDFs para la Gema del Asistente IA"
-                    >
-                      Conocimiento
                     </button>
                     <button
                       onClick={() => setActiveTab('actividad')}

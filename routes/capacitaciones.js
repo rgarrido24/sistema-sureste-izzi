@@ -1,11 +1,13 @@
 import express from 'express';
 import Capacitacion from '../models/Capacitacion.js';
+import CapacitacionVista from '../models/CapacitacionVista.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 const CAN_EDIT = ['admin', 'admin_general', 'director'];
+const CAN_VER_VISTAS = ['admin', 'admin_general', 'director', 'marketing'];
 
 // Cualquier usuario autenticado puede VER el calendario
 router.get('/', async (req, res) => {
@@ -43,6 +45,56 @@ router.post('/', requireRoles(CAN_EDIT), async (req, res) => {
     res.json(celda);
   } catch (error) {
     console.error('Error guardando celda de capacitación:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Registrar que un usuario abrió el link de una celda (cualquier autenticado)
+router.post('/:id/vista', async (req, res) => {
+  try {
+    const celda = await Capacitacion.findById(req.params.id).lean();
+    if (!celda) return res.status(404).json({ error: 'No encontrada' });
+
+    await CapacitacionVista.create({
+      capacitacionId: celda._id,
+      horario: celda.horario,
+      dia: celda.dia,
+      titulo: celda.titulo,
+      usuarioId: req.user?.id || '',
+      usuarioUsername: req.user?.username || '',
+      usuarioNombre: req.user?.name || req.user?.username || '',
+      usuarioRole: req.user?.role || '',
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error registrando vista de capacitación:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Conteo de vistas por celda (para mostrar el ojito con número)
+router.get('/vistas/conteo', requireRoles(CAN_VER_VISTAS), async (req, res) => {
+  try {
+    const conteos = await CapacitacionVista.aggregate([
+      { $group: { _id: '$capacitacionId', total: { $sum: 1 } } }
+    ]);
+    const resultado = {};
+    conteos.forEach(c => { resultado[c._id.toString()] = c.total; });
+    res.json(resultado);
+  } catch (error) {
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Quién vio una celda específica
+router.get('/:id/vistas', requireRoles(CAN_VER_VISTAS), async (req, res) => {
+  try {
+    const vistas = await CapacitacionVista.find({ capacitacionId: req.params.id })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(vistas);
+  } catch (error) {
     res.status(500).json({ error: 'Error del servidor' });
   }
 });

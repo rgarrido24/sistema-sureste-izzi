@@ -34,7 +34,9 @@ export default function AdminDashboard({ user }) {
         ? MODULES.SALES
         : user?.role === 'coordinador_claves'
           ? MODULES.CLAVES
-          : MODULES.SALES;
+          : user?.role === 'marketing'
+            ? MODULES.ADMIN
+            : MODULES.SALES;
   const initialTab =
     user?.role === 'usuarios'
       ? 'users'
@@ -42,7 +44,9 @@ export default function AdminDashboard({ user }) {
         ? 'm1'
         : user?.role === 'coordinador_claves'
           ? 'claves'
-          : 'dashboard';
+          : user?.role === 'marketing'
+            ? 'knowledge'
+            : 'dashboard';
   const [currentModule, setCurrentModule] = useState(initialModule);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -60,6 +64,10 @@ export default function AdminDashboard({ user }) {
     }
     if (user?.role === 'coordinador_claves' && module !== MODULES.CLAVES) {
       // Coordinador de claves: solo puede ver Claves CVVEN
+      return;
+    }
+    if (user?.role === 'marketing' && module !== MODULES.ADMIN && module !== MODULES.IMAGENES_VENTA && module !== MODULES.CAPACITACIONES) {
+      // Marketing: solo Conocimiento (dentro de Administración), Imágenes y Capacitaciones
       return;
     }
     setCurrentModule(module);
@@ -133,7 +141,7 @@ export default function AdminDashboard({ user }) {
           {activeTab === 'template' && (user?.role === 'admin' || user?.role === 'admin_general') && <TemplateModule />}
           {activeTab === 'packages' && (user?.role === 'admin' || user?.role === 'admin_general') && <PackagesModule />}
           {activeTab === 'promociones' && (user?.role === 'admin' || user?.role === 'admin_general') && <PromocionesModule />}
-          {activeTab === 'knowledge' && (user?.role === 'admin' || user?.role === 'admin_general') && <KnowledgeModule />}
+          {activeTab === 'knowledge' && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'marketing') && <KnowledgeModule />}
           {activeTab === 'actividad' && (user?.role === 'admin' || user?.role === 'admin_general') && <AdminActivityDashboard />}
         </>
       )}
