@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Link2, Plus, X, Loader2, Eye, Video, FileCheck, Trash2 } from 'lucide-react';
+import { Calendar, Link2, Plus, X, Loader2, Eye, Video, FileCheck, Trash2, Lock, Key, RefreshCw } from 'lucide-react';
 import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
@@ -319,10 +319,15 @@ export default function CapacitacionesModule() {
 function RecursosCapacitacion({ canEdit, canVerVistas }) {
   const [recursos, setRecursos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [estado, setEstado] = useState({ exento: false, desbloqueado: true, expiraEn: null, codigoConfigurado: true });
   const [conteoVistas, setConteoVistas] = useState({});
   const [viendoVistasDe, setViendoVistasDe] = useState(null);
   const [listaVistas, setListaVistas] = useState([]);
   const [cargandoVistas, setCargandoVistas] = useState(false);
+
+  const [codigoInput, setCodigoInput] = useState('');
+  const [desbloqueando, setDesbloqueando] = useState(false);
+  const [errorCodigo, setErrorCodigo] = useState('');
 
   const [tipoNuevo, setTipoNuevo] = useState('pregrabada');
   const [tituloNuevo, setTituloNuevo] = useState('');
@@ -332,8 +337,12 @@ function RecursosCapacitacion({ canEdit, canVerVistas }) {
   const cargar = async () => {
     setLoading(true);
     try {
-      const data = await api.getRecursosCapacitacion();
+      const [data, est] = await Promise.all([
+        api.getRecursosCapacitacion(),
+        api.getEstadoPregrabadas().catch(() => null),
+      ]);
       setRecursos(data);
+      if (est) setEstado(est);
     } catch (e) {
       console.error(e);
     } finally {
@@ -347,6 +356,21 @@ function RecursosCapacitacion({ canEdit, canVerVistas }) {
       api.getConteoVistasRecursos().then(setConteoVistas).catch(() => {});
     }
   }, []);
+
+  const handleDesbloquear = async () => {
+    if (!codigoInput.trim()) return;
+    setDesbloqueando(true);
+    setErrorCodigo('');
+    try {
+      await api.desbloquearPregrabadas(codigoInput.trim());
+      setCodigoInput('');
+      await cargar();
+    } catch (e) {
+      setErrorCodigo(e.message || 'No se pudo validar el código');
+    } finally {
+      setDesbloqueando(false);
+    }
+  };
 
   const handleAgregar = async () => {
     if (!tituloNuevo.trim() || !linkNuevo.trim()) return;
@@ -369,6 +393,7 @@ function RecursosCapacitacion({ canEdit, canVerVistas }) {
   };
 
   const handleAbrir = (recurso) => {
+    if (recurso.bloqueado || !recurso.link) return;
     api.registrarVistaRecurso(recurso._id).catch(() => {});
     window.open(recurso.link, '_blank');
   };
@@ -390,13 +415,20 @@ function RecursosCapacitacion({ canEdit, canVerVistas }) {
 
   const pregrabadas = recursos.filter(r => r.tipo === 'pregrabada');
   const examenes = recursos.filter(r => r.tipo === 'examen');
+  const hayBloqueadas = pregrabadas.some(r => r.bloqueado);
 
   const renderLista = (lista, Icono) => (
     <div className="space-y-2">
       {lista.map(r => (
         <div key={r._id} className="flex items-center justify-between gap-2 border border-slate-200 rounded-lg p-3">
-          <button onClick={() => handleAbrir(r)} className="flex items-center gap-2 text-left flex-1 min-w-0">
-            <Icono size={16} className="text-blue-600 shrink-0" />
+          <button
+            onClick={() => handleAbrir(r)}
+            disabled={r.bloqueado}
+            className={`flex items-center gap-2 text-left flex-1 min-w-0 ${r.bloqueado ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {r.bloqueado
+              ? <Lock size={16} className="text-amber-600 shrink-0" />
+              : <Icono size={16} className="text-blue-600 shrink-0" />}
             <span className="font-medium text-slate-700 truncate">{r.titulo}</span>
           </button>
           <div className="flex items-center gap-2 shrink-0">
@@ -420,13 +452,60 @@ function RecursosCapacitacion({ canEdit, canVerVistas }) {
   return (
     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Video size={18} /> Capacitaciones pregrabadas</h3>
+        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Video size={18} /> Capacitaciones pregrabadas</h3>
+        <p className="text-xs text-slate-500 mb-3">Material de repaso. Primero toma la capacitación en vivo.</p>
+
+        {hayBloqueadas && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+            <p className="text-sm font-bold text-amber-800 flex items-center gap-1"><Lock size={14} /> Acceso con código</p>
+            {estado.codigoConfigurado ? (
+              <>
+                <p className="text-xs text-amber-700 mt-1">
+                  El código se da al final de cada capacitación en vivo. Si ya asististe y no lo tienes,
+                  contacta a tu supervisor o al administrador.
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={codigoInput}
+                    onChange={(e) => setCodigoInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleDesbloquear(); }}
+                    placeholder="Código"
+                    autoComplete="off"
+                    className="px-3 py-2 border border-amber-300 rounded-lg text-sm uppercase flex-1 min-w-0"
+                  />
+                  <button
+                    onClick={handleDesbloquear}
+                    disabled={!codigoInput.trim() || desbloqueando}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-400 flex items-center gap-1"
+                  >
+                    {desbloqueando ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />} Desbloquear
+                  </button>
+                </div>
+                {errorCodigo && <p className="text-xs text-red-600 mt-2">{errorCodigo}</p>}
+              </>
+            ) : (
+              <p className="text-xs text-amber-700 mt-1">
+                El acceso a las pregrabadas todavía no está activado. Contacta al administrador.
+              </p>
+            )}
+          </div>
+        )}
+
+        {!hayBloqueadas && !estado.exento && estado.expiraEn && pregrabadas.length > 0 && (
+          <p className="text-xs text-green-700 mb-2">
+            Acceso activo hasta {new Date(estado.expiraEn).toLocaleString('es-MX')}
+          </p>
+        )}
+
         {renderLista(pregrabadas, Video)}
       </div>
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileCheck size={18} /> Exámenes</h3>
         {renderLista(examenes, FileCheck)}
       </div>
+
+      {canEdit && <ConfigCodigoPregrabadas />}
 
       {canEdit && (
         <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-4">
@@ -483,6 +562,131 @@ function RecursosCapacitacion({ canEdit, canVerVistas }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Panel solo para admin/director: ver/cambiar el código y la duración del acceso
+function ConfigCodigoPregrabadas() {
+  const [cfg, setCfg] = useState(null);
+  const [codigo, setCodigo] = useState('');
+  const [horas, setHoras] = useState(24);
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState('');
+  const [verAccesos, setVerAccesos] = useState(false);
+  const [accesos, setAccesos] = useState([]);
+
+  const cargar = async () => {
+    try {
+      const c = await api.getConfigPregrabadas();
+      setCfg(c);
+      setCodigo(c.codigo || '');
+      setHoras(c.horasAcceso || 24);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => { cargar(); }, []);
+
+  const generar = () => {
+    // Sin caracteres que se confunden (0/O, 1/I)
+    const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = new Uint32Array(6);
+    crypto.getRandomValues(bytes);
+    setCodigo(Array.from(bytes).map(b => alfabeto[b % alfabeto.length]).join(''));
+  };
+
+  const guardar = async () => {
+    setGuardando(true);
+    setMensaje('');
+    try {
+      const anterior = cfg?.codigo || '';
+      const c = await api.guardarConfigPregrabadas(codigo, horas);
+      setCfg(c);
+      setCodigo(c.codigo);
+      setMensaje(c.codigo !== anterior
+        ? 'Código actualizado. Los accesos anteriores quedaron cancelados.'
+        : 'Guardado.');
+      if (verAccesos) api.getAccesosPregrabadas().then(setAccesos).catch(() => {});
+    } catch (e) {
+      setMensaje('Error: ' + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const toggleAccesos = async () => {
+    const abrir = !verAccesos;
+    setVerAccesos(abrir);
+    if (abrir) {
+      try { setAccesos(await api.getAccesosPregrabadas()); } catch (e) { console.error(e); }
+    }
+  };
+
+  if (!cfg) return null;
+
+  return (
+    <div className="md:col-span-2 bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <p className="font-bold text-sm text-amber-900 mb-1 flex items-center gap-1"><Key size={14} /> Código de acceso a pregrabadas</p>
+      <p className="text-xs text-amber-800 mb-3">
+        Dilo en voz alta al final de cada capacitación en vivo, para que solo lo tengan quienes asistieron.
+        Al cambiarlo, los accesos anteriores se cancelan y tienen que meter el nuevo.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-[11px] font-bold text-amber-900 mb-1">Código vigente</label>
+          <input
+            type="text"
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+            placeholder="Sin código = acceso desactivado"
+            autoComplete="off"
+            className="px-3 py-2 border border-amber-300 rounded-lg text-sm font-mono w-56"
+          />
+        </div>
+        <button onClick={generar} className="px-3 py-2 bg-white border border-amber-300 text-amber-800 rounded-lg text-sm font-bold flex items-center gap-1">
+          <RefreshCw size={14} /> Generar
+        </button>
+        <div>
+          <label className="block text-[11px] font-bold text-amber-900 mb-1">Duración del acceso (horas)</label>
+          <input
+            type="number"
+            min="1"
+            max="720"
+            value={horas}
+            onChange={(e) => setHoras(e.target.value)}
+            className="px-3 py-2 border border-amber-300 rounded-lg text-sm w-28"
+          />
+        </div>
+        <button
+          onClick={guardar}
+          disabled={guardando || codigo.trim().length < 4}
+          className="px-4 py-2 bg-amber-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-400"
+        >
+          {guardando ? 'Guardando...' : 'Guardar'}
+        </button>
+      </div>
+      {mensaje && <p className="text-xs text-amber-900 mt-2 font-medium">{mensaje}</p>}
+
+      <button onClick={toggleAccesos} className="mt-3 text-xs font-bold text-amber-800 underline">
+        {verAccesos ? 'Ocultar intentos recientes' : 'Ver intentos recientes (quién entró y quién falló)'}
+      </button>
+      {verAccesos && (
+        <div className="mt-2 bg-white border border-amber-200 rounded-lg max-h-56 overflow-y-auto">
+          {accesos.length === 0 ? (
+            <p className="text-xs text-slate-400 p-3">Todavía no hay intentos.</p>
+          ) : accesos.map((a, i) => (
+            <div key={a._id || i} className="flex justify-between items-center text-xs px-3 py-1.5 border-b border-slate-100">
+              <span className="font-medium text-slate-700">{a.usuarioNombre || a.usuarioUsername}</span>
+              <span className="flex items-center gap-3">
+                <span className={a.exito ? 'text-green-700 font-bold' : 'text-red-600 font-bold'}>{a.exito ? 'Entró' : 'Falló'}</span>
+                <span className="text-slate-400">{new Date(a.createdAt).toLocaleString('es-MX')}</span>
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

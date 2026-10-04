@@ -1050,3 +1050,30 @@ export async function getConteoVistasRecursos() {
 export async function getVistasRecurso(id) {
   return apiRequest(`/capacitaciones/recursos/${id}/vistas`);
 }
+
+// ========== CANDADO DE PREGRABADAS (código de la capacitación en vivo) ==========
+export async function getEstadoPregrabadas() {
+  return apiRequest('/capacitaciones/recursos/estado');
+}
+
+export async function desbloquearPregrabadas(codigo) {
+  return apiRequest('/capacitaciones/recursos/desbloquear', {
+    method: 'POST',
+    body: JSON.stringify({ codigo }),
+  });
+}
+
+export async function getConfigPregrabadas() {
+  return apiRequest('/capacitaciones/recursos/config');
+}
+
+export async function guardarConfigPregrabadas(codigo, horasAcceso) {
+  return apiRequest('/capacitaciones/recursos/config', {
+    method: 'PUT',
+    body: JSON.stringify({ codigo, horasAcceso }),
+  });
+}
+
+export async function getAccesosPregrabadas() {
+  return apiRequest('/capacitaciones/recursos/accesos');
+}
