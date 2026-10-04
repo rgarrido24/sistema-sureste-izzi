@@ -121,10 +121,11 @@ export default function VendorLayout({
           </div>
         </div>
 
-        {/* Sub-navegación para Cobranza */}
+        {/* Sub-navegación para Cobranza — rol "redes_sociales" solo ve M1 */}
         {(activeView === 'cobranza' || activeView === 'm0' || activeView === 'm1' || activeView === 'm2' || activeView === 'm3' || activeView === 'm4' || activeView === 'm5' || activeView === 'm6') && (
           <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 mb-6">
             <div className="flex gap-2 flex-nowrap overflow-x-auto no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
+              {user?.role !== 'redes_sociales' && (
               <button 
                 onClick={() => setActiveView('m0')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -135,6 +136,7 @@ export default function VendorLayout({
               >
                 M0
               </button>
+              )}
               <button 
                 onClick={() => setActiveView('m1')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -145,6 +147,7 @@ export default function VendorLayout({
               >
                 M1
               </button>
+              {user?.role !== 'redes_sociales' && (
               <button 
                 onClick={() => setActiveView('m2')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -155,6 +158,8 @@ export default function VendorLayout({
               >
                 M2
               </button>
+              )}
+              {user?.role !== 'redes_sociales' && (
               <button 
                 onClick={() => setActiveView('m3')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -165,6 +170,8 @@ export default function VendorLayout({
               >
                 M3
               </button>
+              )}
+              {user?.role !== 'redes_sociales' && (
               <button 
                 onClick={() => setActiveView('m4')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -175,6 +182,8 @@ export default function VendorLayout({
               >
                 M4
               </button>
+              )}
+              {user?.role !== 'redes_sociales' && (
               <button 
                 onClick={() => setActiveView('m5')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -185,6 +194,8 @@ export default function VendorLayout({
               >
                 M5
               </button>
+              )}
+              {user?.role !== 'redes_sociales' && (
               <button 
                 onClick={() => setActiveView('m6')} 
                 className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -195,6 +206,7 @@ export default function VendorLayout({
               >
                 M6
               </button>
+              )}
             </div>
           </div>
         )}

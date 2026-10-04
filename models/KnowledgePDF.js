@@ -16,7 +16,18 @@ const knowledgePDFSchema = new mongoose.Schema({
     }
   ],
 
-  isActive: { type: Boolean, default: true }
+  isActive: { type: Boolean, default: true },
+
+  // A quién se le muestra este conocimiento en el Asistente IA.
+  // 'todos' = todos los perfiles (comportamiento de siempre, ej. precios/promociones).
+  // 'redes_sociales' = solo usuarios con rol redes_sociales.
+  // 'venta_directa' = solo vendedores marcados como "Venta directa" en Comisiones → Vendedores.
+  // Un documento puede tener varias audiencias a la vez.
+  audiencias: {
+    type: [String],
+    enum: ['todos', 'redes_sociales', 'venta_directa'],
+    default: ['todos']
+  }
 }, {
   timestamps: true
 });

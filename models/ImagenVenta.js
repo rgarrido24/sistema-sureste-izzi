@@ -1,8 +1,14 @@
 import mongoose from 'mongoose';
 
 const imagenVentaSchema = new mongoose.Schema({
+  // 'rgo' = material propio subido por RGO (comportamiento original, default para no romper lo ya subido)
+  // 'izzi' = material que manda Izzi mes con mes
+  // 'liga' = no es un archivo, es solo un link a un flyer digital externo
+  categoria: { type: String, enum: ['rgo', 'izzi', 'liga'], default: 'rgo' },
+
   titulo: { type: String, default: '' },
-  imagenBase64: { type: String, required: true }, // data URL completo (data:image/...;base64,...)
+  imagenBase64: { type: String, default: '' }, // data URL completo; vacío si categoria === 'liga'
+  link: { type: String, default: '' }, // solo para categoria === 'liga'
   mimetype: { type: String, default: 'image/png' },
   tamanioBytes: { type: Number, default: 0 },
 

@@ -48,13 +48,14 @@ router.get('/', async (req, res) => {
 // Crear PDF
 router.post('/', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
-    const { name, url, description } = req.body;
+    const { name, url, description, audiencias } = req.body;
     
     const pdf = new KnowledgePDF({
       name,
       url,
       description: description || '',
-      isActive: true
+      isActive: true,
+      audiencias: Array.isArray(audiencias) && audiencias.length ? audiencias : ['todos']
     });
     
     await pdf.save();
@@ -68,7 +69,7 @@ router.post('/', requireRoles(['admin', 'admin_general', 'mesa_control', 'market
 // Crear conocimiento a partir de texto plano pegado directo (ej. la "gema" de promociones por plaza)
 router.post('/texto', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
-    const { name, description, text } = req.body;
+    const { name, description, text, audiencias } = req.body;
     const extractedText = String(text || '').trim();
     if (!extractedText) {
       return res.status(400).json({ error: 'Falta el texto' });
@@ -84,6 +85,7 @@ router.post('/texto', requireRoles(['admin', 'admin_general', 'mesa_control', 'm
       extractedText,
       chunks,
       isActive: true,
+      audiencias: Array.isArray(audiencias) && audiencias.length ? audiencias : ['todos']
     });
 
     res.json({
@@ -103,6 +105,7 @@ router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control', '
     const file = req.file;
     const name = (req.body?.name || file?.originalname || 'PDF').toString().trim();
     const description = (req.body?.description || '').toString().trim();
+    const audiencias = req.body?.audiencias ? [].concat(req.body.audiencias) : ['todos'];
 
     if (!file) {
       return res.status(400).json({ error: 'No se recibió archivo PDF' });
@@ -119,7 +122,8 @@ router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control', '
       description,
       extractedText,
       chunks,
-      isActive: true
+      isActive: true,
+      audiencias
     });
 
     res.json({
@@ -137,12 +141,13 @@ router.post('/upload', requireRoles(['admin', 'admin_general', 'mesa_control', '
 router.put('/:id', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
     const { id } = req.params;
-    const { isActive, name, description } = req.body || {};
+    const { isActive, name, description, audiencias } = req.body || {};
 
     const update = {};
     if (typeof isActive === 'boolean') update.isActive = isActive;
     if (name !== undefined) update.name = String(name).trim();
     if (description !== undefined) update.description = String(description).trim();
+    if (Array.isArray(audiencias)) update.audiencias = audiencias.length ? audiencias : ['todos'];
 
     const updated = await KnowledgePDF.findByIdAndUpdate(id, update, { new: true });
     if (!updated) return res.status(404).json({ error: 'PDF no encontrado' });

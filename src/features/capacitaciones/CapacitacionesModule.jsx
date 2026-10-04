@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Link2, Plus, X, Loader2, Eye } from 'lucide-react';
+import { Calendar, Link2, Plus, X, Loader2, Eye, Video, FileCheck, Trash2 } from 'lucide-react';
 import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
@@ -297,6 +297,181 @@ export default function CapacitacionesModule() {
               <Loader2 className="animate-spin mx-auto my-6" size={20} />
             ) : listaVistas.length === 0 ? (
               <p className="text-sm text-slate-400 py-6 text-center">Nadie ha abierto este link todavía.</p>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {listaVistas.map((v, i) => (
+                  <div key={v._id || i} className="flex justify-between items-center text-sm border-b border-slate-100 pb-1">
+                    <span className="font-medium text-slate-700">{v.usuarioNombre || v.usuarioUsername}</span>
+                    <span className="text-xs text-slate-400">{new Date(v.createdAt).toLocaleString('es-MX')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <RecursosCapacitacion canEdit={canEdit} canVerVistas={canVerVistas} />
+    </div>
+  );
+}
+
+function RecursosCapacitacion({ canEdit, canVerVistas }) {
+  const [recursos, setRecursos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [conteoVistas, setConteoVistas] = useState({});
+  const [viendoVistasDe, setViendoVistasDe] = useState(null);
+  const [listaVistas, setListaVistas] = useState([]);
+  const [cargandoVistas, setCargandoVistas] = useState(false);
+
+  const [tipoNuevo, setTipoNuevo] = useState('pregrabada');
+  const [tituloNuevo, setTituloNuevo] = useState('');
+  const [linkNuevo, setLinkNuevo] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getRecursosCapacitacion();
+      setRecursos(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    cargar();
+    if (canVerVistas) {
+      api.getConteoVistasRecursos().then(setConteoVistas).catch(() => {});
+    }
+  }, []);
+
+  const handleAgregar = async () => {
+    if (!tituloNuevo.trim() || !linkNuevo.trim()) return;
+    setGuardando(true);
+    try {
+      await api.crearRecursoCapacitacion(tipoNuevo, tituloNuevo.trim(), linkNuevo.trim());
+      setTituloNuevo(''); setLinkNuevo('');
+      cargar();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleEliminar = async (id) => {
+    if (!confirm('¿Eliminar este recurso?')) return;
+    await api.eliminarRecursoCapacitacion(id);
+    cargar();
+  };
+
+  const handleAbrir = (recurso) => {
+    api.registrarVistaRecurso(recurso._id).catch(() => {});
+    window.open(recurso.link, '_blank');
+  };
+
+  const verQuienVio = async (recurso) => {
+    setViendoVistasDe(recurso);
+    setCargandoVistas(true);
+    try {
+      const data = await api.getVistasRecurso(recurso._id);
+      setListaVistas(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCargandoVistas(false);
+    }
+  };
+
+  if (loading) return null;
+
+  const pregrabadas = recursos.filter(r => r.tipo === 'pregrabada');
+  const examenes = recursos.filter(r => r.tipo === 'examen');
+
+  const renderLista = (lista, Icono) => (
+    <div className="space-y-2">
+      {lista.map(r => (
+        <div key={r._id} className="flex items-center justify-between gap-2 border border-slate-200 rounded-lg p-3">
+          <button onClick={() => handleAbrir(r)} className="flex items-center gap-2 text-left flex-1 min-w-0">
+            <Icono size={16} className="text-blue-600 shrink-0" />
+            <span className="font-medium text-slate-700 truncate">{r.titulo}</span>
+          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {canVerVistas && (
+              <button onClick={() => verQuienVio(r)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-700">
+                <Eye size={12} /> {conteoVistas[r._id] || 0}
+              </button>
+            )}
+            {canEdit && (
+              <button onClick={() => handleEliminar(r._id)} className="text-red-500 hover:text-red-700">
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      {lista.length === 0 && <p className="text-sm text-slate-400">Nada cargado todavía.</p>}
+    </div>
+  );
+
+  return (
+    <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Video size={18} /> Capacitaciones pregrabadas</h3>
+        {renderLista(pregrabadas, Video)}
+      </div>
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileCheck size={18} /> Exámenes</h3>
+        {renderLista(examenes, FileCheck)}
+      </div>
+
+      {canEdit && (
+        <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <p className="font-bold text-sm text-slate-700 mb-3">Agregar pregrabada o examen</p>
+          <div className="flex flex-wrap gap-2">
+            <select value={tipoNuevo} onChange={(e) => setTipoNuevo(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
+              <option value="pregrabada">Pregrabada</option>
+              <option value="examen">Examen</option>
+            </select>
+            <input
+              type="text"
+              value={tituloNuevo}
+              onChange={(e) => setTituloNuevo(e.target.value)}
+              placeholder="Título"
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm flex-1 min-w-[150px]"
+            />
+            <input
+              type="text"
+              value={linkNuevo}
+              onChange={(e) => setLinkNuevo(e.target.value)}
+              placeholder="Liga (Drive, Forms, etc.)"
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm flex-1 min-w-[200px]"
+            />
+            <button
+              onClick={handleAgregar}
+              disabled={guardando}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-400 flex items-center gap-1"
+            >
+              {guardando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Agregar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {viendoVistasDe && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setViendoVistasDe(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-3">
+              <h3 className="font-bold text-slate-800">Quién abrió "{viendoVistasDe.titulo}"</h3>
+              <button onClick={() => setViendoVistasDe(null)}><X size={18} /></button>
+            </div>
+            {cargandoVistas ? (
+              <Loader2 className="animate-spin mx-auto my-6" size={20} />
+            ) : listaVistas.length === 0 ? (
+              <p className="text-sm text-slate-400 py-6 text-center">Nadie lo ha abierto todavía.</p>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {listaVistas.map((v, i) => (

@@ -15,6 +15,25 @@ export default function KnowledgeModule() {
   const [descripcionTexto, setDescripcionTexto] = useState('');
   const [textoPegado, setTextoPegado] = useState('');
   const [guardandoTexto, setGuardandoTexto] = useState(false);
+  const [audienciasTexto, setAudienciasTexto] = useState(['todos']);
+  const [audienciasPdf, setAudienciasPdf] = useState(['todos']);
+
+  const AUDIENCIA_OPCIONES = [
+    { value: 'todos', label: 'Todos (precios, promociones, oferta general)' },
+    { value: 'redes_sociales', label: 'Solo Redes Sociales' },
+    { value: 'venta_directa', label: 'Solo Venta Directa (marcados en Comisiones)' },
+  ];
+
+  const toggleAudiencia = (setter, actuales, valor) => {
+    if (valor === 'todos') { setter(['todos']); return; }
+    const sinTodos = actuales.filter(a => a !== 'todos');
+    if (sinTodos.includes(valor)) {
+      const restante = sinTodos.filter(a => a !== valor);
+      setter(restante.length ? restante : ['todos']);
+    } else {
+      setter([...sinTodos, valor]);
+    }
+  };
 
   const load = async () => {
     try {
@@ -37,10 +56,11 @@ export default function KnowledgeModule() {
     if (!file) return;
     try {
       setUploading(true);
-      await api.uploadKnowledgePDF(file, name || file.name, description);
+      await api.uploadKnowledgePDF(file, name || file.name, description, audienciasPdf);
       setFile(null);
       setName('');
       setDescription('');
+      setAudienciasPdf(['todos']);
       await load();
       alert('✅ PDF cargado y procesado.');
     } catch (e) {
@@ -74,10 +94,11 @@ export default function KnowledgeModule() {
     if (!textoPegado.trim()) return;
     try {
       setGuardandoTexto(true);
-      await api.crearConocimientoTexto(textoPegado, nombreTexto, descripcionTexto);
+      await api.crearConocimientoTexto(textoPegado, nombreTexto, descripcionTexto, audienciasTexto);
       setTextoPegado('');
       setNombreTexto('');
       setDescripcionTexto('');
+      setAudienciasTexto(['todos']);
       await load();
       alert('✅ Conocimiento de texto cargado.');
     } catch (e) {
@@ -130,6 +151,19 @@ export default function KnowledgeModule() {
               />
             </div>
 
+            <div className="mt-3 flex flex-wrap gap-3">
+              {AUDIENCIA_OPCIONES.map(op => (
+                <label key={op.value} className="flex items-center gap-1 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={audienciasPdf.includes(op.value)}
+                    onChange={() => toggleAudiencia(setAudienciasPdf, audienciasPdf, op.value)}
+                  />
+                  {op.label}
+                </label>
+              ))}
+            </div>
+
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <input
                 type="file"
@@ -166,10 +200,22 @@ export default function KnowledgeModule() {
             <textarea
               className="w-full px-4 py-2 border rounded-lg text-sm font-mono"
               rows={10}
-              placeholder="Pega aquí el texto de tu gema (promociones, precios, en qué plazas aplica y en cuáles no, etc.)"
+              placeholder="Pega aquí el texto de tu gema (promociones, precios, en qué plazas aplica y en cuáles no, capacitación de nuevo ingreso, cómo publicar en redes, etc.)"
               value={textoPegado}
               onChange={(e) => setTextoPegado(e.target.value)}
             />
+            <div className="mt-2 flex flex-wrap gap-3">
+              {AUDIENCIA_OPCIONES.map(op => (
+                <label key={op.value} className="flex items-center gap-1 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={audienciasTexto.includes(op.value)}
+                    onChange={() => toggleAudiencia(setAudienciasTexto, audienciasTexto, op.value)}
+                  />
+                  {op.label}
+                </label>
+              ))}
+            </div>
             <button
               onClick={onGuardarTexto}
               disabled={!textoPegado.trim() || guardandoTexto}
@@ -190,7 +236,7 @@ export default function KnowledgeModule() {
               <div className="min-w-0">
                 <div className="font-semibold truncate">{p.name}</div>
                 <div className="text-xs text-slate-500 truncate">
-                  {p.description || 'Sin descripción'} • chunks: {p.chunks?.length || 0} • {p.isActive ? 'ACTIVO' : 'INACTIVO'}
+                  {p.description || 'Sin descripción'} • chunks: {p.chunks?.length || 0} • {p.isActive ? 'ACTIVO' : 'INACTIVO'} • audiencia: {(p.audiencias || ['todos']).join(', ')}
                 </div>
               </div>
               <div className="flex items-center gap-2">

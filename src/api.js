@@ -749,14 +749,14 @@ export async function assistantUsageSummary() {
 }
 
 // ========== CONOCIMIENTO (PDF) ==========
-export async function crearConocimientoTexto(text, name = '', description = '') {
+export async function crearConocimientoTexto(text, name = '', description = '', audiencias = ['todos']) {
   return apiRequest('/pdfs/texto', {
     method: 'POST',
-    body: JSON.stringify({ text, name, description }),
+    body: JSON.stringify({ text, name, description, audiencias }),
   });
 }
 
-export async function uploadKnowledgePDF(file, name = '', description = '') {
+export async function uploadKnowledgePDF(file, name = '', description = '', audiencias = ['todos']) {
   const token = (() => {
     try {
       const raw = localStorage.getItem('ss_auth_v1');
@@ -770,6 +770,7 @@ export async function uploadKnowledgePDF(file, name = '', description = '') {
   form.append('pdf', file);
   if (name) form.append('name', name);
   if (description) form.append('description', description);
+  (audiencias.length ? audiencias : ['todos']).forEach(a => form.append('audiencias', a));
 
   const res = await fetch(`${API_BASE_URL}/pdfs/upload`, {
     method: 'POST',
@@ -899,7 +900,14 @@ export async function getImagenVentaCompleta(id) {
   return apiRequest(`/imagenes-venta/${id}`);
 }
 
-export async function subirImagenVenta(file, titulo = '') {
+export async function agregarLigaFlyer(titulo, link) {
+  return apiRequest('/imagenes-venta/liga', {
+    method: 'POST',
+    body: JSON.stringify({ titulo, link }),
+  });
+}
+
+export async function subirImagenVenta(file, titulo = '', categoria = 'rgo') {
   const token = (() => {
     try {
       const raw = localStorage.getItem('ss_auth_v1');
@@ -912,6 +920,7 @@ export async function subirImagenVenta(file, titulo = '') {
   const form = new FormData();
   form.append('imagen', file);
   if (titulo) form.append('titulo', titulo);
+  form.append('categoria', categoria);
 
   const res = await fetch(`${API_BASE_URL}/imagenes-venta`, {
     method: 'POST',
@@ -1005,4 +1014,39 @@ export async function getConteoVistasCapacitaciones() {
 
 export async function getVistasCapacitacion(id) {
   return apiRequest(`/capacitaciones/${id}/vistas`);
+}
+
+// ========== RECURSOS DE CAPACITACIÓN (pregrabadas y exámenes) ==========
+export async function getRecursosCapacitacion() {
+  return apiRequest('/capacitaciones/recursos');
+}
+
+export async function crearRecursoCapacitacion(tipo, titulo, link, descripcion = '') {
+  return apiRequest('/capacitaciones/recursos', {
+    method: 'POST',
+    body: JSON.stringify({ tipo, titulo, link, descripcion }),
+  });
+}
+
+export async function actualizarRecursoCapacitacion(id, cambios) {
+  return apiRequest(`/capacitaciones/recursos/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(cambios),
+  });
+}
+
+export async function eliminarRecursoCapacitacion(id) {
+  return apiRequest(`/capacitaciones/recursos/${id}`, { method: 'DELETE' });
+}
+
+export async function registrarVistaRecurso(id) {
+  return apiRequest(`/capacitaciones/recursos/${id}/vista`, { method: 'POST' });
+}
+
+export async function getConteoVistasRecursos() {
+  return apiRequest('/capacitaciones/recursos/vistas/conteo');
+}
+
+export async function getVistasRecurso(id) {
+  return apiRequest(`/capacitaciones/recursos/${id}/vistas`);
 }

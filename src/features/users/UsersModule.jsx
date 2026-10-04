@@ -217,6 +217,7 @@ export default function UsersModule() {
                   <option value="cobranza_mx">Cobranza MX</option>
                   <option value="coordinador_claves">Coordinador de Claves</option>
                   <option value="marketing">Marketing</option>
+                  <option value="redes_sociales">Redes Sociales (venta directa, solo M1)</option>
                 </>
               )}
             </select>

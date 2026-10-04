@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 
 const capacitacionVistaSchema = new mongoose.Schema({
-  capacitacionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Capacitacion', required: true, index: true },
+  // Exactamente uno de los dos: celda del calendario semanal, o recurso (pregrabada/examen)
+  capacitacionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Capacitacion', index: true },
+  recursoId: { type: mongoose.Schema.Types.ObjectId, ref: 'RecursoCapacitacion', index: true },
   horario: { type: String, default: '' },
   dia: { type: String, default: '' },
   titulo: { type: String, default: '' },
