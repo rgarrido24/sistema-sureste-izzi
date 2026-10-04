@@ -218,6 +218,7 @@ export default function UsersModule() {
                   <option value="coordinador_claves">Coordinador de Claves</option>
                   <option value="marketing">Marketing</option>
                   <option value="redes_sociales">Redes Sociales (venta directa, solo M1)</option>
+                  <option value="reclutador">Reclutador (ve a sus reclutados)</option>
                 </>
               )}
             </select>

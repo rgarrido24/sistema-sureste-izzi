@@ -22,7 +22,7 @@ export default function AdminLayout({
               <RGOLogo size={50} showText={false} />
               <div>
                 {/* Mostrar mensaje de bienvenida para director, mesa_control, regionales y cobranza_mx */}
-                {(user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx' || user?.role === 'supervisor') ? (
+                {(user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'cobranza_mx' || user?.role === 'supervisor' || user?.role === 'reclutador' || user?.role === 'marketing') ? (
                   <>
                     <h1 className="text-xl font-bold text-slate-800">Bienvenido, {user?.name || 'Usuario'}</h1>
                     <p className="text-sm text-slate-500">
@@ -31,6 +31,8 @@ export default function AdminLayout({
                       {user?.role === 'regionales' && `Panel Regional - ${user?.region || 'Región'}`}
                       {user?.role === 'cobranza_mx' && 'Panel Cobranza MX'}
                       {user?.role === 'supervisor' && 'Panel Supervisor'}
+                      {user?.role === 'reclutador' && 'Panel de Reclutador'}
+                      {user?.role === 'marketing' && 'Panel de Marketing'}
                     </p>
                   </>
                 ) : (
@@ -78,7 +80,19 @@ export default function AdminLayout({
                   Claves
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'cobranza_mx' || user?.role === 'marketing') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing' || user?.role === 'reclutador') && (
+                <button 
+                  onClick={() => { setModule(MODULES.ARRANQUE); setActiveTab('arranque'); }} 
+                  className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                    currentModule === MODULES.ARRANQUE 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb]'
+                  }`}
+                >
+                  Arranque
+                </button>
+              )}
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'cobranza_mx' || user?.role === 'marketing' || user?.role === 'reclutador') && (
                 <button 
                   onClick={() => { setModule(MODULES.CAPACITACIONES); setActiveTab('capacitaciones'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -90,7 +104,7 @@ export default function AdminLayout({
                   Capacitaciones
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing' || user?.role === 'reclutador') && (
                 <button 
                   onClick={() => { setModule(MODULES.IMAGENES_VENTA); setActiveTab('imagenesVenta'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -102,7 +116,7 @@ export default function AdminLayout({
                   Imágenes
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'reclutador') && (
                 <button 
                   onClick={() => { setModule(MODULES.RANKING); setActiveTab('ranking'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -114,7 +128,7 @@ export default function AdminLayout({
                   Ranking
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'reclutador') && (
                 <button 
                   onClick={() => { setModule(MODULES.PUNTOS); setActiveTab('puntos'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
@@ -139,7 +153,7 @@ export default function AdminLayout({
                 </button>
               )}
               {/* Administración (Mi Cuenta) disponible para todos los roles de panel */}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'usuarios' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing' || user?.role === 'reclutador') && (
                 <button 
                   onClick={() => {
                     setModule(MODULES.ADMIN);
@@ -173,6 +187,7 @@ export default function AdminLayout({
         <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-md border border-slate-200 mb-4 sm:mb-6">
           <div className="flex flex-nowrap gap-2 overflow-x-auto no-scrollbar -mx-3 sm:mx-0 px-3 sm:px-0">
             {/* Asistente IA - Disponible para todos */}
+            {user?.role !== 'reclutador' && (
             <button 
               onClick={() => setActiveTab('chat')} 
               className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -184,9 +199,10 @@ export default function AdminLayout({
             >
               Asistente IA
             </button>
+            )}
 
             {/* Dashboard - Visible excepto para rol 'usuarios' */}
-            {user?.role !== 'usuarios' && user?.role !== 'cobranza_mx' && user?.role !== 'supervisor' && (
+            {user?.role !== 'usuarios' && user?.role !== 'cobranza_mx' && user?.role !== 'supervisor' && user?.role !== 'marketing' && user?.role !== 'reclutador' && (
               <button 
                 onClick={() => setActiveTab('dashboard')} 
                 className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${

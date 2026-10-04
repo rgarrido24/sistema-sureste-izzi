@@ -6,6 +6,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 const CAN_OTORGAR = ['admin', 'admin_general', 'director'];
+const CAN_VER_TODOS = ['admin', 'admin_general', 'director', 'supervisor', 'regionales', 'mesa_control'];
 
 router.get('/mis-puntos', async (req, res) => {
   try {
@@ -26,6 +27,9 @@ router.get('/mis-puntos', async (req, res) => {
 
 router.get('/todos', async (req, res) => {
   try {
+    if (!CAN_VER_TODOS.includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Sin permisos' });
+    }
     const agregados = await PuntoMovimiento.aggregate([
       { $group: { _id: { $toUpper: { $trim: { input: '$vendedor' } } }, total: { $sum: '$puntos' }, vendedor: { $last: '$vendedor' } } },
       { $project: { _id: 0, vendedor: 1, total: 1 } },

@@ -5,13 +5,10 @@ import { requireAuth, requireRoles, signAuthToken } from '../middleware/auth.js'
 import ActivityEvent from '../models/ActivityEvent.js';
 import M1Master from '../models/M1Master.js';
 import OperacionDia from '../models/OperacionDia.js';
+import { hashPassword, verificarPasswordUsuario } from '../utils/passwords.js';
 
 const router = express.Router();
 
-// Hash simple de contraseña (compatible con el frontend)
-function hashPassword(password) {
-  return Buffer.from(password).toString('base64').split('').reverse().join('');
-}
 
 // Login
 router.post('/login', async (req, res) => {
@@ -25,8 +22,8 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos' });
     }
     
-    const passwordHash = hashPassword(password);
-    if (user.passwordHash !== passwordHash) {
+    const passwordOk = await verificarPasswordUsuario(user, password);
+    if (!passwordOk) {
       return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos' });
     }
 
@@ -92,7 +89,7 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       return res.status(400).json({ success: false, error: 'El usuario ya existe' });
     }
     
-    const passwordHash = hashPassword(password);
+    const passwordHash = await hashPassword(password);
     
     const user = new User({
       username: cleanUsername,
@@ -188,7 +185,7 @@ router.put('/:id/password', requireAuth, requireRoles(['admin', 'admin_general',
       return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
     }
     
-    const passwordHash = hashPassword(password);
+    const passwordHash = await hashPassword(password);
     
     await User.findByIdAndUpdate(req.params.id, { passwordHash });
     

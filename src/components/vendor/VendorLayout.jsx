@@ -28,6 +28,18 @@ export default function VendorLayout({
         {/* Navigation - Pestañas principales */}
         <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-200 mb-3 sm:mb-4">
           <div className="flex gap-2 flex-nowrap overflow-x-auto no-scrollbar -mx-3 sm:mx-0 px-3 sm:px-0">
+            {user?.role === 'redes_sociales' && (
+              <button
+                onClick={() => setActiveView('arranque')}
+                className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                  activeView === 'arranque'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                Mi Arranque
+              </button>
+            )}
             <button 
               onClick={() => setActiveView('cobranza')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${

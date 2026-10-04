@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import os from 'os';
 import usersRoutes from './routes/users.js';
+import { requireAuth } from './middleware/auth.js';
+import { migrarPasswordsLegacy } from './utils/passwords.js';
 import salesRoutes from './routes/sales.js';
 import installRoutes from './routes/install.js';
 import operacionRoutes from './routes/operacion.js';
@@ -21,6 +23,7 @@ import imagenesVentaRoutes from './routes/imagenesVenta.js';
 import rankingRoutes from './routes/ranking.js';
 import puntosRoutes from './routes/puntos.js';
 import comisionesRoutes from './routes/comisiones.js';
+import arranqueRoutes from './routes/arranque.js';
 import m2Routes from './routes/m2.js';
 import m3Routes from './routes/m3.js';
 import m4Routes from './routes/m4.js';
@@ -77,6 +80,10 @@ mongoose.connect(MONGODB_URI, {
 })
   .then(() => {
     console.log('✅ Conectado a MongoDB');
+    // Pasa a bcrypt las contraseñas guardadas con el formato viejo (reversible). Idempotente.
+    migrarPasswordsLegacy()
+      .then((r) => console.log(`🔐 Contraseñas: ${r.migradas} migradas a bcrypt, ${r.omitidas} omitidas (de ${r.total} pendientes)`))
+      .catch((e) => console.error('❌ Error migrando contraseñas:', e?.message || e));
   })
   .catch((error) => {
     console.error('❌ Error conectando a MongoDB:', error.message);
@@ -92,26 +99,32 @@ mongoose.connect(MONGODB_URI, {
   });
 
 // Rutas
+// Roles que NUNCA deben ver cobranza/operación (datos de clientes), aunque llamen la API directo
+const bloquearRoles = (roles) => (req, res, next) =>
+  roles.includes(req.user?.role) ? res.status(403).json({ error: 'Sin acceso a este módulo' }) : next();
+const SIN_COBRANZA = bloquearRoles(['reclutador', 'marketing']);
+const SIN_ASISTENTE = bloquearRoles(['reclutador']);
+
 app.use('/api/users', usersRoutes);
-app.use('/api/sales', salesRoutes);
-app.use('/api/install', installRoutes);
-app.use('/api/operacion', operacionRoutes);
-app.use('/api/reports', reportsRoutes);
+app.use('/api/sales', requireAuth, SIN_COBRANZA, salesRoutes);
+app.use('/api/install', requireAuth, SIN_COBRANZA, installRoutes);
+app.use('/api/operacion', requireAuth, SIN_COBRANZA, operacionRoutes);
+app.use('/api/reports', requireAuth, SIN_COBRANZA, reportsRoutes);
 app.use('/api/packages', packagesRoutes);
 app.use('/api/promociones', promocionesRoutes);
 app.use('/api/pdfs', pdfsRoutes);
-app.use('/api/m1', m1Routes);
-app.use('/api/m0', m0Routes);
-app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api/m2', m2Routes);
-app.use('/api/m3', m3Routes);
-app.use('/api/m4', m4Routes);
-app.use('/api/m5', m5Routes);
-app.use('/api/m6', m6Routes);
+app.use('/api/m1', requireAuth, SIN_COBRANZA, m1Routes);
+app.use('/api/m0', requireAuth, SIN_COBRANZA, m0Routes);
+app.use('/api/whatsapp', requireAuth, SIN_COBRANZA, whatsappRoutes);
+app.use('/api/m2', requireAuth, SIN_COBRANZA, m2Routes);
+app.use('/api/m3', requireAuth, SIN_COBRANZA, m3Routes);
+app.use('/api/m4', requireAuth, SIN_COBRANZA, m4Routes);
+app.use('/api/m5', requireAuth, SIN_COBRANZA, m5Routes);
+app.use('/api/m6', requireAuth, SIN_COBRANZA, m6Routes);
 app.use('/api/templates', templatesRoutes);
-app.use('/api/stats', statsRoutes);
+app.use('/api/stats', requireAuth, SIN_COBRANZA, statsRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/assistant', assistantRoutes);
+app.use('/api/assistant', requireAuth, SIN_ASISTENTE, assistantRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/claves', clavesRoutes);
@@ -120,6 +133,7 @@ app.use('/api/imagenes-venta', imagenesVentaRoutes);
 app.use('/api/ranking', rankingRoutes);
 app.use('/api/puntos', puntosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
+app.use('/api/arranque', arranqueRoutes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {

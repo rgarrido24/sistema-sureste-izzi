@@ -27,7 +27,8 @@ export const MODULES = {
   IMAGENES_VENTA: 'imagenesVenta',
   RANKING: 'ranking',
   PUNTOS: 'puntos',
-  COMISIONES: 'comisiones'
+  COMISIONES: 'comisiones',
+  ARRANQUE: 'arranque'
 };
 
 export const COLLECTIONS = {

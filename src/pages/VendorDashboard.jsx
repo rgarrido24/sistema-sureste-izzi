@@ -10,10 +10,11 @@ import CapacitacionesModule from '../features/capacitaciones/CapacitacionesModul
 import ImagenesVentaModule from '../features/imagenes-venta/ImagenesVentaModule.jsx';
 import RankingVentaDirectaModule from '../features/ranking/RankingVentaDirectaModule.jsx';
 import PuntosModule from '../features/puntos/PuntosModule.jsx';
+import ArranqueModule from '../features/arranque/ArranqueModule.jsx';
 
 export default function VendorDashboard({ user, myName }) {
   const { logout } = useAuth();
-  const [activeView, setActiveView] = useState('cobranza'); // Cambiar a 'cobranza' por defecto
+  const [activeView, setActiveView] = useState(user?.role === 'redes_sociales' ? 'arranque' : 'cobranza'); // Cambiar a 'cobranza' por defecto
   const [cobranzaView, setCobranzaView] = useState('m1'); // Vista dentro de cobranza
 
   // Manejar cambio de pestaña principal
@@ -51,6 +52,7 @@ export default function VendorDashboard({ user, myName }) {
       {activeView === 'imagenesVenta' && <ImagenesVentaModule />}
       {activeView === 'ranking' && <RankingVentaDirectaModule />}
       {activeView === 'puntos' && <PuntosModule />}
+      {activeView === 'arranque' && <ArranqueModule />}
       {activeView === 'account' && <AccountModule />}
     </VendorLayout>
   );

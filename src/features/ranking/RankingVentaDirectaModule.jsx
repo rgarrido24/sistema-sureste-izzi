@@ -14,7 +14,7 @@ function colorPorcentaje(pct) {
 
 export default function RankingVentaDirectaModule() {
   const { user } = useAuth();
-  const esVendedor = user?.role === 'vendedor';
+  const esVendedor = ['vendedor', 'redes_sociales', 'reclutador'].includes(user?.role);
 
   const [ranking, setRanking] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +103,7 @@ export default function RankingVentaDirectaModule() {
       </div>
 
       {esVendedor && (
-        <p className="text-xs text-slate-400 mt-2">Solo se muestra el top 3. Tu posición completa está arriba.</p>
+        <p className="text-xs text-slate-400 mt-2">Solo se muestra el top 3.{miFila ? ' Tu posición completa está arriba.' : ''}</p>
       )}
     </div>
   );

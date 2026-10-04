@@ -7,7 +7,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 export default function PuntosModule() {
   const { user } = useAuth();
   const canOtorgar = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director';
-  const esVendedor = user?.role === 'vendedor';
+  const esVendedor = ['vendedor', 'redes_sociales', 'reclutador'].includes(user?.role);
 
   if (esVendedor) return <MisPuntos />;
   return <PuntosAdmin canOtorgar={canOtorgar} />;

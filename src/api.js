@@ -1077,3 +1077,58 @@ export async function guardarConfigPregrabadas(codigo, horasAcceso) {
 export async function getAccesosPregrabadas() {
   return apiRequest('/capacitaciones/recursos/accesos');
 }
+
+// ========== ARRANQUE (onboarding de Redes Sociales) ==========
+export async function getMiArranque() {
+  return apiRequest('/arranque/mi');
+}
+
+export async function completarPasoArranque(clave, evidencias = []) {
+  return apiRequest(`/arranque/mi/paso/${clave}`, {
+    method: 'POST',
+    body: JSON.stringify({ evidencias }),
+  });
+}
+
+export async function pedirAyudaArranque(mensaje = '') {
+  return apiRequest('/arranque/mi/atorado', {
+    method: 'POST',
+    body: JSON.stringify({ mensaje }),
+  });
+}
+
+export async function cancelarAyudaArranque() {
+  return apiRequest('/arranque/mi/atorado', { method: 'DELETE' });
+}
+
+export async function getTableroArranque() {
+  return apiRequest('/arranque/tablero');
+}
+
+export async function confirmarPasoArranque(id, clave) {
+  return apiRequest(`/arranque/${id}/paso/${clave}/confirmar`, { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function reabrirPasoArranque(id, clave, motivo = '') {
+  return apiRequest(`/arranque/${id}/paso/${clave}/reabrir`, { method: 'POST', body: JSON.stringify({ motivo }) });
+}
+
+export async function actualizarArranque(id, cambios) {
+  return apiRequest(`/arranque/${id}`, { method: 'PUT', body: JSON.stringify(cambios) });
+}
+
+export async function altaReclutado(datos) {
+  return apiRequest('/arranque/alta', { method: 'POST', body: JSON.stringify(datos) });
+}
+
+export async function getConfigArranque() {
+  return apiRequest('/arranque/config');
+}
+
+export async function guardarConfigArranque(cambios) {
+  return apiRequest('/arranque/config', { method: 'PUT', body: JSON.stringify(cambios) });
+}
+
+export async function getReclutadoresArranque() {
+  return apiRequest('/arranque/reclutadores');
+}
