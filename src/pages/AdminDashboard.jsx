@@ -141,7 +141,7 @@ export default function AdminDashboard({ user }) {
       {currentModule === MODULES.PUNTOS && <PuntosModule />}
 
       {/* Factor de comisión — NUNCA para vendedor, solo admin/director/supervisor/regionales */}
-      {currentModule === MODULES.COMISIONES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'regionales') && (
+      {currentModule === MODULES.COMISIONES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'regionales' || user?.role === 'mesa_control') && (
         <ComisionesModule />
       )}
 

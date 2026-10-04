@@ -3,6 +3,7 @@ import M1Master from '../models/M1Master.js';
 import VendedorFactor from '../models/VendedorFactor.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getItemVendedores } from '../src/utils/helpers.js';
+import { normalizarNombre } from '../utils/comisionesCalc.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -24,9 +25,9 @@ router.get('/venta-directa', async (req, res) => {
     // ranking por default — así nunca se filtra un distribuidor sin querer mientras se van dando
     // de alta uno por uno.
     const factores = await VendedorFactor.find({}).lean();
-    const tipoPorVendedor = new Map(factores.map(f => [f.vendedor.trim().toUpperCase(), f.tipo]));
+    const tipoPorVendedor = new Map(factores.map(f => [normalizarNombre(f.vendedor), f.tipo]));
     const esVentaDirecta = (nombre) => {
-      const tipo = tipoPorVendedor.get(nombre.trim().toUpperCase());
+      const tipo = tipoPorVendedor.get(normalizarNombre(nombre));
       return tipo === 'directa';
     };
 

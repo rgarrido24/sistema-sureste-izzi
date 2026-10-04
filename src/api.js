@@ -1132,3 +1132,44 @@ export async function guardarConfigArranque(cambios) {
 export async function getReclutadoresArranque() {
   return apiRequest('/arranque/reclutadores');
 }
+
+// ========== COMISIONES: pérdidas por vendedor, base maestra y alias de paquetes ==========
+export async function getPerdidasComisiones() {
+  return apiRequest('/comisiones/perdidas');
+}
+
+export async function getDetallePerdidasComision(vendedor) {
+  return apiRequest(`/comisiones/perdidas/detalle?vendedor=${encodeURIComponent(vendedor)}`);
+}
+
+export async function asignarAliasPaquete(nombre, paqueteId) {
+  return apiRequest('/comisiones/paquetes/alias', {
+    method: 'POST',
+    body: JSON.stringify({ nombre, paqueteId }),
+  });
+}
+
+export async function sincronizarVendedoresMaestro() {
+  return apiRequest('/comisiones/vendedores/sincronizar', { method: 'POST' });
+}
+
+export async function bulkVendedoresMaestro(rows) {
+  return apiRequest('/comisiones/vendedores/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ rows }),
+  });
+}
+
+export async function guardarVendedorMaestro(datos) {
+  return apiRequest('/comisiones/vendedores', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  });
+}
+
+export async function actualizarVendedorMaestro(id, cambios) {
+  return apiRequest(`/comisiones/vendedores/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(cambios),
+  });
+}

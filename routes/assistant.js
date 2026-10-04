@@ -4,6 +4,7 @@ import IzziPromocion from '../models/IzziPromocion.js';
 import KnowledgePDF from '../models/KnowledgePDF.js';
 import AiUsage from '../models/AiUsage.js';
 import VendedorFactor from '../models/VendedorFactor.js';
+import { normalizarNombre } from '../utils/comisionesCalc.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -214,10 +215,9 @@ async function filtrarChunksPorAudiencia(pdfChunks, user) {
   let esVentaDirecta = false;
   const nombre = String(user?.name || '').trim();
   if (nombre) {
-    const vf = await VendedorFactor.findOne({
-      vendedor: { $regex: `^${nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
-    }).lean();
-    esVentaDirecta = vf?.tipo === 'directa';
+    const directos = await VendedorFactor.find({ tipo: 'directa' }, { vendedor: 1 }).lean();
+    const miKey = normalizarNombre(nombre);
+    esVentaDirecta = directos.some((d) => normalizarNombre(d.vendedor) === miKey);
   }
 
   return pdfChunks.filter(c => {
