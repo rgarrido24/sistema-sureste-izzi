@@ -1173,3 +1173,48 @@ export async function actualizarVendedorMaestro(id, cambios) {
     body: JSON.stringify(cambios),
   });
 }
+
+// ========== CAPACITACIONES: Izzi, Crecimiento (por niveles) y seguimiento de aperturas ==========
+export async function getContenidoIzzi() {
+  return apiRequest('/capacitaciones-contenido/izzi');
+}
+
+export async function getAccesoCrecimiento() {
+  return apiRequest('/capacitaciones-contenido/crecimiento/acceso');
+}
+
+export async function getContenidoCrecimiento() {
+  return apiRequest('/capacitaciones-contenido/crecimiento');
+}
+
+export async function crearContenidoCapacitacion(datos) {
+  return apiRequest('/capacitaciones-contenido/item', { method: 'POST', body: JSON.stringify(datos) });
+}
+
+export async function actualizarContenidoCapacitacion(id, cambios) {
+  return apiRequest(`/capacitaciones-contenido/item/${id}`, { method: 'PUT', body: JSON.stringify(cambios) });
+}
+
+export async function eliminarContenidoCapacitacion(id) {
+  return apiRequest(`/capacitaciones-contenido/item/${id}`, { method: 'DELETE' });
+}
+
+export async function registrarVistaContenido(id) {
+  return apiRequest(`/capacitaciones-contenido/item/${id}/vista`, { method: 'POST' });
+}
+
+export async function getSeguimientoContenido(id) {
+  return apiRequest(`/capacitaciones-contenido/item/${id}/seguimiento`);
+}
+
+export async function getConteoSeguimiento() {
+  return apiRequest('/capacitaciones-contenido/seguimiento/conteo');
+}
+
+export async function getMiembrosCrecimiento() {
+  return apiRequest('/capacitaciones-contenido/miembros');
+}
+
+export async function cambiarNivelMiembro(usuarioId, nivel) {
+  return apiRequest(`/capacitaciones-contenido/miembros/${usuarioId}/nivel`, { method: 'PUT', body: JSON.stringify({ nivel }) });
+}

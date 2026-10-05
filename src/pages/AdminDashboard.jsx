@@ -19,6 +19,7 @@ import AdminActivityDashboard from '../features/activity/AdminActivityDashboard.
 import WhatsAppBulkModule from '../features/whatsapp/WhatsAppBulkModule.jsx';
 import ClavesModule from '../features/claves/ClavesModule.jsx';
 import CapacitacionesModule from '../features/capacitaciones/CapacitacionesModule.jsx';
+import CapacitacionesIzziModule from '../features/capacitaciones-izzi/CapacitacionesIzziModule.jsx';
 import ImagenesVentaModule from '../features/imagenes-venta/ImagenesVentaModule.jsx';
 import RankingVentaDirectaModule from '../features/ranking/RankingVentaDirectaModule.jsx';
 import PuntosModule from '../features/puntos/PuntosModule.jsx';
@@ -60,22 +61,22 @@ export default function AdminDashboard({ user }) {
     if (user?.role === 'usuarios' && module !== MODULES.ADMIN && module !== MODULES.CLAVES) {
       return;
     }
-    if (user?.role === 'cobranza_mx' && module !== MODULES.SALES && module !== MODULES.CAPACITACIONES) {
+    if (user?.role === 'cobranza_mx' && module !== MODULES.SALES && module !== MODULES.CAPACITACIONES && module !== MODULES.CAPACITACIONES_IZZI) {
       // Cobranza MX: no permitir salir del módulo de Cobranza (excepto Capacitaciones)
       return;
     }
-    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES && module !== MODULES.IMAGENES_VENTA && module !== MODULES.RANKING && module !== MODULES.PUNTOS && module !== MODULES.COMISIONES && module !== MODULES.ARRANQUE) {
+    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES && module !== MODULES.CAPACITACIONES_IZZI && module !== MODULES.IMAGENES_VENTA && module !== MODULES.RANKING && module !== MODULES.PUNTOS && module !== MODULES.COMISIONES && module !== MODULES.ARRANQUE) {
       return;
     }
     if (user?.role === 'coordinador_claves' && module !== MODULES.CLAVES) {
       // Coordinador de claves: solo puede ver Claves CVVEN
       return;
     }
-    if (user?.role === 'marketing' && module !== MODULES.ADMIN && module !== MODULES.IMAGENES_VENTA && module !== MODULES.CAPACITACIONES && module !== MODULES.ARRANQUE) {
+    if (user?.role === 'marketing' && module !== MODULES.ADMIN && module !== MODULES.IMAGENES_VENTA && module !== MODULES.CAPACITACIONES && module !== MODULES.CAPACITACIONES_IZZI && module !== MODULES.ARRANQUE) {
       // Marketing: solo Conocimiento (dentro de Administración), Imágenes y Capacitaciones
       return;
     }
-    if (user?.role === 'reclutador' && ![MODULES.ARRANQUE, MODULES.IMAGENES_VENTA, MODULES.RANKING, MODULES.PUNTOS, MODULES.CAPACITACIONES, MODULES.ADMIN].includes(module)) {
+    if (user?.role === 'reclutador' && ![MODULES.ARRANQUE, MODULES.IMAGENES_VENTA, MODULES.RANKING, MODULES.PUNTOS, MODULES.CAPACITACIONES, MODULES.CAPACITACIONES_IZZI, MODULES.ADMIN].includes(module)) {
       // Reclutador: solo Arranque (sus reclutados), Imágenes, Ranking, Puntos, Capacitaciones y Mi Cuenta
       return;
     }
@@ -127,6 +128,9 @@ export default function AdminDashboard({ user }) {
 
       {/* Calendario de capacitaciones — visible para todos los roles del panel admin */}
       {currentModule === MODULES.CAPACITACIONES && <CapacitacionesModule />}
+
+      {/* Capacitaciones de Izzi: abiertas para todos los roles con capacitaciones */}
+      {currentModule === MODULES.CAPACITACIONES_IZZI && <CapacitacionesIzziModule />}
 
       {/* Arranque de Redes Sociales: seguimiento para staff/marketing */}
       {currentModule === MODULES.ARRANQUE && <ArranqueModule />}

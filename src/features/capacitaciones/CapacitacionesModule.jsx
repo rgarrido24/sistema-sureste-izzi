@@ -3,6 +3,7 @@ import { Calendar, Link2, Plus, X, Loader2, Eye, Video, FileCheck, Trash2, Lock,
 import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
+import CrecimientoTab from './CrecimientoTab.jsx';
 
 const DIAS = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
 const COLORES = [
@@ -15,7 +16,7 @@ const COLORES = [
   { nombre: 'Blanco', valor: '#ffffff' },
 ];
 
-export default function CapacitacionesModule() {
+function CapacitacionesGeneral() {
   const { user } = useAuth();
   const canEdit = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director';
   const canVerVistas = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'marketing';
@@ -689,6 +690,35 @@ function ConfigCodigoPregrabadas() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Pestañas: General (para todos) y Crecimiento (solo venta directa y redes sociales, más dirección/Mesa/Marketing)
+export default function CapacitacionesModule() {
+  const [acceso, setAcceso] = useState(null);
+  const [tab, setTab] = useState('general');
+
+  useEffect(() => {
+    api.getAccesoCrecimiento().then(setAcceso).catch(() => setAcceso({ permitido: false }));
+  }, []);
+
+  const conCrecimiento = !!acceso?.permitido;
+
+  return (
+    <div>
+      {conCrecimiento && (
+        <div className="max-w-6xl mx-auto flex gap-2 mb-4 border-b border-slate-200">
+          <button onClick={() => setTab('general')} className={`px-4 py-2 text-sm font-bold border-b-2 ${tab === 'general' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>
+            General
+          </button>
+          <button onClick={() => setTab('crecimiento')} className={`px-4 py-2 text-sm font-bold border-b-2 ${tab === 'crecimiento' ? 'border-green-600 text-green-700' : 'border-transparent text-slate-500'}`}>
+            Crecimiento (venta directa y redes)
+          </button>
+        </div>
+      )}
+      {(!conCrecimiento || tab === 'general') && <CapacitacionesGeneral />}
+      {conCrecimiento && tab === 'crecimiento' && <CrecimientoTab esStaff={!!acceso.esStaff} />}
     </div>
   );
 }

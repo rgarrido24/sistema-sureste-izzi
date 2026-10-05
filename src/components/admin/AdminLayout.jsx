@@ -104,6 +104,18 @@ export default function AdminLayout({
                   Capacitaciones
                 </button>
               )}
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'cobranza_mx' || user?.role === 'marketing' || user?.role === 'reclutador') && (
+                <button 
+                  onClick={() => { setModule(MODULES.CAPACITACIONES_IZZI); setActiveTab('capacitacionesIzzi'); }} 
+                  className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+                    currentModule === MODULES.CAPACITACIONES_IZZI 
+                      ? 'bg-gradient-to-r from-[#1e40af] to-[#2563eb] text-white shadow-md' 
+                      : 'text-slate-600 hover:text-[#2563eb]'
+                  }`}
+                >
+                  Cap. Izzi
+                </button>
+              )}
               {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'marketing' || user?.role === 'reclutador') && (
                 <button 
                   onClick={() => { setModule(MODULES.IMAGENES_VENTA); setActiveTab('imagenesVenta'); }} 

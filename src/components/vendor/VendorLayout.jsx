@@ -90,6 +90,16 @@ export default function VendorLayout({
             >
               Capacitaciones
             </button>
+            <button
+              onClick={() => setActiveView('capacitacionesIzzi')}
+              className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
+                activeView === 'capacitacionesIzzi'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              Cap. Izzi
+            </button>
             <button 
               onClick={() => setActiveView('imagenesVenta')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${

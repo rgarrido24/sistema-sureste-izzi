@@ -30,8 +30,9 @@ const PASOS = [
   {
     clave: 'capacitacion_vivo',
     titulo: 'Tomar la capacitación de nuevo ingreso en vivo',
-    descripcion: 'Asiste a la capacitación en vivo (inducción y redes sociales). Mesa de Control confirma tu asistencia.',
+    descripcion: 'Asiste a la capacitación en vivo (inducción y redes sociales). Marketing confirma tu asistencia.',
     tipo: 'staff',
+    validaPor: 'marketing',
   },
   {
     clave: 'perfil_facebook',
@@ -61,6 +62,7 @@ const PASOS = [
     titulo: 'Tu primer lead o primera venta',
     descripcion: 'Es la meta de tu primera semana. Mesa de Control lo confirma cuando lo registres.',
     tipo: 'staff',
+    validaPor: 'mesa_control',
   },
 ];
 
@@ -71,6 +73,16 @@ const REQUIERE = {
   primeros_posts: ['perfil_facebook'],
   unido_grupo: PASOS_GRUPO,
 };
+
+// Quién puede confirmar/reabrir cada paso de tipo "staff". Dirección siempre puede (por si falta alguien).
+// La capacitación en vivo la valida Marketing (ellos la imparten); el primer lead, Mesa de Control.
+const VALIDADORES = {
+  marketing: ['marketing', 'admin', 'admin_general', 'director'],
+  mesa_control: ['mesa_control', 'admin', 'admin_general', 'director'],
+};
+const ETIQUETA_VALIDADOR = { marketing: 'Marketing', mesa_control: 'Mesa de Control' };
+const PUEDEN_VALIDAR = [...STAFF_EDIT, 'marketing'];
+const puedeValidar = (role, def) => (VALIDADORES[def.validaPor] || STAFF_EDIT).includes(role);
 
 // --- helpers ---
 
@@ -156,6 +168,7 @@ function vistaUsuario(doc, cfg) {
       titulo: def.titulo,
       descripcion: def.descripcion,
       tipo: def.tipo,
+      validador: ETIQUETA_VALIDADOR[def.validaPor] || 'Mesa de Control',
       minEvidencias: def.minEvidencias || 0,
       placeholder: def.placeholder || '',
       completado: !!st.completado,
@@ -349,6 +362,8 @@ router.get('/tablero', requireRoles(VER_TABLERO), async (req, res) => {
           clave: def.clave,
           titulo: def.titulo,
           tipo: def.tipo,
+          validador: ETIQUETA_VALIDADOR[def.validaPor] || '',
+          puedoValidar: puedeValidar(req.user?.role, def),
           completado: !!st.completado,
           completadoEn: st.completadoEn || null,
           completadoPor: st.completadoPor || '',
@@ -458,11 +473,14 @@ router.post('/alta', requireRoles(PUEDE_DAR_ALTA), async (req, res) => {
 });
 
 // Confirmar un paso (Mesa de Control; puede marcar cualquiera, p. ej. asistencia o primer lead)
-router.post('/:id/paso/:clave/confirmar', requireRoles(STAFF_EDIT), async (req, res) => {
+router.post('/:id/paso/:clave/confirmar', requireRoles(PUEDEN_VALIDAR), async (req, res) => {
   try {
     if (!idValido(req.params.id)) return res.status(404).json({ error: 'No encontrado' });
     const def = PASOS.find((p) => p.clave === req.params.clave);
     if (!def) return res.status(404).json({ error: 'Paso no encontrado' });
+    if (!puedeValidar(req.user?.role, def)) {
+      return res.status(403).json({ error: `Este paso lo valida ${ETIQUETA_VALIDADOR[def.validaPor] || 'Mesa de Control'}.` });
+    }
 
     const doc = await Onboarding.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'No encontrado' });
@@ -486,11 +504,14 @@ router.post('/:id/paso/:clave/confirmar', requireRoles(STAFF_EDIT), async (req, 
 });
 
 // Reabrir un paso (p. ej. el link era falso). Solo reabre ese paso; si era requisito del grupo, se vuelve a bloquear.
-router.post('/:id/paso/:clave/reabrir', requireRoles(STAFF_EDIT), async (req, res) => {
+router.post('/:id/paso/:clave/reabrir', requireRoles(PUEDEN_VALIDAR), async (req, res) => {
   try {
     if (!idValido(req.params.id)) return res.status(404).json({ error: 'No encontrado' });
     const def = PASOS.find((p) => p.clave === req.params.clave);
     if (!def) return res.status(404).json({ error: 'Paso no encontrado' });
+    if (!puedeValidar(req.user?.role, def)) {
+      return res.status(403).json({ error: `Este paso lo valida ${ETIQUETA_VALIDADOR[def.validaPor] || 'Mesa de Control'}.` });
+    }
 
     const doc = await Onboarding.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'No encontrado' });

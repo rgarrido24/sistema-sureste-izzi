@@ -24,6 +24,7 @@ export const MODULES = {
   ADMIN: 'admin',
   CLAVES: 'claves',
   CAPACITACIONES: 'capacitaciones',
+  CAPACITACIONES_IZZI: 'capacitacionesIzzi',
   IMAGENES_VENTA: 'imagenesVenta',
   RANKING: 'ranking',
   PUNTOS: 'puntos',

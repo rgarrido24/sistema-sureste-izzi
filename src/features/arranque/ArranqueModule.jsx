@@ -131,7 +131,7 @@ function MiArranque() {
 
                   {paso.completado && (
                     <p className="text-xs text-green-700 mt-2">
-                      Completado {fmtFecha(paso.completadoEn)}{paso.completadoPor === 'staff' ? ' · confirmado por Mesa de Control' : ''}
+                      Completado {fmtFecha(paso.completadoEn)}{paso.completadoPor === 'staff' ? ` · confirmado por ${paso.validador || 'Mesa de Control'}` : ''}
                     </p>
                   )}
 
@@ -140,7 +140,7 @@ function MiArranque() {
                   )}
 
                   {!paso.completado && !paso.bloqueado && paso.tipo === 'staff' && (
-                    <p className="text-xs text-amber-700 mt-2 font-medium">Pendiente de confirmación de Mesa de Control.</p>
+                    <p className="text-xs text-amber-700 mt-2 font-medium">Pendiente de confirmación de {paso.validador || 'Mesa de Control'}.</p>
                   )}
 
                   {!paso.completado && !paso.bloqueado && paso.tipo === 'evidencia' && (
@@ -428,7 +428,7 @@ function Tablero({ role }) {
                             {p.nota && <p className="text-[11px] text-slate-400 italic">{p.nota}</p>}
                           </div>
                         </div>
-                        {canEdit && (
+                        {p.puedoValidar && (
                           <div className="shrink-0">
                             {p.completado ? (
                               <button
