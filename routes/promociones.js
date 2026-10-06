@@ -1,7 +1,11 @@
 import express from 'express';
 import IzziPromocion from '../models/IzziPromocion.js';
 
+import { protegerEscritura } from '../middleware/protegerEscritura.js';
+
 const router = express.Router();
+// Antes este router no pedía sesión: cualquiera podía crear y borrar. Leer: cualquier usuario con sesión; escribir: solo admin.
+router.use(protegerEscritura({ roles: ['admin', 'admin_general'] }));
 
 // Obtener todas las promociones
 router.get('/', async (req, res) => {

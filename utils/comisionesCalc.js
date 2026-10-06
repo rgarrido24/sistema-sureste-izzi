@@ -1,5 +1,6 @@
 import { getItemVendedores } from '../src/utils/helpers.js';
 import { getEstatusFPDM1 } from './estatusFPD.js';
+import { factorDirecta } from './esquemaFactor.js';
 
 export const quitarAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -107,10 +108,36 @@ const campo = (item, nombres) => {
   return '';
 };
 
+// Ventas del mes por vendedor = cuentas en la cosecha de M1 cargada (todas, pagadas o no), por el primer vendedor de cada cuenta
+export function contarVentasPorVendedor(items) {
+  const m = new Map();
+  for (const item of items || []) {
+    const nombre = getItemVendedores(item)[0];
+    if (!nombre) continue;
+    const k = normalizarNombre(nombre);
+    m.set(k, (m.get(k) || 0) + 1);
+  }
+  return m;
+}
+
+// Factor que realmente aplica a un vendedor:
+//  · distribuidor → el que escribió Dirección
+//  · venta directa/redes con un factor escrito a mano → ese (queda FIJO)
+//  · venta directa/redes sin factor escrito → AUTOMÁTICO por ventas del mes y capacitación aprobada
+export function factorEfectivo(doc, ventasMes) {
+  const manual = doc && Number(doc.factor) > 0 ? Number(doc.factor) : null;
+  const auto = manual === null && doc?.tipo === 'directa';
+  return {
+    factor: manual ?? (auto ? factorDirecta(ventasMes, !!doc.capacitacionAprobada) : null),
+    auto,
+  };
+}
+
 // ---------- Cálculo de pérdidas por vendedor ----------
 // comisión = base del paquete × factor del vendedor
 // retención = comisión × retención% (solo distribuidores; venta directa no tiene retención)
-export function calcularComisiones({ items, indice, vendedores }) {
+export function calcularComisiones({ items, indice, vendedores, ventasPorVendedor }) {
+  const ventasMes = ventasPorVendedor || contarVentasPorVendedor(items);
   const porVendedor = new Map();
   const sinBase = new Map();
   const r = { cuentasPerdidas: 0, cuentasPendientes: 0, cuentasSinBase: 0, cuentasSinVendedor: 0 };
@@ -127,15 +154,19 @@ export function calcularComisiones({ items, indice, vendedores }) {
     let v = porVendedor.get(key);
     if (!v) {
       v = {
-        vendedor: nombre, tipo: null, factor: null, retencionPorcentaje: 0, sinFactor: false,
+        vendedor: nombre, tipo: null, factor: null, factorAuto: false, ventasMes: 0, capacitacionAprobada: false, retencionPorcentaje: 0, sinFactor: false,
         perdidas: 0, pendientes: 0,
         comisionPerdida: 0, retencionPerdida: 0, comisionPendiente: 0, retencionPendiente: 0,
         sinBase: 0, cuentas: [],
       };
       const doc = vendedores.get(key);
-      const factor = doc && Number(doc.factor) > 0 ? Number(doc.factor) : null;
+      const ventas = ventasMes.get(key) || 0;
+      const { factor, auto } = factorEfectivo(doc, ventas);
       v.tipo = doc?.tipo || null;
       v.factor = factor;
+      v.factorAuto = auto;
+      v.ventasMes = ventas;
+      v.capacitacionAprobada = !!doc?.capacitacionAprobada;
       v.sinFactor = factor === null;
       v.retencionPorcentaje = doc?.tipo === 'distribuidor' ? (Number(doc.retencionPorcentaje) > 0 ? Number(doc.retencionPorcentaje) : 10) : 0;
       porVendedor.set(key, v);

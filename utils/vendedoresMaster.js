@@ -150,6 +150,11 @@ export function planificarUpsert(rows, existentes) {
       else advertencias.push({ fila, mensaje: `factor ${campos.factor}: no se pudo inferir el tipo, defínelo a mano` });
     }
 
+    // En venta directa/redes el factor es automático (por ventas y capacitación). Si el archivo trae uno, queda FIJO.
+    if ((campos.tipo ?? actual?.tipo) === 'directa' && campos.factor !== undefined) {
+      advertencias.push({ fila, mensaje: 'venta directa/redes: ese factor queda FIJO y no subirá solo por ventas; déjalo vacío para que sea automático' });
+    }
+
     // Al fijar o cambiar el tipo, la retención queda coherente (solo distribuidores, 10% por default)
     if (campos.tipo !== undefined && campos.tipo !== actual?.tipo) {
       campos.retencionPorcentaje = campos.tipo === 'distribuidor'

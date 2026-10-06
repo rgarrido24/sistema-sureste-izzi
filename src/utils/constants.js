@@ -3,7 +3,8 @@ export const APP_ID = 'sales-master-production';
 
 // La IA ahora se consume desde el backend (/api/assistant) para no exponer llaves en el navegador.
 // Se deja por compatibilidad con código antiguo, pero debe permanecer vacío en producción.
-export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+// La IA corre en el backend. NUNCA poner claves aquí: todo lo que empieza con VITE_ queda público en el código del navegador.
+export const GEMINI_API_KEY = '';
 
 export const GEMINI_MODELS = [
   'gemini-1.5-flash',

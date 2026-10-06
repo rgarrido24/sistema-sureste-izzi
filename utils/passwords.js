@@ -80,3 +80,11 @@ export async function migrarPasswordsLegacy() {
   }
   return { total: pendientes.length, migradas, omitidas };
 }
+
+// Cuando el usuario no existe, se compara contra un hash falso para que la respuesta tarde lo mismo que con un usuario real
+const HASH_FALSO = bcrypt.hashSync('contraseña-que-nunca-existe', 10);
+export async function simularVerificacionPassword(password) {
+  try {
+    await bcrypt.compare(String(password), HASH_FALSO);
+  } catch { /* nada */ }
+}

@@ -5,7 +5,7 @@ import { requireAuth, requireRoles, signAuthToken } from '../middleware/auth.js'
 import ActivityEvent from '../models/ActivityEvent.js';
 import M1Master from '../models/M1Master.js';
 import OperacionDia from '../models/OperacionDia.js';
-import { hashPassword, verificarPasswordUsuario } from '../utils/passwords.js';
+import { hashPassword, verificarPasswordUsuario, simularVerificacionPassword } from '../utils/passwords.js';
 
 const router = express.Router();
 
@@ -13,12 +13,16 @@ const router = express.Router();
 // Login
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password } = req.body || {};
+    if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password || username.length > 100 || password.length > 200) {
+      return res.status(400).json({ success: false, error: 'Usuario y contraseña requeridos' });
+    }
     const cleanUsername = username.trim().toLowerCase();
     
     const user = await User.findOne({ username: cleanUsername });
     
     if (!user) {
+      await simularVerificacionPassword(password);
       return res.status(401).json({ success: false, error: 'Usuario o contraseña incorrectos' });
     }
     
@@ -39,7 +43,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         region: user.region || '',
         meta: {
-          ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '',
+          ip: req.ip || '',
           userAgent: req.headers['user-agent'] || '',
         },
       });

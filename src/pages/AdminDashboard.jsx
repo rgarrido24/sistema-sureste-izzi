@@ -37,7 +37,7 @@ export default function AdminDashboard({ user }) {
         : user?.role === 'coordinador_claves'
           ? MODULES.CLAVES
           : user?.role === 'marketing'
-            ? MODULES.ADMIN
+            ? MODULES.ARRANQUE
             : user?.role === 'reclutador'
             ? MODULES.ARRANQUE
             : MODULES.SALES;
@@ -49,7 +49,7 @@ export default function AdminDashboard({ user }) {
         : user?.role === 'coordinador_claves'
           ? 'claves'
           : user?.role === 'marketing'
-            ? 'knowledge'
+            ? 'arranque'
             : user?.role === 'reclutador'
             ? 'arranque'
             : 'dashboard';
@@ -76,8 +76,8 @@ export default function AdminDashboard({ user }) {
       // Marketing: solo Conocimiento (dentro de Administración), Imágenes y Capacitaciones
       return;
     }
-    if (user?.role === 'reclutador' && ![MODULES.ARRANQUE, MODULES.IMAGENES_VENTA, MODULES.RANKING, MODULES.PUNTOS, MODULES.CAPACITACIONES, MODULES.CAPACITACIONES_IZZI, MODULES.ADMIN].includes(module)) {
-      // Reclutador: solo Arranque (sus reclutados), Imágenes, Ranking, Puntos, Capacitaciones y Mi Cuenta
+    if (user?.role === 'reclutador' && ![MODULES.ARRANQUE, MODULES.IMAGENES_VENTA, MODULES.PUNTOS, MODULES.CAPACITACIONES, MODULES.CAPACITACIONES_IZZI, MODULES.ADMIN].includes(module)) {
+      // Reclutador: solo Arranque (sus reclutados), Imágenes, Puntos, Capacitaciones y Mi Cuenta
       return;
     }
     setCurrentModule(module);

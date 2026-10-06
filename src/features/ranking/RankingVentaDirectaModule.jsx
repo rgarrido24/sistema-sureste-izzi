@@ -14,7 +14,7 @@ function colorPorcentaje(pct) {
 
 export default function RankingVentaDirectaModule() {
   const { user } = useAuth();
-  const esVendedor = ['vendedor', 'redes_sociales', 'reclutador'].includes(user?.role);
+  const esVendedor = ['vendedor', 'redes_sociales'].includes(user?.role);
 
   const [ranking, setRanking] = useState([]);
   const [loading, setLoading] = useState(true);

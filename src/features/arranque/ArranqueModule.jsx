@@ -6,6 +6,7 @@ import {
 import * as api from '../../api.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
+import { sugerirUsuario } from './sugerirUsuario.js';
 
 const STAFF_EDIT = ['admin', 'admin_general', 'director', 'mesa_control'];
 const fmtFecha = (d) => (d ? new Date(d).toLocaleDateString('es-MX') : '');
@@ -329,7 +330,7 @@ function Tablero({ role }) {
     <div className="max-w-4xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Users className="text-blue-600" size={22} />
-        <h2 className="text-lg font-bold text-slate-800">{esReclutador ? 'Cómo van mis reclutados' : 'Seguimiento de Redes Sociales'}</h2>
+        <h2 className="text-lg font-bold text-slate-800">{esReclutador ? 'Cómo van mis reclutados' : 'Seguimiento de nuevos ingresos'}</h2>
       </div>
 
       {esReclutador && (
@@ -337,7 +338,7 @@ function Tablero({ role }) {
           Las personas que reclutaste y en qué paso van. Mesa de Control les da seguimiento.
         </p>
       )}
-      {canAlta && <AltaReclutado onCreated={cargar} reclutadores={reclutadores} />}
+      {canAlta && <AltaReclutado onCreated={cargar} reclutadores={reclutadores} abiertoInicial={role === 'marketing'} />}
       {canEdit && <ConfigArranque />}
 
       <div className="flex flex-wrap gap-2">
@@ -380,7 +381,7 @@ function Tablero({ role }) {
                   <div className="min-w-0">
                     <p className="font-bold text-slate-800 truncate">{i.usuarioNombre}</p>
                     <p className="text-xs text-slate-500">
-                      @{i.usuarioUsername}{i.reclutadorNombre ? ` · Reclutó: ${i.reclutadorNombre}` : ' · Sin reclutador registrado'}
+                      {i.perfil === 'directa' ? 'Venta directa' : 'Redes sociales'} · @{i.usuarioUsername}{i.reclutadorNombre ? ` · Reclutó: ${i.reclutadorNombre}` : ' · Sin reclutador registrado'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1 justify-end shrink-0">
@@ -516,16 +517,21 @@ function ReclutadorEditor({ item, reclutadores = [], onSave }) {
   );
 }
 
-// Alta de un reclutado (Marketing recibe los datos de reclutamiento y crea el usuario)
-function AltaReclutado({ onCreated, reclutadores = [] }) {
-  const [abierto, setAbierto] = useState(false);
-  const [form, setForm] = useState({ nombre: '', username: '', password: '', email: '', reclutadorNombre: '' });
+// Alta de una persona nueva (Marketing recibe los datos de reclutamiento y crea el usuario).
+// Solo se pueden crear dos perfiles: redes sociales o venta directa.
+const FORM_ALTA_VACIO = { nombre: '', username: '', password: '', email: '', reclutadorNombre: '', telefono: '', fechaNacimiento: '' };
+
+function AltaReclutado({ onCreated, reclutadores = [], abiertoInicial = false }) {
+  const [abierto, setAbierto] = useState(abiertoInicial);
+  const [perfil, setPerfil] = useState('redes');
+  const [form, setForm] = useState(FORM_ALTA_VACIO);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [creado, setCreado] = useState(null);
   const [reclutadorSel, setReclutadorSel] = useState('');
 
   const set = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+  const esDirecta = perfil === 'directa';
 
   const generarPassword = () => {
     const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
@@ -534,13 +540,24 @@ function AltaReclutado({ onCreated, reclutadores = [] }) {
     setForm((f) => ({ ...f, password: Array.from(bytes).map((b) => alfabeto[b % alfabeto.length]).join('') }));
   };
 
+  // Al salir del nombre, si el usuario está vacío, se sugiere uno (se puede cambiar)
+  const sugerir = () => {
+    setForm((f) => (f.username.trim() ? f : { ...f, username: sugerirUsuario(f.nombre) }));
+  };
+
   const crear = async () => {
     setGuardando(true);
     setError('');
     try {
-      await api.altaReclutado({ ...form, reclutadorId: reclutadorSel });
-      setCreado({ nombre: form.nombre.trim(), username: form.username.trim().toLowerCase(), password: form.password });
-      setForm({ nombre: '', username: '', password: '', email: '', reclutadorNombre: '' });
+      const r = await api.altaReclutado({ ...form, perfil, reclutadorId: reclutadorSel });
+      setCreado({
+        perfil,
+        nombre: form.nombre.trim(),
+        username: form.username.trim().toLowerCase(),
+        password: form.password,
+        advertencias: r?.advertencias || [],
+      });
+      setForm(FORM_ALTA_VACIO);
       setReclutadorSel('');
       onCreated();
     } catch (e) {
@@ -551,13 +568,23 @@ function AltaReclutado({ onCreated, reclutadores = [] }) {
   };
 
   const mensaje = creado
-    ? `Hola ${creado.nombre.split(' ')[0]}, ya tienes tu acceso al sistema:\n${window.location.origin}\nUsuario: ${creado.username}\nContraseña: ${creado.password}\nAl entrar verás "Mi Arranque" con tus primeros pasos.`
+    ? `Hola ${creado.nombre.split(' ')[0]}, ya tienes tu acceso al sistema:\n${window.location.origin}\nUsuario: ${creado.username}\nContraseña: ${creado.password}\n${creado.perfil === 'directa' ? 'Al entrar verás tu panel de vendedor.' : 'Al entrar verás "Mi Arranque" con tus primeros pasos.'}`
     : '';
+
+  const tab = (clave, texto) => (
+    <button
+      type="button"
+      onClick={() => setPerfil(clave)}
+      className={`flex-1 px-3 py-2 rounded-lg text-sm font-bold border ${perfil === clave ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300'}`}
+    >
+      {texto}
+    </button>
+  );
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl">
       <button onClick={() => setAbierto(!abierto)} className="w-full flex items-center justify-between p-4 text-left">
-        <span className="font-bold text-slate-700 flex items-center gap-2"><UserPlus size={16} /> Dar de alta a un reclutado</span>
+        <span className="font-bold text-slate-700 flex items-center gap-2"><UserPlus size={16} /> Dar de alta a una persona nueva (redes sociales o venta directa)</span>
         {abierto ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
 
@@ -574,11 +601,23 @@ function AltaReclutado({ onCreated, reclutadores = [] }) {
                 <Copy size={12} /> Copiar mensaje
               </button>
               <p className="text-[11px] text-green-700 mt-1">Esta contraseña no se vuelve a mostrar.</p>
+              {creado.advertencias.map((a) => <p key={a} className="text-[11px] text-amber-700 mt-1">{a}</p>)}
             </div>
           )}
 
+          <div>
+            <p className="text-xs font-bold text-slate-600 mb-1">¿Qué perfil es?</p>
+            <div className="flex gap-2">{tab('redes', 'Redes sociales')}{tab('directa', 'Venta directa')}</div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input value={form.nombre} onChange={set('nombre')} placeholder="Nombre completo" className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            <input
+              value={form.nombre}
+              onChange={set('nombre')}
+              onBlur={sugerir}
+              placeholder="Nombre completo (igual que en su clave de Izzi)"
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
             <div className="flex flex-col gap-2">
               <select value={reclutadorSel} onChange={(e) => setReclutadorSel(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
                 <option value="">Reclutado por… (reclutador sin usuario: escribir nombre)</option>
@@ -595,8 +634,16 @@ function AltaReclutado({ onCreated, reclutadores = [] }) {
                 <RefreshCw size={12} /> Generar
               </button>
             </div>
-            <input value={form.email} onChange={set('email')} placeholder="Correo (opcional)" className="px-3 py-2 border border-slate-300 rounded-lg text-sm sm:col-span-2" />
+            <input value={form.email} onChange={set('email')} placeholder="Correo (opcional)" className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            <>
+                <input value={form.telefono} onChange={set('telefono')} placeholder="Teléfono (opcional)" className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] text-slate-500 mb-1">Fecha de nacimiento (opcional)</label>
+                  <input type="date" value={form.fechaNacimiento} onChange={set('fechaNacimiento')} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+              </>
           </div>
+
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button
             onClick={crear}
@@ -604,9 +651,13 @@ function AltaReclutado({ onCreated, reclutadores = [] }) {
             className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-400 flex items-center gap-2"
           >
             {guardando && <Loader2 size={14} className="animate-spin" />}
-            Crear usuario
+            Crear usuario de {esDirecta ? 'venta directa' : 'redes sociales'}
           </button>
-          <p className="text-[11px] text-slate-400">El usuario se crea siempre con rol Redes Sociales.</p>
+          <p className="text-[11px] text-slate-400">
+            Solo se pueden crear estos dos perfiles. Los dos se agregan a la base de vendedores como venta directa (ranking, comisiones y crecimiento); el factor lo define Dirección.
+            {!esDirecta && ' Entra directo a "Mi Arranque" con su checklist.'}
+            {' '}Si el nombre ya existe en el sistema o en la cobranza, no se deja crear: pídele a Dirección que lo cree.
+          </p>
         </div>
       )}
     </div>

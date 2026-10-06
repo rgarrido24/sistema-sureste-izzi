@@ -2,13 +2,14 @@ import express from 'express';
 import mongoose from 'mongoose';
 import ComisionPaquete from '../models/ComisionPaquete.js';
 import VendedorFactor from '../models/VendedorFactor.js';
+import User from '../models/User.js';
 import M1Master from '../models/M1Master.js';
 import OperacionDia from '../models/OperacionDia.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 import { getItemVendedores } from '../src/utils/helpers.js';
 import { filterByAccessScope, isScopedRole } from '../utils/accessScope.js';
 import { CATALOGO_COMISIONES } from '../utils/catalogoComisiones.js';
-import { normalizarNombre, normalizarPaquete, construirIndicePaquetes, calcularComisiones } from '../utils/comisionesCalc.js';
+import { normalizarNombre, normalizarPaquete, construirIndicePaquetes, calcularComisiones, contarVentasPorVendedor, factorEfectivo } from '../utils/comisionesCalc.js';
 import { planificarUpsert, parsearTipo, parsearFactor, parsearTelefono, parsearEmail, parsearFecha } from '../utils/vendedoresMaster.js';
 
 const router = express.Router();
@@ -29,9 +30,12 @@ async function cargarIndicePaquetes() {
   return construirIndicePaquetes(await ComisionPaquete.find({}).lean());
 }
 
+// Devuelve las cuentas que puede ver la persona y las ventas del mes de TODOS los vendedores
+// (contadas sobre toda la cosecha, aunque el supervisor solo vea su plaza)
 async function itemsM1Visibles(user) {
   const m1 = await M1Master.find({}).lean();
-  return isScopedRole(user?.role) ? filterByAccessScope(m1, user, OperacionDia) : m1;
+  const items = isScopedRole(user?.role) ? await filterByAccessScope(m1, user, OperacionDia) : m1;
+  return { items, ventas: contarVentasPorVendedor(m1) };
 }
 
 // Nombres de vendedor tal como vienen en la cobranza (con su número de cuentas)
@@ -139,7 +143,14 @@ router.delete('/paquetes/:id', requireRoles(CAN_EDIT), async (req, res) => {
 
 router.get('/vendedores', requireRoles(CAN_SEE), async (req, res) => {
   try {
-    res.json(await VendedorFactor.find({}).sort({ vendedor: 1 }).lean());
+    // Cada vendedor trae su factor efectivo y sus ventas del mes (para venta directa/redes el factor es automático)
+    const [docs, m1] = await Promise.all([VendedorFactor.find({}).sort({ vendedor: 1 }).lean(), M1Master.find({}).lean()]);
+    const ventas = contarVentasPorVendedor(m1);
+    res.json(docs.map((d) => {
+      const v = ventas.get(normalizarNombre(d.vendedor)) || 0;
+      const { factor, auto } = factorEfectivo(d, v);
+      return { ...d, ventasMes: v, factorEfectivo: factor, factorAuto: auto };
+    }));
   } catch (error) {
     res.status(500).json({ error: 'Error del servidor' });
   }
@@ -207,6 +218,16 @@ router.put('/vendedores/:id', requireRoles(CAN_EDIT), async (req, res) => {
         set[campo] = r.valor;
       }
     }
+    if (b.capacitacionAprobada !== undefined) {
+      const v = b.capacitacionAprobada;
+      if (typeof v !== 'boolean' && v !== 'true' && v !== 'false') {
+        return res.status(400).json({ error: 'capacitacionAprobada debe ser verdadero o falso' });
+      }
+      const aprobada = v === true || v === 'true';
+      set.capacitacionAprobada = aprobada;
+      if (aprobada) set.capacitacionAprobadaEn = new Date();
+      else unset.capacitacionAprobadaEn = '';
+    }
     if (set.tipo && set.tipo !== doc.tipo) {
       set.retencionPorcentaje = set.tipo === 'distribuidor' ? (Number(doc.retencionPorcentaje) > 0 ? Number(doc.retencionPorcentaje) : 10) : 0;
     }
@@ -254,26 +275,50 @@ router.post('/vendedores/bulk', requireRoles(CAN_EDIT), async (req, res) => {
   }
 });
 
-// Agrega a la base todos los vendedores que aparecen en la cobranza y todavía no están (sin factor, para que lo definas)
+// Agrega a la base a los vendedores que aparecen en la cobranza y todavía no están (sin factor, para que lo definas),
+// y deja a las personas de redes sociales registradas como venta directa (igual que cuando Marketing las da de alta).
 router.post('/vendedores/sincronizar', requireRoles(CAN_EDIT), async (req, res) => {
   try {
+    const quien = {
+      actualizadoPorId: req.user?.id || '',
+      actualizadoPorUsername: req.user?.username || '',
+      actualizadoPorNombre: req.user?.name || req.user?.username || '',
+    };
     const enCobranza = await nombresCobranzaConConteo();
-    const existentes = await VendedorFactor.find({}, { vendedor: 1 }).lean();
-    const ya = new Set(existentes.map((d) => normalizarNombre(d.vendedor)));
-    const nuevos = Array.from(enCobranza.values()).filter((n) => !ya.has(normalizarNombre(n.nombre)));
+    const existentes = await VendedorFactor.find({}, { vendedor: 1, tipo: 1 }).lean();
+    const porNombre = new Map(existentes.map((d) => [normalizarNombre(d.vendedor), d]));
+    const redes = await User.find({ role: 'redes_sociales' }, { name: 1 }).lean();
+    const redesPorNombre = new Map(redes.map((u) => [normalizarNombre(u.name), u.name]));
 
-    if (nuevos.length) {
-      await VendedorFactor.insertMany(
-        nuevos.map((n) => ({
-          vendedor: n.nombre,
-          actualizadoPorId: req.user?.id || '',
-          actualizadoPorUsername: req.user?.username || '',
-          actualizadoPorNombre: req.user?.name || req.user?.username || '',
-        })),
-        { ordered: false }
-      );
+    const aCrear = [];
+    let nuevosDeCobranza = 0;
+    for (const [key, n] of enCobranza) {
+      if (porNombre.has(key)) continue;
+      nuevosDeCobranza++;
+      aCrear.push(redesPorNombre.has(key) ? { vendedor: n.nombre, tipo: 'directa', retencionPorcentaje: 0 } : { vendedor: n.nombre });
     }
-    res.json({ success: true, creados: nuevos.length, yaExistian: enCobranza.size - nuevos.length, total: enCobranza.size });
+    const aTipificar = [];
+    for (const [key, nombre] of redesPorNombre) {
+      const doc = porNombre.get(key);
+      if (!doc && !enCobranza.has(key)) {
+        aCrear.push({ vendedor: nombre.replace(/\s+/g, ' ').trim().toUpperCase(), tipo: 'directa', retencionPorcentaje: 0 });
+      } else if (doc && !doc.tipo) {
+        aTipificar.push(doc._id);
+      }
+    }
+
+    if (aCrear.length) await VendedorFactor.insertMany(aCrear.map((d) => ({ ...d, ...quien })), { ordered: false });
+    if (aTipificar.length) {
+      await VendedorFactor.updateMany({ _id: { $in: aTipificar } }, { $set: { tipo: 'directa', retencionPorcentaje: 0, ...quien } });
+    }
+    res.json({
+      success: true,
+      creados: aCrear.length,
+      yaExistian: enCobranza.size - nuevosDeCobranza,
+      total: enCobranza.size,
+      redesAgregados: aCrear.filter((d) => d.tipo === 'directa').length,
+      redesTipificados: aTipificar.length,
+    });
   } catch (error) {
     console.error('Error sincronizando vendedores:', error);
     res.status(500).json({ error: 'Error del servidor' });
@@ -285,12 +330,12 @@ router.post('/vendedores/sincronizar', requireRoles(CAN_EDIT), async (req, res) 
 
 router.get('/perdidas', requireRoles(CAN_SEE), async (req, res) => {
   try {
-    const [items, indice, vendedores] = await Promise.all([
+    const [{ items, ventas }, indice, vendedores] = await Promise.all([
       itemsM1Visibles(req.user),
       cargarIndicePaquetes(),
       cargarVendedoresMapa(),
     ]);
-    const calculo = calcularComisiones({ items, indice, vendedores });
+    const calculo = calcularComisiones({ items, indice, vendedores, ventasPorVendedor: ventas });
     res.json({
       resumen: calculo.resumen,
       paquetesSinBase: calculo.paquetesSinBase.slice(0, 40),
@@ -308,9 +353,9 @@ router.get('/perdidas/detalle', requireRoles(CAN_SEE), async (req, res) => {
     const key = normalizarNombre(nombre);
     if (!key) return res.status(400).json({ error: 'Falta el vendedor' });
 
-    const [visibles, indice, vendedores] = await Promise.all([itemsM1Visibles(req.user), cargarIndicePaquetes(), cargarVendedoresMapa()]);
+    const [{ items: visibles, ventas }, indice, vendedores] = await Promise.all([itemsM1Visibles(req.user), cargarIndicePaquetes(), cargarVendedoresMapa()]);
     const items = visibles.filter((it) => normalizarNombre(getItemVendedores(it)[0]) === key);
-    const v = calcularComisiones({ items, indice, vendedores }).vendedores[0];
+    const v = calcularComisiones({ items, indice, vendedores, ventasPorVendedor: ventas }).vendedores[0];
 
     const cuentas = (v?.cuentas || []).sort(
       (a, b) => (a.estatus === b.estatus ? 0 : a.estatus === 'PERDIDA' ? -1 : 1) || ((b.comision || 0) - (a.comision || 0))

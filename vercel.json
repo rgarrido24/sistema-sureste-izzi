@@ -7,7 +7,10 @@
     {
       "source": "/",
       "has": [
-        { "type": "host", "value": "sistema-sureste-izzi.vercel.app" }
+        {
+          "type": "host",
+          "value": "sistema-sureste-izzi.vercel.app"
+        }
       ],
       "destination": "https://apprgo.agentia.software/",
       "permanent": true
@@ -15,27 +18,46 @@
     {
       "source": "/:path*",
       "has": [
-        { "type": "host", "value": "sistema-sureste-izzi.vercel.app" }
+        {
+          "type": "host",
+          "value": "sistema-sureste-izzi.vercel.app"
+        }
       ],
       "destination": "https://apprgo.agentia.software/:path*",
       "permanent": true
     }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
-      "source": "/index.html",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
-    },
-    {
-      "source": "/",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
-    },
-    {
-      "source": "/sw.js",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "geolocation=(), microphone=(), payment=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
     }
   ]
 }

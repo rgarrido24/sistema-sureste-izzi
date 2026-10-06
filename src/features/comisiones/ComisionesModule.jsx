@@ -141,7 +141,7 @@ function PerdidasTab({ canEdit, irAVendedores }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
-        <b>Comisión</b> = base del paquete × factor del vendedor. <b>Retención</b> = 10% de esa comisión, solo a distribuidores (venta directa no lleva retención).
+        <b>Comisión</b> = base del paquete × factor del vendedor (en venta directa y redes el factor se calcula solo por sus ventas del mes y su capacitación). <b>Retención</b> = 10% de esa comisión, solo a distribuidores (venta directa no lleva retención).
         Se calcula sobre la cobranza M1: "perdidas" son las cuentas en FPD Pérdida y "pendientes" las que siguen en M1.
       </p>
 
@@ -268,6 +268,7 @@ function FilaPerdida({ v, abierto, det, onToggle }) {
           {v.tipo
             ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIPO_CLASE[v.tipo]}`}>{TIPO_LABEL[v.tipo]}</span>
             : <span className="text-xs text-slate-400">Sin tipo</span>}
+          {v.factor && <span className="ml-1 text-[11px] text-slate-500">×{v.factor}{v.factorAuto ? ' auto' : ''}</span>}
           {sin && <span className="ml-1 text-[11px] font-bold text-amber-700">· sin factor</span>}
         </td>
         <td className="px-3 py-2 text-right font-bold">{v.perdidas}</td>
@@ -422,6 +423,15 @@ function VendedoresTab({ canEdit }) {
     cargar();
   };
 
+  const cambiarCapacitacion = async (v, aprobada) => {
+    try {
+      await api.actualizarVendedorMaestro(v._id, { capacitacionAprobada: aprobada });
+      cargar();
+    } catch (e) {
+      setMensaje(e.message);
+    }
+  };
+
   const sincronizar = async () => {
     setProcesando('sync');
     setResultado(null);
@@ -467,9 +477,9 @@ function VendedoresTab({ canEdit }) {
 
   if (loading) return <LoadingSpinner />;
 
-  const sinFactor = lista.filter((v) => !(Number(v.factor) > 0)).length;
+  const sinFactor = lista.filter((v) => !(Number(v.factorEfectivo ?? v.factor) > 0)).length;
   const filtrada = lista.filter((v) => {
-    if (soloSinFactor && Number(v.factor) > 0) return false;
+    if (soloSinFactor && Number(v.factorEfectivo ?? v.factor) > 0) return false;
     return !busqueda || v.vendedor.toLowerCase().includes(busqueda.toLowerCase());
   });
 
@@ -492,7 +502,7 @@ function VendedoresTab({ canEdit }) {
         {canEdit && (
           <div className="flex flex-wrap gap-2">
             <button onClick={sincronizar} disabled={!!procesando} className="px-3 py-2 bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 disabled:bg-slate-400">
-              {procesando === 'sync' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Traer vendedores de la cobranza
+              {procesando === 'sync' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Traer vendedores (cobranza y redes)
             </button>
             <button onClick={() => archivoRef.current?.click()} disabled={!!procesando} className="px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 disabled:bg-slate-400">
               {procesando === 'subir' ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Subir Excel/CSV
@@ -516,7 +526,11 @@ function VendedoresTab({ canEdit }) {
         <div className={`rounded-lg p-3 text-sm border ${resultado.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-800'}`}>
           {resultado.tipo === 'error' && <p>{resultado.mensaje}</p>}
           {resultado.tipo === 'sync' && (
-            <p>Se agregaron <b>{resultado.creados}</b> vendedores nuevos de la cobranza ({resultado.yaExistian} ya estaban). Ahora define el factor de cada uno.</p>
+            <p>
+              Se agregaron <b>{resultado.creados}</b> vendedores nuevos ({resultado.yaExistian} de la cobranza ya estaban).
+              {(resultado.redesAgregados + resultado.redesTipificados) > 0 && <> <b>{resultado.redesAgregados + resultado.redesTipificados}</b> personas de redes sociales quedaron registradas como venta directa.</>}
+              {' '}Ahora define el factor de cada uno.
+            </p>
           )}
           {resultado.tipo === 'archivo' && (
             <div className="space-y-1">
@@ -575,6 +589,12 @@ function VendedoresTab({ canEdit }) {
 
       {mensaje && <p className="text-xs text-slate-600">{mensaje}</p>}
 
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 space-y-1">
+        <p className="font-bold">Factor de venta directa y redes (sin retención)</p>
+        <p>Nacen en <b>1.5</b>. Con la <b>capacitación aprobada</b>: de <b>6 a 15</b> ventas en el mes → <b>1.8</b>; <b>16 o más</b> → <b>2.0</b>. Sin la capacitación no suben de 1.5.</p>
+        <p>Es automático. Si escribes un factor a mano en alguien de venta directa o redes, queda <b>fijo</b> y ya no sube solo (bórralo para volver al automático). Ventas del mes = cuentas de la cosecha M1 cargada.</p>
+      </div>
+
       <div className="flex flex-wrap gap-2 items-center">
         <input
           type="text"
@@ -595,6 +615,8 @@ function VendedoresTab({ canEdit }) {
               <th className="text-left px-3 py-2">Vendedor</th>
               <th className="text-left px-3 py-2">Tipo</th>
               <th className="text-left px-3 py-2">Factor</th>
+              <th className="text-left px-3 py-2">Ventas del mes</th>
+              <th className="text-left px-3 py-2">Capacitación</th>
               <th className="text-left px-3 py-2">Teléfono</th>
               <th className="text-left px-3 py-2">Correo</th>
               <th className="text-left px-3 py-2">Nacimiento</th>
@@ -614,6 +636,8 @@ function VendedoresTab({ canEdit }) {
                     </select>
                   </td>
                   <td className="px-2 py-2">{campo('factor', 'number', 'w-20')}</td>
+                  <td />
+                  <td />
                   <td className="px-2 py-2">{campo('telefono')}</td>
                   <td className="px-2 py-2">{campo('email')}</td>
                   <td className="px-2 py-2">{campo('fechaNacimiento', 'date')}</td>
@@ -630,7 +654,31 @@ function VendedoresTab({ canEdit }) {
                       ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIPO_CLASE[v.tipo]}`}>{TIPO_LABEL[v.tipo]}</span>
                       : <span className="text-xs text-slate-400">Sin definir</span>}
                   </td>
-                  <td className="px-3 py-2 font-bold">{Number(v.factor) > 0 ? v.factor : <span className="text-xs font-normal text-amber-600">sin factor</span>}</td>
+                  <td className="px-3 py-2 font-bold">
+                    {Number(v.factorEfectivo) > 0 ? (
+                      <>
+                        {v.factorEfectivo}
+                        {v.tipo === 'directa' && (
+                          <span className={`ml-1 text-[10px] font-normal ${v.factorAuto ? 'text-green-600' : 'text-slate-400'}`}>{v.factorAuto ? 'auto' : 'fijo'}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs font-normal text-amber-600">sin factor</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs">{v.tipo === 'directa' ? v.ventasMes : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {v.tipo !== 'directa' ? (
+                      <span className="text-slate-300">—</span>
+                    ) : canEdit ? (
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={!!v.capacitacionAprobada} onChange={(e) => cambiarCapacitacion(v, e.target.checked)} />
+                        {v.capacitacionAprobada ? 'Aprobada' : 'Pendiente'}
+                      </label>
+                    ) : (
+                      v.capacitacionAprobada ? 'Aprobada' : 'Pendiente'
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-xs">{v.telefono || <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2 text-xs">{v.email || <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2 text-xs">{fmtFecha(v.fechaNacimiento) || <span className="text-slate-300">—</span>}</td>
@@ -647,7 +695,7 @@ function VendedoresTab({ canEdit }) {
         </table>
         {filtrada.length === 0 && (
           <p className="text-center text-slate-400 py-8">
-            {lista.length === 0 ? 'La base está vacía. Usa "Traer vendedores de la cobranza" para llenarla de un jalón.' : 'Sin resultados.'}
+            {lista.length === 0 ? 'La base está vacía. Usa "Traer vendedores (cobranza y redes)" para llenarla de un jalón.' : 'Sin resultados.'}
           </p>
         )}
       </div>

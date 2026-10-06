@@ -1,8 +1,11 @@
 import jwt from 'jsonwebtoken';
+import { resolverJwtSecret, advertirCredencialesComprometidas } from '../utils/jwtSecret.js';
 import User from '../models/User.js';
 import mongoose from 'mongoose';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret-change-me';
+const estadoSecreto = resolverJwtSecret();
+const JWT_SECRET = estadoSecreto.secret;
+advertirCredencialesComprometidas(estadoSecreto);
 
 export function signAuthToken(user) {
   const payload = {
@@ -67,3 +70,12 @@ export function requireRoles(roles = []) {
   };
 }
 
+// Verificación liviana (solo la firma, sin base de datos) para la puerta de entrada
+export function tokenValido(token) {
+  try {
+    jwt.verify(token, JWT_SECRET);
+    return true;
+  } catch {
+    return false;
+  }
+}

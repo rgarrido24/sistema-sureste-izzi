@@ -35,7 +35,8 @@ function chunkText(text, { chunkSize = 1400, overlap = 150 } = {}) {
 }
 
 // Obtener todos los PDFs
-router.get('/', async (req, res) => {
+// Solo quienes administran el conocimiento lo leen completo (antes cualquier usuario podía, incluida la gema exclusiva de redes/venta directa)
+router.get('/', requireRoles(['admin', 'admin_general', 'mesa_control', 'marketing']), async (req, res) => {
   try {
     const pdfs = await KnowledgePDF.find().sort({ createdAt: -1 });
     res.json(pdfs);

@@ -89,7 +89,7 @@ export default function AdminLayout({
                       : 'text-slate-600 hover:text-[#2563eb]'
                   }`}
                 >
-                  Arranque
+                  {user?.role === 'marketing' ? 'Altas y arranque' : 'Arranque'}
                 </button>
               )}
               {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'cobranza_mx' || user?.role === 'marketing' || user?.role === 'reclutador') && (
@@ -128,7 +128,7 @@ export default function AdminLayout({
                   Imágenes
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor' || user?.role === 'reclutador') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control' || user?.role === 'regionales' || user?.role === 'supervisor') && (
                 <button 
                   onClick={() => { setModule(MODULES.RANKING); setActiveTab('ranking'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${

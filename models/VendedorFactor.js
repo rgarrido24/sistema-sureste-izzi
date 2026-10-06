@@ -8,6 +8,10 @@ const vendedorFactorSchema = new mongoose.Schema({
   factor: { type: Number }, // 1.5-2.0 venta directa, 2.4+ distribuidores
   retencionPorcentaje: { type: Number, default: 10 }, // solo aplica si tipo === 'distribuidor'
 
+  // Venta directa / redes: sin esta aprobación el factor no sube de 1.5 (ver utils/esquemaFactor.js)
+  capacitacionAprobada: { type: Boolean, default: false },
+  capacitacionAprobadaEn: { type: Date },
+
   telefono: { type: String, default: '' },
   email: { type: String, default: '' },
   fechaNacimiento: { type: String, default: '' }, // YYYY-MM-DD

@@ -1,10 +1,11 @@
 import express from 'express';
-import cors from 'cors';
+import { aplicarSeguridadBase, puertaDeEntrada, limitarLogin, limitarLoginPorIp, manejarErrores } from './middleware/seguridad.js';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import os from 'os';
 import usersRoutes from './routes/users.js';
 import { requireAuth } from './middleware/auth.js';
+import { bloquearRoles } from './middleware/bloquearRoles.js';
 import { migrarPasswordsLegacy } from './utils/passwords.js';
 import salesRoutes from './routes/sales.js';
 import installRoutes from './routes/install.js';
@@ -55,11 +56,13 @@ process.on('uncaughtException', (err) => {
 mongoose.set('bufferCommands', false);
 
 // Middleware
-app.use(cors({
-  origin: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-// Aumentar límite de tamaño para archivos grandes (100MB para archivos Excel grandes)
+// Seguridad base: headers (helmet), CORS solo para la app, límite de peticiones y consulta saneada
+aplicarSeguridadBase(app);
+// El login nunca necesita más de 10 KB y se limita por intentos antes de cualquier otra cosa
+app.use('/api/users/login', express.json({ limit: '10kb' }), limitarLoginPorIp, limitarLogin);
+// Sin una sesión válida no se procesa nada de /api (ni se lee el cuerpo), salvo login, health y videos públicos
+app.use(puertaDeEntrada);
+// Límite grande SOLO para quien ya tiene sesión (archivos Excel grandes)
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
@@ -101,8 +104,6 @@ mongoose.connect(MONGODB_URI, {
 
 // Rutas
 // Roles que NUNCA deben ver cobranza/operación (datos de clientes), aunque llamen la API directo
-const bloquearRoles = (roles) => (req, res, next) =>
-  roles.includes(req.user?.role) ? res.status(403).json({ error: 'Sin acceso a este módulo' }) : next();
 const SIN_COBRANZA = bloquearRoles(['reclutador', 'marketing']);
 const SIN_ASISTENTE = bloquearRoles(['reclutador']);
 
@@ -132,7 +133,7 @@ app.use('/api/claves', clavesRoutes);
 app.use('/api/capacitaciones', capacitacionesRoutes);
 app.use('/api/capacitaciones-contenido', capacitacionesContenidoRoutes);
 app.use('/api/imagenes-venta', imagenesVentaRoutes);
-app.use('/api/ranking', rankingRoutes);
+app.use('/api/ranking', requireAuth, SIN_COBRANZA, rankingRoutes);
 app.use('/api/puntos', puntosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/arranque', arranqueRoutes);
@@ -149,6 +150,9 @@ app.get('/api/health', (req, res) => {
 });
 
 // Iniciar servidor - Escuchar en todas las interfaces de red (0.0.0.0)
+// Errores sin detalles internos (al final de todas las rutas)
+app.use(manejarErrores);
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   console.log(`🌐 Accesible desde la red local en:`);

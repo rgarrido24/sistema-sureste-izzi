@@ -4,7 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
+import { protegerEscritura } from '../middleware/protegerEscritura.js';
+
 const router = express.Router();
+// Antes cualquiera podía subir y borrar archivos. La lectura sigue pública porque las ligas de video se comparten.
+router.use(protegerEscritura({ roles: ['admin', 'admin_general'], lecturaPublica: true }));
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 

@@ -19,6 +19,8 @@ const onboardingSchema = new mongoose.Schema({
   usuarioNombre: { type: String, default: '' },
   reclutadorNombre: { type: String, default: '' },
   reclutadorId: { type: String, default: '', index: true }, // usuario con rol reclutador (para que vea a sus reclutados)
+  // redes = hace el checklist completo de "Mi Arranque"; directa = venta directa (solo se le da seguimiento a capacitación y primer lead)
+  perfil: { type: String, enum: ['redes', 'directa'], default: 'redes' },
 
   altaEn: { type: Date, default: Date.now },
   ultimoAvanceEn: { type: Date, default: Date.now }, // solo cuenta cuando se completa un paso

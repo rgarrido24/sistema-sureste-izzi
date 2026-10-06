@@ -6,6 +6,12 @@ import User from '../models/User.js';
 import { requireAuth, requireRoles } from '../middleware/auth.js';
 import { notifyRoles } from '../utils/pushSender.js';
 import { hashPassword } from '../utils/passwords.js';
+import M1Master from '../models/M1Master.js';
+import VendedorFactor from '../models/VendedorFactor.js';
+import { getItemVendedores } from '../src/utils/helpers.js';
+import { normalizarNombre } from '../utils/comisionesCalc.js';
+import { coincideNombrePortal } from '../utils/nombresPortal.js';
+import { parsearTelefono, parsearFecha } from '../utils/vendedoresMaster.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -74,6 +80,11 @@ const REQUIERE = {
   unido_grupo: PASOS_GRUPO,
 };
 
+// Venta directa no hace el checklist de redes (perfil de Facebook, posts, grupo): solo se le da seguimiento
+// a su capacitación en vivo (la valida Marketing) y a su primer lead (lo valida Mesa de Control).
+const PASOS_DIRECTA = ['capacitacion_vivo', 'primer_lead'];
+const pasosDe = (perfil) => (perfil === 'directa' ? PASOS.filter((p) => PASOS_DIRECTA.includes(p.clave)) : PASOS);
+
 // Quién puede confirmar/reabrir cada paso de tipo "staff". Dirección siempre puede (por si falta alguien).
 // La capacitación en vivo la valida Marketing (ellos la imparten); el primer lead, Mesa de Control.
 const VALIDADORES = {
@@ -106,7 +117,7 @@ async function getConfig() {
 // Si se agregan pasos nuevos en el futuro, los registros viejos los reciben vacíos
 function asegurarPasos(doc) {
   let cambio = false;
-  for (const def of PASOS) {
+  for (const def of pasosDe(doc.perfil)) {
     if (!doc.pasos.some((p) => p.clave === def.clave)) {
       doc.pasos.push({ clave: def.clave });
       cambio = true;
@@ -356,7 +367,7 @@ router.get('/tablero', requireRoles(VER_TABLERO), async (req, res) => {
     const diasMeta = cfg.diasMeta || 7;
 
     const items = docs.map((d) => {
-      const pasos = PASOS.map((def) => {
+      const pasos = pasosDe(d.perfil).map((def) => {
         const st = estadoPaso(d.pasos, def.clave);
         return {
           clave: def.clave,
@@ -382,6 +393,7 @@ router.get('/tablero', requireRoles(VER_TABLERO), async (req, res) => {
         usuarioUsername: d.usuarioUsername,
         reclutadorNombre: d.reclutadorNombre || '',
         reclutadorId: d.reclutadorId || '',
+        perfil: d.perfil || 'redes',
         dia,
         diasSinAvance: diasDesde(d.ultimoAvanceEn || d.altaEn),
         completados,
@@ -412,11 +424,22 @@ router.get('/reclutadores', requireRoles(PUEDE_DAR_ALTA), async (req, res) => {
   }
 });
 
-// Dar de alta a un reclutado (lo hace Marketing con los datos que le pasa reclutamiento).
-// El rol SIEMPRE es redes_sociales: ni Marketing ni nadie puede crear otro rol por aquí.
+// Dar de alta a una persona nueva (la hace Marketing con los datos que le pasa reclutamiento).
+// Marketing solo puede crear estos DOS perfiles, y el rol sale del perfil, nunca de lo que mande el navegador:
+//   redes   → rol redes_sociales (hace el checklist de "Mi Arranque")
+//   directa → rol vendedor
+// Los dos se registran en la base de vendedores como venta directa (cuentan en ranking, comisiones y crecimiento),
+// sin factor: el factor lo define Dirección.
+const PERFILES_ALTA = { redes: 'redes_sociales', directa: 'vendedor' };
+
 router.post('/alta', requireRoles(PUEDE_DAR_ALTA), async (req, res) => {
   try {
-    const nombre = String(req.body?.nombre || '').trim();
+    const perfil = String(req.body?.perfil || 'redes');
+    if (!PERFILES_ALTA[perfil]) {
+      return res.status(400).json({ error: 'Perfil no válido: solo redes sociales o venta directa' });
+    }
+
+    const nombre = String(req.body?.nombre || '').replace(/\s+/g, ' ').trim();
     const username = String(req.body?.username || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
     const email = String(req.body?.email || '').trim();
@@ -427,7 +450,15 @@ router.post('/alta', requireRoles(PUEDE_DAR_ALTA), async (req, res) => {
       return res.status(400).json({ error: 'El usuario debe tener de 3 a 30 caracteres: letras, números, punto, guion o guion bajo' });
     }
     if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-    // Si viene reclutadorId, el reclutado queda vinculado a ese usuario (así el reclutador lo ve en su tablero)
+
+    // Datos de contacto (se guardan en la base de vendedores)
+    const telefono = parsearTelefono(req.body?.telefono);
+    const nacimiento = parsearFecha(req.body?.fechaNacimiento);
+    if (nacimiento.error) {
+      return res.status(400).json({ error: `Fecha de nacimiento: ${nacimiento.error}` });
+    }
+
+    // Si viene reclutadorId, la persona queda vinculada a ese usuario (así el reclutador la ve en su tablero)
     const reclutadorIdIn = String(req.body?.reclutadorId || '').trim();
     let reclutadorId = '';
     let reclutadorNombreFinal = reclutadorNombre;
@@ -445,29 +476,76 @@ router.post('/alta', requireRoles(PUEDE_DAR_ALTA), async (req, res) => {
       return res.status(400).json({ error: 'Ese usuario ya existe' });
     }
 
+    // Marketing no ve cobranza, y el portal del vendedor decide qué cuentas mostrar POR NOMBRE. Si pudiera crear un
+    // usuario con el nombre de otra persona (o uno que se le parezca), vería sus cuentas. Por eso, si el nombre
+    // coincide con alguien que ya existe en el sistema, en la base de vendedores o en la cobranza, lo crea Dirección.
+    if (!STAFF_EDIT.includes(req.user?.role)) {
+      const [usuarios, maestro, m1] = await Promise.all([
+        User.find({}, { name: 1 }).lean(),
+        VendedorFactor.find({}, { vendedor: 1 }).lean(),
+        M1Master.find({}).lean(),
+      ]);
+      const existentes = [...usuarios.map((u) => u.name), ...maestro.map((v) => v.vendedor)];
+      const enCobranza = new Set();
+      for (const it of m1) for (const n of getItemVendedores(it)) enCobranza.add(n);
+      existentes.push(...enCobranza);
+      if (existentes.some((n) => coincideNombrePortal(nombre, n))) {
+        return res.status(400).json({
+          error: 'Ese nombre coincide con una persona que ya existe en el sistema o en la cobranza. Para que no vea cuentas ajenas, pídele a Dirección que cree ese usuario.',
+        });
+      }
+    }
+
     const user = await User.create({
       username,
       passwordHash: await hashPassword(password),
       name: nombre,
-      role: 'redes_sociales',
+      role: PERFILES_ALTA[perfil],
       email,
     });
+
+    // Ambos perfiles se registran en la base de vendedores como venta directa (sin factor) para que cuenten
+    // en ranking, comisiones y crecimiento
+    let enBaseMaestra = false;
+    const maestro = await VendedorFactor.find({}, { vendedor: 1 }).lean();
+    if (!maestro.some((v) => normalizarNombre(v.vendedor) === normalizarNombre(nombre))) {
+      await VendedorFactor.create({
+        vendedor: nombre.toUpperCase(),
+        tipo: 'directa',
+        retencionPorcentaje: 0,
+        telefono: telefono.valor || '',
+        email: email.toLowerCase(),
+        fechaNacimiento: nacimiento.valor || '',
+        actualizadoPorId: req.user?.id || '',
+        actualizadoPorUsername: req.user?.username || '',
+        actualizadoPorNombre: req.user?.name || req.user?.username || '',
+      });
+      enBaseMaestra = true;
+    }
 
     const ahora = new Date();
     const doc = await Onboarding.create({
       usuarioId: String(user._id),
       usuarioUsername: user.username,
       usuarioNombre: user.name,
+      perfil,
       reclutadorId,
       reclutadorNombre: reclutadorNombreFinal.slice(0, 120),
       altaEn: ahora,
       ultimoAvanceEn: ahora,
-      pasos: PASOS.map((p) => ({ clave: p.clave })),
+      pasos: pasosDe(perfil).map((p) => ({ clave: p.clave })),
     });
 
-    res.json({ success: true, usuario: { username: user.username, name: user.name }, onboardingId: doc._id });
+    res.json({
+      success: true,
+      perfil,
+      usuario: { username: user.username, name: user.name },
+      onboardingId: doc._id,
+      enBaseMaestra,
+      advertencias: telefono.advertencia ? [`Teléfono: ${telefono.advertencia}`] : [],
+    });
   } catch (error) {
-    console.error('Error dando de alta reclutado:', error);
+    console.error('Error dando de alta a persona nueva:', error);
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
@@ -486,6 +564,9 @@ router.post('/:id/paso/:clave/confirmar', requireRoles(PUEDEN_VALIDAR), async (r
     if (!doc) return res.status(404).json({ error: 'No encontrado' });
     asegurarPasos(doc);
 
+    if (!pasosDe(doc.perfil).some((p) => p.clave === def.clave)) {
+      return res.status(400).json({ error: 'Ese paso no aplica a este perfil' });
+    }
     const paso = doc.pasos.find((p) => p.clave === def.clave);
     if (paso.completado) return res.status(400).json({ error: 'Este paso ya está completado' });
 
@@ -517,6 +598,9 @@ router.post('/:id/paso/:clave/reabrir', requireRoles(PUEDEN_VALIDAR), async (req
     if (!doc) return res.status(404).json({ error: 'No encontrado' });
     asegurarPasos(doc);
 
+    if (!pasosDe(doc.perfil).some((p) => p.clave === def.clave)) {
+      return res.status(400).json({ error: 'Ese paso no aplica a este perfil' });
+    }
     const paso = doc.pasos.find((p) => p.clave === def.clave);
     const motivo = String(req.body?.motivo || '').trim().slice(0, 300);
     paso.completado = false;
