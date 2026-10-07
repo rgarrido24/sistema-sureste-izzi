@@ -105,6 +105,17 @@ const FIELD_NORMALIZATION = {
 export function optimizeDocument(doc, module = 'operacion') {
   if (!doc || typeof doc !== 'object') return doc;
   
+  // Choque de nombres: el M1 trae "VENDEDOR" (el vendedor/sub de RGO) Y "Vendedor" (la persona de Izzi que capturó la venta).
+  // Como "VENDEDOR" se normaliza a "Vendedor", antes se fusionaban y ganaba el texto más largo, que casi siempre era
+  // el de la persona de Izzi: el vendedor de RGO se perdía y sus cuentas desaparecían de su conteo.
+  // Ahora el vendedor de RGO queda en "Vendedor" y el de Izzi se conserva aparte en "VendedorIzzi".
+  const ALIAS_VENDEDOR = Object.keys(FIELD_NORMALIZATION).filter((k) => FIELD_NORMALIZATION[k] === 'Vendedor');
+  const aliasConValor = ALIAS_VENDEDOR.filter((k) => !isEmpty(doc[k]));
+  if (aliasConValor.length > 0 && !isEmpty(doc['Vendedor']) && String(doc['Vendedor']).trim() !== String(doc[aliasConValor[0]]).trim()) {
+    doc = { ...doc, VendedorIzzi: doc['Vendedor'] };
+    delete doc['Vendedor'];
+  }
+
   const optimized = {};
   const essentialFields = ESSENTIAL_FIELDS[module] || ESSENTIAL_FIELDS.operacion;
   
