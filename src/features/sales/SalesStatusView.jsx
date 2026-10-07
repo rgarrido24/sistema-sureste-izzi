@@ -2029,12 +2029,12 @@ export default function SalesStatusView({
                     <Phone size={12} className="text-slate-400" />
                     <span>{telefono || 'Sin dato'}</span>
                   </div>
-                  {telefono2 && (
-                    <div className="flex items-center gap-2">
-                      <Phone size={12} className="text-slate-400" />
-                      <span>{telefono2} <span className="text-[10px] text-slate-400">(adicional)</span></span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Phone size={12} className="text-slate-400" />
+                    <span className={telefono2 ? '' : 'text-slate-400'}>
+                      {telefono2 || 'Sin teléfono adicional'} {telefono2 && <span className="text-[10px] text-slate-400">(adicional)</span>}
+                    </span>
+                  </div>
                   
                   <div className="flex items-center gap-2">
                     <User size={12} className="text-slate-400" />
