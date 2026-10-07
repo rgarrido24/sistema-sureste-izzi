@@ -1,3 +1,4 @@
+import { normalizarFilaOperacion } from '../utils/operacionIzzi.js';
 import express from 'express';
 import OperacionDia from '../models/OperacionDia.js';
 import ClaveAsignacion from '../models/ClaveAsignacion.js';
@@ -314,9 +315,12 @@ router.post('/bulk', async (req, res) => {
 
     // 1) Preparar + deduplicar por cuenta (último gana)
     const byCuenta = new Map();
+    let autoAsignados = 0;
+    const clavesSinRoster = new Map(); // clave → filas (para avisar qué claves faltan en Claves CVVEN)
+    let filasSinClave = 0;
     for (const item of data) {
       try {
-        const safeItem = stripBadKeys(item);
+        const safeItem = normalizarFilaOperacion(stripBadKeys(item));
         // Reusar la lógica existente: si normalizeCuenta falla, prepareDataForUpsert suele rellenar
         // Nota: normalizeCuenta ya contempla varias variantes
         let cuenta = normalizeCuenta(safeItem) || '';
@@ -346,7 +350,10 @@ router.post('/bulk', async (req, res) => {
           const cvvenRaw = safeItem['Usuario Vendedor'] || safeItem['Clave Vendedor'] || safeItem['CVVEN'] || safeItem['Claves'] || '';
           const cvvenKey = String(cvvenRaw || '').trim().toUpperCase();
           const nombreVendedor = cvvenKey ? cvvenToVendedor.get(cvvenKey) : null;
+          if (!cvvenKey) filasSinClave++;
+          else if (!nombreVendedor) clavesSinRoster.set(cvvenKey, (clavesSinRoster.get(cvvenKey) || 0) + 1);
           if (nombreVendedor) {
+            autoAsignados++;
             preparedData.VendedorAsignado = nombreVendedor;
             preparedData.VendedorAsignadoAutomatico = true;
             preparedData.VendedorAsignadoClaveOrigen = cvvenKey;
@@ -489,6 +496,13 @@ router.post('/bulk', async (req, res) => {
       // Compat: "skipped" = todo lo que no terminó como create/update.
       // OJO: duplicatedByCuenta NO es error, solo indica filas repetidas en el archivo.
       skipped: skippedNoCuenta + skippedNoUpdateExisting + duplicatedByCuenta,
+      asignacion: {
+        autoAsignados,
+        filasSinClave,
+        clavesSinAsignar: Array.from(clavesSinRoster.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15)
+          .map(([claveVendedor, filas]) => ({ clave: claveVendedor, filas })),
+        totalClavesSinAsignar: clavesSinRoster.size,
+      },
       total: data.length,
       errors: errors.length > 0 ? errors : undefined,
     });

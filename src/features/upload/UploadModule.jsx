@@ -455,6 +455,16 @@ export default function UploadModule({ currentModule }) {
           if (skippedNoUpdateExisting > 0) {
             message += `⏭️ Omitidos (no actualizar existentes): ${skippedNoUpdateExisting}\n`;
           }
+          // Operación del día: cuántas ventas quedaron asignadas a su vendedor por la clave CVVEN
+          if (result.asignacion) {
+            const a = result.asignacion;
+            message += `👤 Asignadas a su vendedor por clave: ${a.autoAsignados}\n`;
+            if (a.filasSinClave > 0) message += `⚠️ Filas sin clave de vendedor: ${a.filasSinClave}\n`;
+            if (a.totalClavesSinAsignar > 0) {
+              const lista = a.clavesSinAsignar.slice(0, 8).map(c => `${c.clave} (${c.filas})`).join(', ');
+              message += `⚠️ Claves que NO están en la asignación (${a.totalClavesSinAsignar}): ${lista}${a.totalClavesSinAsignar > 8 ? '…' : ''}\n   Agrégalas en Claves para que esas ventas lleguen al panel de su vendedor.\n`;
+            }
+          }
           // Compat con backends viejos: si solo viene "skipped", mostrarlo genérico
           if (skipped > 0 && skippedNoCuenta === 0 && duplicatedByCuenta === 0 && skippedNoUpdateExisting === 0) {
             message += `⏭️ Omitidos: ${skipped}\n`;
