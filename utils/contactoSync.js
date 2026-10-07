@@ -10,11 +10,39 @@ import ActivityEvent from '../models/ActivityEvent.js';
 
 const MODELS = [M0Master, M1Master, M2Master, M3Master, M4Master, M5Master, M6Master];
 
-export function buildContactoUpdate({ telefono, notaContacto, fechaPromesaPago }) {
+const CAMPOS_CONTACTO = [
+  'Telefono1', 'Telefono2', 'notaContacto', 'Nota Contacto', 'fechaPromesaPago', 'Fecha Promesa Pago',
+  'notaContactoPorId', 'notaContactoPorNombre', 'notaContactoPorUsername', 'notaContactoFecha',
+];
+
+// Antes de un reemplazo mensual: guarda lo que el equipo capturó a mano (teléfonos, notas, promesas) por cuenta.
+export async function respaldarContacto(Model) {
+  const proyeccion = Object.fromEntries(CAMPOS_CONTACTO.map((c) => [c, 1]).concat([['cuenta', 1]]));
+  const docs = await Model.find({}, proyeccion).lean();
+  const mapa = new Map();
+  for (const d of docs) {
+    if (!d.cuenta) continue;
+    const previo = {};
+    for (const c of CAMPOS_CONTACTO) if (d[c] !== undefined && d[c] !== null && d[c] !== '') previo[c] = d[c];
+    if (Object.keys(previo).length) mapa.set(d.cuenta, previo);
+  }
+  return mapa;
+}
+
+// Devuelve el documento nuevo con lo capturado a mano encima (lo capturado gana sobre lo del archivo).
+export function restaurarContacto(doc, mapa) {
+  const previo = mapa?.get(doc?.cuenta);
+  return previo ? { ...doc, ...previo } : doc;
+}
+
+export function buildContactoUpdate({ telefono, telefono2, notaContacto, fechaPromesaPago }) {
   const updateData = { fechaActualizacion: new Date() };
 
   if (telefono !== undefined) {
     updateData.Telefono1 = telefono;
+  }
+  if (telefono2 !== undefined) {
+    updateData.Telefono2 = telefono2;
   }
   if (notaContacto !== undefined) {
     updateData.notaContacto = notaContacto;

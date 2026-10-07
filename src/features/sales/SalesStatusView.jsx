@@ -5,12 +5,14 @@ import { MODULES } from '../../utils/constants.js';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
+import { telefonosDeRegistro } from '../../../utils/telefonos.js';
 import { calcularEstatusFPDDesdeFecha, parseFlexibleDate, getItemSaldo, getItemId, itemEsDecomisionable, getItemVendedor, getItemVendedores } from '../../utils/helpers.js';
 
 // Componente para editar teléfono y notas
-function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromesaPago, onUpdate }) {
+function ClientContactEditor({ item, status, telefono, telefono2, notaContacto, fechaPromesaPago, onUpdate }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTelefono, setEditTelefono] = useState(telefono || '');
+  const [editTelefono2, setEditTelefono2] = useState(telefono2 || '');
   const [editNota, setEditNota] = useState(notaContacto || '');
   const [editFechaPromesa, setEditFechaPromesa] = useState(fechaPromesaPago || '');
   const [saving, setSaving] = useState(false);
@@ -26,19 +28,19 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
       
       // Llamar al endpoint correspondiente según el status
       if (status === 'M0') {
-        await api.updateM0Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM0Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       } else if (status === 'M1') {
-        await api.updateM1Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM1Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       } else if (status === 'M2') {
-        await api.updateM2Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM2Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       } else if (status === 'M3') {
-        await api.updateM3Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM3Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       } else if (status === 'M4') {
-        await api.updateM4Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM4Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       } else if (status === 'M5') {
-        await api.updateM5Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM5Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       } else if (status === 'M6') {
-        await api.updateM6Contacto(itemId, editTelefono, editNota, editFechaPromesa);
+        await api.updateM6Contacto(itemId, editTelefono, editNota, editFechaPromesa, editTelefono2);
       }
       
       setIsEditing(false);
@@ -99,6 +101,16 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
         />
       </div>
       <div>
+        <label className="block text-xs font-bold text-slate-700 mb-1">Teléfono adicional:</label>
+        <input
+          type="text"
+          value={editTelefono2}
+          onChange={(e) => setEditTelefono2(e.target.value)}
+          className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded focus:outline-none focus:border-blue-500"
+          placeholder="Otro número (opcional)"
+        />
+      </div>
+      <div>
         <label className="block text-xs font-bold text-slate-700 mb-1">Nota / Promesa de Pago:</label>
         <textarea
           value={editNota}
@@ -130,6 +142,7 @@ function ClientContactEditor({ item, status, telefono, notaContacto, fechaPromes
           onClick={() => {
             setIsEditing(false);
             setEditTelefono(telefono || '');
+            setEditTelefono2(telefono2 || '');
             setEditNota(notaContacto || '');
             setEditFechaPromesa(fechaPromesaPago || '');
           }}
@@ -1856,9 +1869,11 @@ export default function SalesStatusView({
                            item['Nombre completo'] ||
                            'Sin nombre';
             const cuenta = item.CUENTA || item.Cuenta || item.cuenta || '-';
-            const telefono1 = item.Telefono1 || item['Telefono1'] || '';
-            const telefono2 = item.Telefono2 || item['Telefono2'] || '';
-            const telefono = telefono1 || telefono2;
+            // Teléfonos: los del sistema primero; si el archivo trae la columna con otro nombre, también se detecta
+            const telefonosItem = telefonosDeRegistro(item);
+            const telefono1 = telefonosItem[0] || '';
+            const telefono2 = telefonosItem[1] || '';
+            const telefono = telefono1;
             
             // Determinar el estatus principal basado en FPD
             const estatusPrincipal = getEstatusFPD(item);
@@ -2014,6 +2029,12 @@ export default function SalesStatusView({
                     <Phone size={12} className="text-slate-400" />
                     <span>{telefono || 'Sin dato'}</span>
                   </div>
+                  {telefono2 && (
+                    <div className="flex items-center gap-2">
+                      <Phone size={12} className="text-slate-400" />
+                      <span>{telefono2} <span className="text-[10px] text-slate-400">(adicional)</span></span>
+                    </div>
+                  )}
                   
                   <div className="flex items-center gap-2">
                     <User size={12} className="text-slate-400" />
@@ -2026,6 +2047,7 @@ export default function SalesStatusView({
                   item={item} 
                   status={status}
                   telefono={telefono}
+                  telefono2={telefono2}
                   notaContacto={item.notaContacto || item['Nota Contacto'] || ''}
                   fechaPromesaPago={item.fechaPromesaPago || item['Fecha Promesa Pago'] || ''}
                   onUpdate={() => {

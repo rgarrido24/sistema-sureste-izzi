@@ -1,3 +1,5 @@
+import { conTelefonosNormalizados } from './telefonos.js';
+
 /**
  * Normaliza el número de cuenta para usarlo como clave única
  * Extrae el número de cuenta de diferentes formatos posibles
@@ -148,7 +150,9 @@ export async function findExistingByCuenta(cuenta, models) {
 /**
  * Crea un objeto de datos normalizado con el número de cuenta
  */
-export function prepareDataForUpsert(item, origen = 'operacion') {
+export function prepareDataForUpsert(itemOriginal, origen = 'operacion') {
+  // Teléfonos: la columna del archivo (D, u otra) pasa a Telefono1/Telefono2, que es lo que muestra el sistema
+  const item = conTelefonosNormalizados(itemOriginal);
   const cuenta = normalizeCuenta(item);
   
   if (!cuenta) {

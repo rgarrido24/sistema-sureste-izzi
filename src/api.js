@@ -414,10 +414,10 @@ export async function updateM0Estado(id, estado) {
   });
 }
 
-export async function updateM0Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM0Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m0/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 
@@ -454,10 +454,10 @@ export async function updateM1Estado(id, estado) {
   });
 }
 
-export async function updateM1Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM1Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m1/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 
@@ -503,10 +503,10 @@ export async function updateM2Estado(id, estado) {
   });
 }
 
-export async function updateM2Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM2Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m2/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 
@@ -552,10 +552,10 @@ export async function updateM3Estado(id, estado) {
   });
 }
 
-export async function updateM3Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM3Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m3/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 
@@ -601,10 +601,10 @@ export async function updateM4Estado(id, estado) {
   });
 }
 
-export async function updateM4Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM4Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m4/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 
@@ -642,10 +642,10 @@ export async function updateM5Estado(id, estado) {
   });
 }
 
-export async function updateM5Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM5Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m5/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 
@@ -683,10 +683,10 @@ export async function updateM6Estado(id, estado) {
   });
 }
 
-export async function updateM6Contacto(id, telefono, notaContacto, fechaPromesaPago) {
+export async function updateM6Contacto(id, telefono, notaContacto, fechaPromesaPago, telefono2) {
   return apiRequest(`/m6/${id}/contacto`, {
     method: 'PUT',
-    body: JSON.stringify({ telefono, notaContacto, fechaPromesaPago }),
+    body: JSON.stringify({ telefono, telefono2, notaContacto, fechaPromesaPago }),
   });
 }
 

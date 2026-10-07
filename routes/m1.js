@@ -9,7 +9,7 @@ import { filterByAccessScope, isScopedRole } from '../utils/accessScope.js';
 import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
 import { getEstatusFPDM1 } from '../utils/estatusFPD.js';
-import { updateContactoInModel } from '../utils/contactoSync.js';
+import { updateContactoInModel, respaldarContacto, restaurarContacto } from '../utils/contactoSync.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -222,13 +222,15 @@ router.post('/bulk', async (req, res) => {
     // 2) Reemplazo mensual: borrar todo + insertMany por lotes (MUY rápido)
     if (replaceAll) {
       console.log('🔄 Modo reemplazo mensual: Eliminando todos los registros M1 existentes...');
+      // El reemplazo mensual no debe borrar teléfonos/notas/promesas capturados por el equipo
+      const contactoPrevio = await respaldarContacto(M1Master);
       const deleteResult = await M1Master.deleteMany({});
       console.log(`✅ deleteMany: ${deleteResult.deletedCount} eliminados`);
 
       const INSERT_BATCH = 1000;
       for (let i = 0; i < docs.length; i += INSERT_BATCH) {
         const slice = docs.slice(i, i + INSERT_BATCH).map(d => ({
-          ...d,
+          ...restaurarContacto(d, contactoPrevio),
           fechaCreacion: d.fechaCreacion || new Date(),
           fechaActualizacion: new Date()
         }));
