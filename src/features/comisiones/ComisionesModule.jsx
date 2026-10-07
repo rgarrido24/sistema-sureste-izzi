@@ -159,6 +159,9 @@ function PerdidasTab({ canEdit, irAVendedores }) {
         <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-sm text-amber-900 space-y-1">
           <p className="font-bold flex items-center gap-2"><AlertTriangle size={16} /> Hay datos incompletos: estos importes son un mínimo, no el total</p>
           {resumen.vendedoresSinFactor > 0 && (
+            <p>Los vendedores sin factor se muestran con un <b>estimado (~)</b> usando ×{resumen.factorReferencia}: aprox. <b>{dinero(resumen.estimadoPerdida)}</b> en perdidas y <b>{dinero(resumen.estimadoPendiente)}</b> en M1 pendientes, aparte de los totales de arriba. Define su factor en "Base de vendedores" para verlo real.</p>
+          )}
+          {resumen.vendedoresSinFactor > 0 && (
             <p>
               {resumen.vendedoresSinFactor} de {resumen.totalVendedores} vendedores no tienen factor, así que no se calcula su comisión.{' '}
               <button onClick={irAVendedores} className="underline font-bold">Definir factores</button>
@@ -258,6 +261,13 @@ function PerdidasTab({ canEdit, irAVendedores }) {
   );
 }
 
+// Importe estimado (sin factor definido): se marca con ~ y en cursiva para no confundirlo con el real
+function Est({ monto }) {
+  return monto > 0
+    ? <span className="italic font-semibold text-amber-600" title="Estimado con factor 1.5: define su factor en Base de vendedores">~{dinero(monto)}</span>
+    : <span>—</span>;
+}
+
 function FilaPerdida({ v, abierto, det, onToggle }) {
   const sin = v.sinFactor;
   return (
@@ -272,10 +282,10 @@ function FilaPerdida({ v, abierto, det, onToggle }) {
           {sin && <span className="ml-1 text-[11px] font-bold text-amber-700">· sin factor</span>}
         </td>
         <td className="px-3 py-2 text-right font-bold">{v.perdidas}</td>
-        <td className="px-3 py-2 text-right font-bold text-red-700">{sin ? '—' : dinero(v.comisionPerdida)}</td>
+        <td className="px-3 py-2 text-right font-bold text-red-700">{sin ? <Est monto={v.estimadoPerdida} /> : dinero(v.comisionPerdida)}</td>
         <td className="px-3 py-2 text-right text-purple-700">{sin ? '—' : v.tipo === 'distribuidor' ? dinero(v.retencionPerdida) : '—'}</td>
         <td className="px-3 py-2 text-right">{v.pendientes}</td>
-        <td className="px-3 py-2 text-right text-amber-700">{sin ? '—' : dinero(v.comisionPendiente)}</td>
+        <td className="px-3 py-2 text-right text-amber-700">{sin ? <Est monto={v.estimadoPendiente} /> : dinero(v.comisionPendiente)}</td>
         <td className="px-3 py-2 text-slate-400">{abierto ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</td>
       </tr>
       {abierto && (

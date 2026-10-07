@@ -133,6 +133,9 @@ export function factorEfectivo(doc, ventasMes) {
   };
 }
 
+// Factor de referencia para ESTIMAR (no es oficial) a quien aún no tiene factor: el mínimo de venta directa.
+export const FACTOR_REFERENCIA = 1.5;
+
 // ---------- Cálculo de pérdidas por vendedor ----------
 // comisión = base del paquete × factor del vendedor
 // retención = comisión × retención% (solo distribuidores; venta directa no tiene retención)
@@ -157,6 +160,7 @@ export function calcularComisiones({ items, indice, vendedores, ventasPorVendedo
         vendedor: nombre, tipo: null, factor: null, factorAuto: false, ventasMes: 0, capacitacionAprobada: false, retencionPorcentaje: 0, sinFactor: false,
         perdidas: 0, pendientes: 0,
         comisionPerdida: 0, retencionPerdida: 0, comisionPendiente: 0, retencionPendiente: 0,
+        estimadoPerdida: 0, estimadoPendiente: 0,
         sinBase: 0, cuentas: [],
       };
       const doc = vendedores.get(key);
@@ -189,6 +193,10 @@ export function calcularComisiones({ items, indice, vendedores, ventasPorVendedo
     const comision = base !== null && v.factor !== null ? base * v.factor : null;
     const retencion = comision !== null ? comision * (v.retencionPorcentaje / 100) : null;
 
+    if (base !== null && v.factor === null) {
+      // Sin factor definido: estimación con el factor de referencia, aparte de los importes reales
+      if (estatus === 'PERDIDA') v.estimadoPerdida += base * FACTOR_REFERENCIA; else v.estimadoPendiente += base * FACTOR_REFERENCIA;
+    }
     if (comision !== null) {
       if (estatus === 'PERDIDA') { v.comisionPerdida += comision; v.retencionPerdida += retencion; }
       else { v.comisionPendiente += comision; v.retencionPendiente += retencion; }
@@ -221,6 +229,9 @@ export function calcularComisiones({ items, indice, vendedores, ventasPorVendedo
       retencionPerdida: suma('retencionPerdida'),
       comisionPendiente: suma('comisionPendiente'),
       retencionPendiente: suma('retencionPendiente'),
+      estimadoPerdida: suma('estimadoPerdida'),
+      estimadoPendiente: suma('estimadoPendiente'),
+      factorReferencia: FACTOR_REFERENCIA,
       vendedoresSinFactor: lista.filter((v) => v.sinFactor).length,
       totalVendedores: lista.length,
     },
