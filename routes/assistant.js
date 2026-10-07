@@ -234,24 +234,31 @@ function retrievePdfSnippets(userMessage, pdfChunks) {
   const tokens = tokenizeQuery(userMessage);
   if (!tokens.length || !Array.isArray(pdfChunks) || pdfChunks.length === 0) return [];
 
+  const esEspecifico = (c) => Array.isArray(c.audiencias) && !c.audiencias.includes('todos');
+  const recorte = (s) => ({ pdfName: s.pdfName, text: String(s.text).slice(0, 1400) });
+
   const scored = [];
   for (const c of pdfChunks) {
     const sc = scoreTextByTokens(c.text, tokens);
     if (sc > 0) scored.push({ ...c, score: sc });
   }
   scored.sort((a, b) => b.score - a.score);
-  const top = scored.slice(0, 6).map(s => ({
-    pdfName: s.pdfName,
-    text: String(s.text).slice(0, 1400)
-  }));
 
-  // Fallback: si no hubo coincidencias, dar contexto mínimo del PDF más reciente
+  // Los documentos hechos para la audiencia del usuario (p. ej. guía de redes) no deben
+  // quedar desplazados por la oferta general: se les reservan lugares.
+  const especificos = scored.filter(esEspecifico).slice(0, 3);
+  const generales = scored.filter((c) => !especificos.includes(c));
+  const top = [...especificos, ...generales].slice(0, 6).map(recorte);
+
   if (top.length === 0) {
-    const first = pdfChunks.slice(0, 2).map(s => ({
-      pdfName: s.pdfName,
-      text: String(s.text).slice(0, 1400)
-    }));
-    return first;
+    // Sin coincidencias: primero lo específico de su audiencia, luego el resto.
+    const orden = [...pdfChunks.filter(esEspecifico), ...pdfChunks.filter((c) => !esEspecifico(c))];
+    return orden.slice(0, 3).map(recorte);
+  }
+  // Si hay material propio de su audiencia pero ninguno coincidió, incluir el inicio de ese material.
+  if (!especificos.length) {
+    const propios = pdfChunks.filter(esEspecifico).slice(0, 2).map(recorte);
+    return [...propios, ...top].slice(0, 6);
   }
   return top;
 }
