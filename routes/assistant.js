@@ -2,6 +2,7 @@ import express from 'express';
 import IzziPackage from '../models/IzziPackage.js';
 import IzziPromocion from '../models/IzziPromocion.js';
 import KnowledgePDF from '../models/KnowledgePDF.js';
+import User from '../models/User.js';
 import AiUsage from '../models/AiUsage.js';
 import VendedorFactor from '../models/VendedorFactor.js';
 import { normalizarNombre } from '../utils/comisionesCalc.js';
@@ -474,6 +475,38 @@ router.post('/knowledge/refresh', async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Error del servidor' });
+  }
+});
+
+// Diagnóstico (solo admin): qué conocimiento recibe una persona y por qué.
+// GET /api/assistant/diagnostico?usuario=shirley
+router.get('/diagnostico', async (req, res) => {
+  try {
+    if (!['admin', 'admin_general'].includes(req.user?.role)) return res.status(403).json({ error: 'Sin permisos' });
+    const username = String(req.query.usuario || '').trim().toLowerCase();
+    if (!username) return res.status(400).json({ error: 'Falta ?usuario=' });
+    const u = await User.findOne({ username }, { name: 1, username: 1, role: 1 }).lean();
+    if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
+    const k = await getKnowledge({ force: true });
+    const ve = await filtrarChunksPorAudiencia(k.pdfChunks, { role: u.role, name: u.name });
+    const porDoc = (arr) => {
+      const m = new Map();
+      for (const c of arr) {
+        const e = m.get(c.pdfName) || { documento: c.pdfName, audiencias: c.audiencias, fragmentos: 0 };
+        e.fragmentos++;
+        m.set(c.pdfName, e);
+      }
+      return Array.from(m.values());
+    };
+    res.json({
+      usuario: { username: u.username, nombre: u.name, rol: u.role },
+      veRedes: u.role === 'redes_sociales',
+      documentosQueVe: porDoc(ve),
+      documentosActivosEnTotal: porDoc(k.pdfChunks),
+    });
+  } catch (e) {
+    console.error('Error en diagnóstico del asistente:', e);
+    res.status(500).json({ error: 'Error del servidor' });
   }
 });
 
