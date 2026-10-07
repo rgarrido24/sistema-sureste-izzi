@@ -8,10 +8,15 @@ const CATEGORIAS = [
   { value: 'rgo', label: 'Propias de RGO' },
   { value: 'izzi', label: 'De Izzi (mes a mes)' },
   { value: 'liga', label: 'Ligas de flyers digitales' },
+  { value: 'reclutamiento', label: 'Reclutamiento', soloEquipo: true },
 ];
+// Quién ve la pestaña de Reclutamiento (el servidor también lo valida)
+const VE_RECLUTAMIENTO = ['admin', 'admin_general', 'director', 'marketing', 'supervisor', 'regionales', 'reclutador'];
 
 export default function ImagenesVentaModule() {
   const { user } = useAuth();
+  const veReclutamiento = VE_RECLUTAMIENTO.includes(user?.role);
+  const categoriasVisibles = CATEGORIAS.filter(c => !c.soloEquipo || veReclutamiento);
   const canManage = user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'marketing';
 
   const [imagenes, setImagenes] = useState([]);
@@ -47,7 +52,7 @@ export default function ImagenesVentaModule() {
       </p>
 
       <div className="flex gap-2 mb-4 border-b border-slate-200">
-        {CATEGORIAS.map(c => (
+        {categoriasVisibles.map(c => (
           <button
             key={c.value}
             onClick={() => setCategoria(c.value)}
@@ -68,22 +73,34 @@ export default function ImagenesVentaModule() {
 }
 
 function GaleriaTab({ canManage, categoria, imagenes, onChange }) {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [titulo, setTitulo] = useState('');
   const [subiendo, setSubiendo] = useState(false);
+  const [avance, setAvance] = useState('');
 
+  // Se pueden elegir varias imágenes a la vez; si son varias, cada una usa el nombre de su archivo como título
   const handleSubir = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setSubiendo(true);
+    const fallas = [];
     try {
-      await api.subirImagenVenta(file, titulo, categoria);
-      setFile(null);
+      for (let i = 0; i < files.length; i++) {
+        setAvance(`Subiendo ${i + 1} de ${files.length}...`);
+        const f = files[i];
+        const tituloImg = files.length === 1 ? titulo : f.name.replace(/\.[^.]+$/, '');
+        try {
+          await api.subirImagenVenta(f, tituloImg, categoria);
+        } catch (e) {
+          fallas.push(`${f.name}: ${e.message}`);
+        }
+      }
+      setFiles([]);
       setTitulo('');
       onChange();
-    } catch (e) {
-      alert('Error subiendo imagen: ' + e.message);
+      if (fallas.length) alert('No se pudieron subir:\n' + fallas.join('\n'));
     } finally {
       setSubiendo(false);
+      setAvance('');
     }
   };
 
@@ -110,7 +127,7 @@ function GaleriaTab({ canManage, categoria, imagenes, onChange }) {
     <div>
       {canManage && (
         <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 mb-6 flex flex-wrap items-center gap-3">
-          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <input type="file" accept="image/*" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} />
           <input
             type="text"
             value={titulo}
@@ -120,11 +137,11 @@ function GaleriaTab({ canManage, categoria, imagenes, onChange }) {
           />
           <button
             onClick={handleSubir}
-            disabled={!file || subiendo}
+            disabled={files.length === 0 || subiendo}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm disabled:bg-slate-400 flex items-center gap-2"
           >
             {subiendo ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-            Subir
+            {subiendo ? avance : files.length > 1 ? `Subir ${files.length} imágenes` : 'Subir'}
           </button>
         </div>
       )}

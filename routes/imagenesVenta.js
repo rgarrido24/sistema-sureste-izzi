@@ -7,6 +7,9 @@ const router = express.Router();
 router.use(requireAuth);
 
 const CAN_MANAGE = ['admin', 'admin_general', 'director', 'marketing'];
+// El material de reclutamiento NO es para vendedores ni redes: se filtra aquí, en el servidor.
+const VE_RECLUTAMIENTO = ['admin', 'admin_general', 'director', 'marketing', 'supervisor', 'regionales', 'reclutador'];
+const puedeVerReclutamiento = (req) => VE_RECLUTAMIENTO.includes(req.user?.role);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -23,7 +26,8 @@ const upload = multer({
 // un catálogo de material de venta esto es aceptable).
 router.get('/', async (req, res) => {
   try {
-    const imagenes = await ImagenVenta.find({})
+    const filtro = puedeVerReclutamiento(req) ? {} : { categoria: { $ne: 'reclutamiento' } };
+    const imagenes = await ImagenVenta.find(filtro)
       .sort({ createdAt: -1 })
       .lean();
     res.json(imagenes);
@@ -37,7 +41,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const imagen = await ImagenVenta.findById(req.params.id).lean();
-    if (!imagen) return res.status(404).json({ error: 'No encontrada' });
+    if (!imagen || (imagen.categoria === 'reclutamiento' && !puedeVerReclutamiento(req))) return res.status(404).json({ error: 'No encontrada' });
     res.json(imagen);
   } catch (error) {
     console.error('Error obteniendo imagen:', error);
@@ -53,7 +57,7 @@ router.post('/', requireRoles(CAN_MANAGE), upload.single('imagen'), async (req, 
     const base64 = req.file.buffer.toString('base64');
     const dataUrl = `data:${req.file.mimetype};base64,${base64}`;
 
-    const categoria = ['rgo', 'izzi', 'liga'].includes(req.body?.categoria) ? req.body.categoria : 'rgo';
+    const categoria = ['rgo', 'izzi', 'liga', 'reclutamiento'].includes(req.body?.categoria) ? req.body.categoria : 'rgo';
     const imagen = await ImagenVenta.create({
       categoria,
       titulo: req.body?.titulo || req.file.originalname || 'Sin título',
