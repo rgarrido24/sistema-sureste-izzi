@@ -6,6 +6,7 @@ import os from 'os';
 import usersRoutes from './routes/users.js';
 import { requireAuth } from './middleware/auth.js';
 import { bloquearRoles } from './middleware/bloquearRoles.js';
+import { bloquearDistribuidores } from './middleware/bloquearDistribuidores.js';
 import { migrarPasswordsLegacy } from './utils/passwords.js';
 import salesRoutes from './routes/sales.js';
 import installRoutes from './routes/install.js';
@@ -133,8 +134,8 @@ app.use('/api/claves', clavesRoutes);
 app.use('/api/capacitaciones', capacitacionesRoutes);
 app.use('/api/capacitaciones-contenido', capacitacionesContenidoRoutes);
 app.use('/api/imagenes-venta', imagenesVentaRoutes);
-app.use('/api/ranking', requireAuth, SIN_COBRANZA, rankingRoutes);
-app.use('/api/puntos', puntosRoutes);
+app.use('/api/ranking', requireAuth, SIN_COBRANZA, bloquearDistribuidores, rankingRoutes);
+app.use('/api/puntos', requireAuth, bloquearDistribuidores, puntosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/arranque', arranqueRoutes);
 

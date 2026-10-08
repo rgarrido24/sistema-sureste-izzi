@@ -999,6 +999,10 @@ export async function eliminarVendedorFactor(id) {
   return apiRequest(`/comisiones/vendedores/${id}`, { method: 'DELETE' });
 }
 
+export async function getMiTipo() {
+  return apiRequest('/comisiones/mi-tipo');
+}
+
 export async function getMiRiesgo() {
   return apiRequest('/comisiones/mi-riesgo');
 }

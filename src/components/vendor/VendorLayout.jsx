@@ -3,6 +3,7 @@ import { LogOut } from 'lucide-react';
 export default function VendorLayout({ 
   user, 
   myName, 
+  mostrarRankingPuntos = true,
   activeView, 
   setActiveView, 
   onLogout, 
@@ -110,6 +111,8 @@ export default function VendorLayout({
             >
               Imágenes
             </button>
+            {mostrarRankingPuntos && (
+              <>
             <button 
               onClick={() => setActiveView('ranking')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${
@@ -130,6 +133,8 @@ export default function VendorLayout({
             >
               Puntos
             </button>
+              </>
+            )}
             <button 
               onClick={() => setActiveView('account')} 
               className={`px-4 sm:px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap ${

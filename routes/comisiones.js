@@ -9,6 +9,7 @@ import { requireAuth, requireRoles } from '../middleware/auth.js';
 import { getItemVendedores } from '../src/utils/helpers.js';
 import { filterByAccessScope, isScopedRole } from '../utils/accessScope.js';
 import { CATALOGO_COMISIONES } from '../utils/catalogoComisiones.js';
+import { tipoDeVendedor } from '../utils/tipoVendedor.js';
 import { normalizarNombre, normalizarPaquete, construirIndicePaquetes, calcularComisiones, contarVentasPorVendedor, factorEfectivo } from '../utils/comisionesCalc.js';
 import { planificarUpsert, parsearTipo, parsearFactor, parsearTelefono, parsearEmail, parsearFecha } from '../utils/vendedoresMaster.js';
 
@@ -388,6 +389,16 @@ router.get('/mi-riesgo', async (req, res) => {
     });
   } catch (error) {
     console.error('Error calculando mi riesgo:', error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// Tipo del usuario que entra (distribuidor / venta directa) para que su panel sepa qué pestañas mostrar
+router.get('/mi-tipo', async (req, res) => {
+  try {
+    res.json({ tipo: await tipoDeVendedor(req.user?.name) });
+  } catch (error) {
+    console.error('Error obteniendo mi tipo:', error);
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
