@@ -20,7 +20,7 @@ if(!filas.length){alert('No encontré órdenes en esta pantalla. Abre el resulta
 fetch(cfg.url+'/api/estatus/ingesta/captura',{method:'POST',headers:{'Content-Type':'application/json','X-Integracion-Key':cfg.key},body:JSON.stringify({fuente:document.title||'',filas:filas})})
 .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})})
 .then(function(x){alert(x.ok?('Listo: '+x.j.nuevas+' nuevas, '+x.j.actualizadas+' actualizadas ('+x.j.conCambio+' con cambio).'):('Error: '+(x.j.error||'')))})
-.catch(function(){var t=JSON.stringify({fuente:document.title||'',filas:filas});try{navigator.clipboard.writeText(t);alert('El portal bloqueó el envio directo. Copie los datos: pegalos en RGO > Estatus > Pegar captura.')}catch(e){alert('El portal bloqueó el envío directo.')}});
+.catch(function(){var t=JSON.stringify({fuente:document.title||'',filas:filas});try{navigator.clipboard.writeText(t);alert('El portal bloqueó el envío directo. Los datos quedaron copiados; avísale a Rodolfo.')}catch(e){alert('El portal bloqueó el envío directo.')}});
 })();`;
 
 fs.writeFileSync(path.join(aqui, 'marcador.txt'), 'javascript:' + encodeURIComponent(programa).replace(/'/g, '%27'));
