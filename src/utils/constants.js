@@ -30,6 +30,7 @@ export const MODULES = {
   RANKING: 'ranking',
   PUNTOS: 'puntos',
   COMISIONES: 'comisiones',
+  ESTATUS: 'estatus',
   ARRANQUE: 'arranque'
 };
 

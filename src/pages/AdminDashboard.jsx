@@ -25,6 +25,7 @@ import RankingVentaDirectaModule from '../features/ranking/RankingVentaDirectaMo
 import PuntosModule from '../features/puntos/PuntosModule.jsx';
 import ComisionesModule from '../features/comisiones/ComisionesModule.jsx';
 import ArranqueModule from '../features/arranque/ArranqueModule.jsx';
+import EstatusModule from '../features/estatus/EstatusModule.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -147,6 +148,11 @@ export default function AdminDashboard({ user }) {
       {/* Factor de comisión — NUNCA para vendedor, solo admin/director/supervisor/regionales */}
       {currentModule === MODULES.COMISIONES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'regionales' || user?.role === 'mesa_control') && (
         <ComisionesModule />
+      )}
+
+      {/* Estatus de órdenes Izzi (captura del portal + chatbot) */}
+      {currentModule === MODULES.ESTATUS && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control') && (
+        <EstatusModule canManageKeys={user?.role !== 'mesa_control'} />
       )}
 
       {/* Módulo de Administración */}

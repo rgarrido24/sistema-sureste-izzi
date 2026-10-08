@@ -67,40 +67,42 @@ async function vendedorPorTelefono(tel) {
   return cacheTelefonos.mapa.get(tel) || null;
 }
 
+async function responderConsulta(telefonoCrudo, mensajeCrudo) {
+  const tel = ultimosDiez(telefonoCrudo);
+  const mensaje = String(mensajeCrudo ?? '').slice(0, 1000);
+  if (tel.length !== 10) return { status: 400, body: { error: 'Teléfono no válido' } };
+
+  const vendedor = await vendedorPorTelefono(tel);
+  if (!vendedor) {
+    return { status: 200, body: { success: true, autorizado: false, respuesta: 'Este número no está registrado en RGO. Pide a tu supervisor que lo dé de alta.' } };
+  }
+  const consultas = extraerConsultas(mensaje);
+  if (consultas.length === 0) {
+    return { status: 200, body: { success: true, autorizado: true, vendedor, respuesta: 'Mándame el número de cuenta (o de orden, ej. 1-280913284125). Puedes mandar hasta 5 en un mensaje.' } };
+  }
+  const dia = diaMerida();
+  const usadas = await ConsultaEstatus.countDocuments({ telefono: tel, dia });
+  if (usadas + consultas.length > LIMITE_DIARIO) {
+    return { status: 200, body: { success: true, autorizado: true, vendedor, respuesta: `Llegaste al límite de ${LIMITE_DIARIO} consultas por día. Mañana puedes seguir, o pide apoyo a Mesa de Control.` } };
+  }
+  const resultados = [];
+  for (const c of consultas) {
+    const filtro = c.tipo === 'orden' ? { numOrden: c.valor } : { cuenta: c.valor };
+    const ordenes = await OrdenEstatus.find(filtro).sort({ actualizadoEn: -1 }).limit(3).lean();
+    if (!ordenes.length) {
+      await SolicitudEstatus.updateOne({ consulta: c.valor, atendida: false }, { $setOnInsert: { tipo: c.tipo, solicitadoPor: vendedor } }, { upsert: true });
+    }
+    resultados.push({ ...c, ordenes });
+  }
+  await ConsultaEstatus.insertMany(resultados.map((r) => ({ telefono: tel, vendedor, consulta: r.valor, encontrada: r.ordenes.length > 0, dia })));
+  return { status: 200, body: { success: true, autorizado: true, vendedor, respuesta: redactarRespuesta(resultados) } };
+}
+
 // Body: { telefono: "5219991234567", mensaje: "123456789 1-280913284125" } → { respuesta: "texto" }
 botRouter.post('/consulta', async (req, res) => {
   try {
-    const tel = ultimosDiez(req.body?.telefono);
-    const mensaje = String(req.body?.mensaje ?? '').slice(0, 1000);
-    if (tel.length !== 10) return res.status(400).json({ error: 'Teléfono no válido' });
-
-    const vendedor = await vendedorPorTelefono(tel);
-    if (!vendedor) {
-      return res.json({ success: true, autorizado: false, respuesta: 'Este número no está registrado en RGO. Pide a tu supervisor que lo dé de alta.' });
-    }
-
-    const consultas = extraerConsultas(mensaje);
-    if (consultas.length === 0) {
-      return res.json({ success: true, autorizado: true, respuesta: 'Mándame el número de cuenta (o de orden, ej. 1-280913284125). Puedes mandar hasta 5 en un mensaje.' });
-    }
-
-    const dia = diaMerida();
-    const usadas = await ConsultaEstatus.countDocuments({ telefono: tel, dia });
-    if (usadas + consultas.length > LIMITE_DIARIO) {
-      return res.json({ success: true, autorizado: true, respuesta: `Llegaste al límite de ${LIMITE_DIARIO} consultas por día. Mañana puedes seguir, o pide apoyo a Mesa de Control.` });
-    }
-
-    const resultados = [];
-    for (const c of consultas) {
-      const filtro = c.tipo === 'orden' ? { numOrden: c.valor } : { cuenta: c.valor };
-      const ordenes = await OrdenEstatus.find(filtro).sort({ actualizadoEn: -1 }).limit(3).lean();
-      if (!ordenes.length) {
-        await SolicitudEstatus.updateOne({ consulta: c.valor, atendida: false }, { $setOnInsert: { tipo: c.tipo, solicitadoPor: vendedor } }, { upsert: true });
-      }
-      resultados.push({ ...c, ordenes });
-    }
-    await ConsultaEstatus.insertMany(resultados.map((r) => ({ telefono: tel, vendedor, consulta: r.valor, encontrada: r.ordenes.length > 0, dia })));
-    res.json({ success: true, autorizado: true, respuesta: redactarRespuesta(resultados) });
+    const r = await responderConsulta(req.body?.telefono, req.body?.mensaje);
+    res.status(r.status).json(r.body);
   } catch (e) {
     console.error('estatus bot:', e?.message || e);
     res.status(500).json({ error: 'Error del servidor' });
@@ -109,13 +111,13 @@ botRouter.post('/consulta', async (req, res) => {
 
 // ---------- Administración (sesión normal) ----------
 export const adminRouter = express.Router();
-adminRouter.use(requireAuth, requireRoles(['admin', 'director', 'mesa_control']));
+adminRouter.use(requireAuth, requireRoles(['admin', 'admin_general', 'director', 'mesa_control']));
 
 adminRouter.get('/integraciones', async (req, res) => {
   const lista = await IntegracionEstatus.find({}, '-hash').sort({ createdAt: -1 }).lean();
   res.json({ success: true, data: lista });
 });
-adminRouter.post('/integraciones', requireRoles(['admin', 'director']), async (req, res) => {
+adminRouter.post('/integraciones', requireRoles(['admin', 'admin_general', 'director']), async (req, res) => {
   const nombre = String(req.body?.nombre || '').trim().slice(0, 80);
   const tipo = req.body?.tipo;
   if (!nombre || !['captura', 'bot'].includes(tipo)) return res.status(400).json({ error: 'Nombre y tipo (captura | bot) requeridos' });
@@ -123,7 +125,7 @@ adminRouter.post('/integraciones', requireRoles(['admin', 'director']), async (r
   const reg = await IntegracionEstatus.create({ nombre, tipo, hash: hashLlave(llave), prefijo: llave.slice(0, 8), creadaPor: req.user.username });
   res.json({ success: true, id: reg._id, llave, aviso: 'Guarda esta llave ahora: no se vuelve a mostrar.' });
 });
-adminRouter.post('/integraciones/:id/revocar', requireRoles(['admin', 'director']), async (req, res) => {
+adminRouter.post('/integraciones/:id/revocar', requireRoles(['admin', 'admin_general', 'director']), async (req, res) => {
   await IntegracionEstatus.updateOne({ _id: req.params.id }, { activa: false });
   res.json({ success: true });
 });
@@ -132,4 +134,17 @@ adminRouter.get('/resumen', async (req, res) => {
     OrdenEstatus.countDocuments(), SolicitudEstatus.countDocuments({ atendida: false }), ConsultaEstatus.countDocuments({ dia: diaMerida() }),
   ]);
   res.json({ success: true, ordenes, pendientes, consultasHoy });
+});
+adminRouter.get('/pendientes', async (req, res) => {
+  const lista = await SolicitudEstatus.find({ atendida: false }).sort({ createdAt: 1 }).limit(100).lean();
+  res.json({ success: true, data: lista });
+});
+// Prueba desde la pantalla: simula que un vendedor (por su teléfono) le escribe al chatbot. No necesita WhatsApp.
+adminRouter.post('/probar', express.json({ limit: '20kb' }), async (req, res) => {
+  try {
+    const r = await responderConsulta(req.body?.telefono, req.body?.mensaje);
+    res.status(r.status).json(r.body);
+  } catch (e) {
+    res.status(500).json({ error: 'Error del servidor' });
+  }
 });

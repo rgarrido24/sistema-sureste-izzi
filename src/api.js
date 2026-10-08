@@ -1222,3 +1222,10 @@ export async function getMiembrosCrecimiento() {
 export async function cambiarNivelMiembro(usuarioId, nivel) {
   return apiRequest(`/capacitaciones-contenido/miembros/${usuarioId}/nivel`, { method: 'PUT', body: JSON.stringify({ nivel }) });
 }
+
+export async function getEstatusResumen() { return apiRequest('/estatus/admin/resumen'); }
+export async function getEstatusIntegraciones() { return apiRequest('/estatus/admin/integraciones'); }
+export async function crearEstatusIntegracion(nombre, tipo) { return apiRequest('/estatus/admin/integraciones', { method: 'POST', body: JSON.stringify({ nombre, tipo }) }); }
+export async function revocarEstatusIntegracion(id) { return apiRequest(`/estatus/admin/integraciones/${id}/revocar`, { method: 'POST' }); }
+export async function getEstatusPendientes() { return apiRequest('/estatus/admin/pendientes'); }
+export async function probarEstatusBot(telefono, mensaje) { return apiRequest('/estatus/admin/probar', { method: 'POST', body: JSON.stringify({ telefono, mensaje }) }); }
