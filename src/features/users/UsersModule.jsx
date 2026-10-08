@@ -14,7 +14,8 @@ export default function UsersModule() {
     role: 'vendedor', 
     email: '',
     region: '',
-    plazas: []
+    plazas: [],
+    tipoVendedor: 'directa'
   });
   const [creating, setCreating] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -73,9 +74,10 @@ export default function UsersModule() {
         newUser.role,
         newUser.email,
         newUser.region,
-        newUser.plazas
+        newUser.plazas,
+        newUser.role === 'vendedor' ? newUser.tipoVendedor : ''
       );
-      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [] });
+      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [], tipoVendedor: 'directa' });
       loadUsers();
     } catch (error) {
       alert('Error creando usuario: ' + error.message);
@@ -222,6 +224,16 @@ export default function UsersModule() {
                 </>
               )}
             </select>
+            {newUser.role === 'vendedor' && (
+              <select
+                value={newUser.tipoVendedor}
+                onChange={(e) => setNewUser({ ...newUser, tipoVendedor: e.target.value })}
+                className="px-4 py-2 border rounded-lg"
+              >
+                <option value="directa">Venta directa</option>
+                <option value="distribuidor">Distribuidor / Subdistribuidor</option>
+              </select>
+            )}
             {newUser.role === 'regionales' && (
               <select
                 value={newUser.region}

@@ -80,10 +80,10 @@ export async function loginUser(username, password) {
   });
 }
 
-export async function createUser(username, password, name, role, email = '', region = '', plazas = []) {
+export async function createUser(username, password, name, role, email = '', region = '', plazas = [], tipoVendedor = '') {
   return apiRequest('/users/create', {
     method: 'POST',
-    body: JSON.stringify({ username, password, name, role, email, region, plazas }),
+    body: JSON.stringify({ username, password, name, role, email, region, plazas, tipoVendedor }),
   });
 }
 

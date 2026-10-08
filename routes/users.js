@@ -5,6 +5,8 @@ import { requireAuth, requireRoles, signAuthToken } from '../middleware/auth.js'
 import ActivityEvent from '../models/ActivityEvent.js';
 import M1Master from '../models/M1Master.js';
 import OperacionDia from '../models/OperacionDia.js';
+import VendedorFactor from '../models/VendedorFactor.js';
+import { normalizarNombre } from '../utils/comisionesCalc.js';
 import { hashPassword, verificarPasswordUsuario, simularVerificacionPassword } from '../utils/passwords.js';
 
 const router = express.Router();
@@ -35,6 +37,21 @@ router.post('/login', async (req, res) => {
     try {
       user.lastLoginAt = new Date();
       await user.save();
+
+    // Un vendedor se da de alta ya clasificado: venta directa o distribuidor/subdistribuidor (queda en Comisiones → Base de vendedores)
+    if (role === 'vendedor' && ['directa', 'distribuidor'].includes(tipoVendedor)) {
+      try {
+        const nombreLimpio = user.name.replace(/\s+/g, ' ').trim().toUpperCase();
+        const clave = normalizarNombre(nombreLimpio);
+        const existentes = await VendedorFactor.find({}, { vendedor: 1 }).lean();
+        const previo = existentes.find((d) => normalizarNombre(d.vendedor) === clave);
+        const quien = { actualizadoPorId: req.user?.id || '', actualizadoPorUsername: req.user?.username || '', actualizadoPorNombre: req.user?.name || req.user?.username || '' };
+        if (previo) await VendedorFactor.updateOne({ _id: previo._id }, { $set: { tipo: tipoVendedor, ...quien } });
+        else await VendedorFactor.create({ vendedor: nombreLimpio, tipo: tipoVendedor, retencionPorcentaje: tipoVendedor === 'distribuidor' ? 10 : 0, ...quien });
+      } catch (err) {
+        console.error('No se pudo clasificar al vendedor nuevo:', err?.message || err);
+      }
+    }
       await ActivityEvent.create({
         type: 'login',
         module: 'auth',
@@ -77,7 +94,7 @@ router.post('/login', async (req, res) => {
 // Crear usuario
 router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
-    const { username, password, name, role, email, region, plazas } = req.body;
+    const { username, password, name, role, email, region, plazas, tipoVendedor } = req.body;
     const cleanUsername = username.trim().toLowerCase();
     
     if (!password || password.length < 6) {
