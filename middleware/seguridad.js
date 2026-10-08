@@ -15,6 +15,7 @@ const ORIGENES_POR_DEFECTO = [
   'http://127.0.0.1:5173',
   'http://localhost:3000',
 ];
+const ORIGEN_PORTAL_IZZI = /^https:\/\/([a-z0-9-]+\.)*wizz\.mx$/i;
 export function origenesPermitidos(env = process.env) {
   const extra = String(env.CORS_ORIGINS || '').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);
   return [...ORIGENES_POR_DEFECTO, ...extra];
@@ -22,12 +23,10 @@ export function origenesPermitidos(env = process.env) {
 
 export function corsSeguro(env = process.env) {
   const permitidos = new Set(origenesPermitidos(env));
-  return cors({
-    // Sin Origin = no es un navegador (health checks, scripts del servidor): la sesión sigue siendo obligatoria
-    origin: (origin, cb) => cb(null, !origin || permitidos.has(origin)),
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    maxAge: 600,
-  });
+  const normal = { origin: (origin, cb) => cb(null, !origin || permitidos.has(origin)), allowedHeaders: ['Content-Type', 'Authorization'], maxAge: 600 };
+  // La captura del portal de Izzi (marcador del celular) llama desde wizz.mx con su propia llave, solo a esta ruta
+  const captura = { origin: (origin, cb) => cb(null, !origin || ORIGEN_PORTAL_IZZI.test(origin)), allowedHeaders: ['Content-Type', 'X-Integracion-Key'], methods: ['GET', 'POST', 'OPTIONS'], maxAge: 600 };
+  return cors((req, cb) => cb(null, req.path.startsWith('/api/estatus/ingesta') ? captura : normal));
 }
 
 // Límite general generoso (oficinas enteras salen por una misma IP). Solo frena inundaciones.
@@ -93,6 +92,8 @@ export function puertaDeEntrada(req, res, next) {
   if (req.method === 'POST' && ruta === '/api/users/login') return next();
   if (lectura && ruta === '/api/health') return next();
   if (lectura && ruta.startsWith('/api/upload/videos/')) return next();
+  // Captura del portal y chatbot: no usan sesión de usuario, validan su propia llave revocable en la ruta
+  if (ruta.startsWith('/api/estatus/ingesta/') || ruta.startsWith('/api/estatus/bot/')) return next();
   const [tipo, token] = String(req.headers.authorization || '').split(' ');
   if (tipo === 'Bearer' && token && tokenValido(token)) return next();
   return res.status(401).json({ error: 'Sesión requerida' });

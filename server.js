@@ -37,6 +37,7 @@ import statsRoutes from './routes/stats.js';
 import uploadRoutes from './routes/upload.js';
 import assistantRoutes from './routes/assistant.js';
 import activityRoutes from './routes/activity.js';
+import { ingestaRouter, botRouter, adminRouter as estatusAdminRouter } from './routes/estatus.js';
 
 dotenv.config();
 
@@ -63,6 +64,9 @@ aplicarSeguridadBase(app);
 app.use('/api/users/login', express.json({ limit: '10kb' }), limitarLoginPorIp, limitarLogin);
 // Sin una sesión válida no se procesa nada de /api (ni se lee el cuerpo), salvo login, health y videos públicos
 app.use(puertaDeEntrada);
+// Captura y chatbot traen su propia llave y un limite de cuerpo pequeno: van ANTES del lector de 100 MB
+app.use('/api/estatus/ingesta', ingestaRouter);
+app.use('/api/estatus/bot', botRouter);
 // Límite grande SOLO para quien ya tiene sesión (archivos Excel grandes)
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
@@ -138,6 +142,7 @@ app.use('/api/ranking', requireAuth, SIN_COBRANZA, bloquearDistribuidores, ranki
 app.use('/api/puntos', requireAuth, bloquearDistribuidores, puntosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/arranque', arranqueRoutes);
+app.use('/api/estatus/admin', estatusAdminRouter);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {
