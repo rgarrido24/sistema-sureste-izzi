@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
-import { getItemVendedor, getItemVendedores } from '../../utils/helpers.js';
+import { getItemVendedor, getItemVendedores, getNombreCliente } from '../../utils/helpers.js';
 
 export default function SalesListView({ 
   searchTerm, 
@@ -79,7 +79,7 @@ export default function SalesListView({
   // Filtrar datos
   const filteredData = data.filter(item => {
     const matchesSearch = !searchTerm || 
-      (item.Cliente || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getNombreCliente(item).toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.Cuenta || '').includes(searchTerm) ||
       (item.Telefono || '').includes(searchTerm);
     
@@ -183,7 +183,7 @@ export default function SalesListView({
               ) : (
                 filteredData.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 text-sm">{item.Cliente || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{getNombreCliente(item, '-')}</td>
                     <td className="px-4 py-3 text-sm">{item.Cuenta || '-'}</td>
                     <td className="px-4 py-3 text-sm">{item.Telefono || '-'}</td>
                     <td className="px-4 py-3 text-sm">

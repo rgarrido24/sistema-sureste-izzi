@@ -91,6 +91,9 @@ const FIELD_NORMALIZATION = {
   'Estado': 'estado',
   
   // Cliente
+  'CLIENTE': 'Cliente',
+  'cliente': 'Cliente',
+  'NOMBRE CLIENTE': 'Cliente',
   'Nombre': 'Cliente',
   'Nombre Cliente': 'Cliente',
   'Razón Social': 'Cliente'

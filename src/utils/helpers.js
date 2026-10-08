@@ -271,3 +271,14 @@ export function getEnv() {
   }
 }
 
+
+// Nombre del cliente de una cuenta: el archivo puede traer "Cliente", "CLIENTE", "Nombre"... según de dónde se descargó
+export function getNombreCliente(item, vacio = '') {
+  if (!item || typeof item !== 'object') return vacio;
+  const claves = ['Cliente', 'CLIENTE', 'cliente', 'Nombre Cliente', 'NOMBRE CLIENTE', 'Nombre del Cliente', 'Nombre', 'NOMBRE', 'Razón Social', 'Razon Social', 'Nombre Completo'];
+  for (const k of claves) {
+    const v = item[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return vacio;
+}

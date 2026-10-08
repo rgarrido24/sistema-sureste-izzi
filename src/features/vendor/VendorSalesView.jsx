@@ -4,7 +4,7 @@ import * as api from '../../api.js';
 import { MODULES } from '../../utils/constants.js';
 import { filterByVendor } from '../../utils/vendorFilter.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { calcularEstatusFPDDesdeFecha, getItemSaldo, getItemId, itemEsDecomisionable, getItemFechaVencimiento } from '../../utils/helpers.js';
+import { getNombreCliente, calcularEstatusFPDDesdeFecha, getItemSaldo, getItemId, itemEsDecomisionable, getItemFechaVencimiento } from '../../utils/helpers.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 
 // Componente para editar teléfono y notas (compartido con SalesStatusView)
@@ -199,7 +199,7 @@ const generateMessageFromTemplate = async (client, status) => {
     let message = activeTemplate.content;
     
     // Reemplazar variables con datos del cliente
-    const nombre = client.Cliente || client['Cliente'] || client.nombre || 'Cliente';
+    const nombre = getNombreCliente(client) || client.nombre || 'Cliente';
     const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || client.NoCuenta || client['NoCuenta'] || client.Referencia || client['Referencia'] || 'N/A';
     const monto = client['Saldo Total'] || client['SaldoTotal'] || client.saldoTotal || client['Total Adeudo'] || client.totalAdeudo || 0;
     const porVencer = client['Por Vencer'] || client['PorVencer'] || client.porVencer || 0;
@@ -235,7 +235,7 @@ const generateMessageFromTemplate = async (client, status) => {
   } catch (error) {
     console.error('Error generando mensaje desde plantilla:', error);
     // Mensaje por defecto si hay error
-    const nombre = client.Cliente || client['Cliente'] || client.nombre || 'Cliente';
+    const nombre = getNombreCliente(client) || client.nombre || 'Cliente';
     const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || 'N/A';
     return `Hola ${nombre}, te contactamos sobre tu cuenta ${cuenta}.`;
   }
@@ -575,7 +575,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
     // Filtro de búsqueda
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || 
-      (item.Cliente || item['Cliente'] || '').toLowerCase().includes(searchLower) ||
+      getNombreCliente(item).toLowerCase().includes(searchLower) ||
       (item.CUENTA || item.Cuenta || item.cuenta || '').toString().includes(searchTerm) ||
       (item.Telefono1 || item.Telefono2 || item['Telefono1'] || item['Telefono2'] || '').toString().includes(searchTerm) ||
       (item.PLAZA || item['PLAZA'] || item.Plaza || '').toLowerCase().includes(searchLower);
@@ -651,7 +651,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
       } else if (e !== 'FPD CORRIENTE') {
         pendientes.push({
           cuenta: item.cuenta || item.CUENTA || item['CUENTA'] || '',
-          cliente: item.Cliente || item['Cliente'] || item.CLIENTE || 'Sin nombre',
+          cliente: getNombreCliente(item, 'Sin nombre'),
           saldo: getSaldoNumericoSim(item),
           play: getPaqueteContratadoSim(item),
           plaza: item.PLAZA || item['PLAZA'] || item.Plaza || 'Sin dato',
@@ -902,7 +902,7 @@ export default function VendorSalesView({ myName, status = 'M1' }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedData.map((item) => {
             // Obtener valores con diferentes nombres posibles
-            const cliente = item.Cliente || item['Cliente'] || 'Sin nombre';
+            const cliente = getNombreCliente(item, 'Sin nombre');
             const cuenta = item.CUENTA || item.Cuenta || item.cuenta || '-';
             const telefono1 = item.Telefono1 || item['Telefono1'] || '';
             const telefono2 = item.Telefono2 || item['Telefono2'] || '';

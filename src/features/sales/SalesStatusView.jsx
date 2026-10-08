@@ -6,7 +6,7 @@ import * as api from '../../api.js';
 import LoadingSpinner from '../../components/common/LoadingSpinner.jsx';
 import { filterByVendor } from '../../utils/vendorFilter.js';
 import { telefonosDeRegistro } from '../../../utils/telefonos.js';
-import { calcularEstatusFPDDesdeFecha, parseFlexibleDate, getItemSaldo, getItemId, itemEsDecomisionable, getItemVendedor, getItemVendedores } from '../../utils/helpers.js';
+import { getNombreCliente, calcularEstatusFPDDesdeFecha, parseFlexibleDate, getItemSaldo, getItemId, itemEsDecomisionable, getItemVendedor, getItemVendedores } from '../../utils/helpers.js';
 
 // Componente para editar teléfono y notas
 function ClientContactEditor({ item, status, telefono, telefono2, notaContacto, fechaPromesaPago, onUpdate }) {
@@ -179,7 +179,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
       const reco = allTemplates.find(t => t?.isActive && normalize(t?.module) === normalize(COB_RECO_MODULE));
       if (reco?.content) {
         let message = reco.content;
-        const nombre = client.Cliente || client['Cliente'] || client.nombre || client.Nombre || 'Cliente';
+        const nombre = getNombreCliente(client) || client.nombre || 'Cliente';
         const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || client['Nº de cuenta'] || client['N° de cuenta'] || client.Referencia || client['Referencia'] || 'N/A';
         const monto = client['Saldo Total'] || client['SaldoTotal'] || client.saldoTotal || client['Total Adeudo'] || client.totalAdeudo || 0;
         const porVencer = client['Por Vencer'] || client['PorVencer'] || client.porVencer || 0;
@@ -282,7 +282,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     if (!activeTemplate) {
       console.warn('⚠️ No se encontró plantilla activa para módulo:', status);
       // Si no hay plantilla, usar mensaje por defecto
-      const nombre = client.Cliente || client['Cliente'] || client.nombre || client.Nombre || 'cliente';
+      const nombre = getNombreCliente(client) || client.nombre || 'cliente';
       const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || client['Nº de cuenta'] || client['N° de cuenta'] || '';
       return `Hola ${nombre}, te contactamos sobre tu cuenta ${cuenta}.`;
     }
@@ -290,7 +290,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     let message = activeTemplate.content;
     
     // Reemplazar variables con datos del cliente
-    const nombre = client.Cliente || client['Cliente'] || client.nombre || 'Cliente';
+    const nombre = getNombreCliente(client) || client.nombre || 'Cliente';
     const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || client.NoCuenta || client['NoCuenta'] || client.Referencia || client['Referencia'] || 'N/A';
     const monto = client['Saldo Total'] || client['SaldoTotal'] || client.saldoTotal || client['Total Adeudo'] || client.totalAdeudo || 0;
     const porVencer = client['Por Vencer'] || client['PorVencer'] || client.porVencer || 0;
@@ -329,7 +329,7 @@ const generateMessageFromTemplate = async (client, status, options = {}) => {
     console.error('Cliente:', client);
     console.error('Status:', status);
     // Mensaje por defecto si hay error
-    const nombre = client.Cliente || client['Cliente'] || client.nombre || client.Nombre || 'Cliente';
+    const nombre = getNombreCliente(client) || client.nombre || 'Cliente';
     const cuenta = client.cuenta || client.CUENTA || client['CUENTA'] || client['Nº de cuenta'] || client['N° de cuenta'] || 'N/A';
     return `Hola ${nombre}, te contactamos sobre tu cuenta ${cuenta}.`;
   }
@@ -1183,7 +1183,7 @@ export default function SalesStatusView({
       } else if (e !== 'FPD CORRIENTE') {
         pendientes.push({
           cuenta: item.cuenta || item.CUENTA || item['CUENTA'] || '',
-          cliente: item.Cliente || item['Cliente'] || item.CLIENTE || 'Sin nombre',
+          cliente: getNombreCliente(item, 'Sin nombre'),
           saldo: getSaldoNumerico(item),
           play: getPaqueteContratado(item),
           plaza: item.PLAZA || item['PLAZA'] || item.Plaza || 'Sin dato',
@@ -1244,7 +1244,7 @@ export default function SalesStatusView({
   const filteredData = data.filter(item => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || 
-      (item.Cliente || item['Cliente'] || '').toLowerCase().includes(searchLower) ||
+      getNombreCliente(item).toLowerCase().includes(searchLower) ||
       (item.CUENTA || item.Cuenta || item.cuenta || '').toString().includes(searchTerm) ||
       (item.Telefono1 || item.Telefono2 || item['Telefono1'] || item['Telefono2'] || '').toString().includes(searchTerm) ||
       (item.Vendedor || item['Vendedor'] || getItemVendedor(item) || '').toLowerCase().includes(searchLower) ||
