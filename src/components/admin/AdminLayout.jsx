@@ -152,7 +152,7 @@ export default function AdminLayout({
                   Puntos
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'regionales' || user?.role === 'mesa_control') && (
+              {(user?.role === 'admin' || user?.role === 'admin_general') && (
                 <button 
                   onClick={() => { setModule(MODULES.COMISIONES); setActiveTab('comisiones'); }} 
                   className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${

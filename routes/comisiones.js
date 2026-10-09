@@ -15,11 +15,15 @@ import { planificarUpsert, parsearTipo, parsearFactor, parsearTelefono, parsearE
 
 const router = express.Router();
 router.use(requireAuth);
+// Todo el módulo es solo para Admin. Única excepción: /mi-tipo (solo dice si eres distribuidor o venta directa; no trae dinero ni factores).
+router.use((req, res, next) => (req.path === '/mi-tipo' || req.path === '/mi-riesgo' ? next() : requireRoles(SOLO_ADMIN)(req, res, next)));
 
 // Ver: dirección y Mesa de Control (+ supervisores/regionales, limitados a su región/plazas en las pérdidas).
 // Editar: solo admin/director. El vendedor NUNCA ve su factor (solo el monto en riesgo en /mi-riesgo).
-const CAN_SEE = ['admin', 'admin_general', 'director', 'mesa_control', 'supervisor', 'regionales'];
-const CAN_EDIT = ['admin', 'admin_general', 'director'];
+// CONFIDENCIAL: comisiones, factores y pérdidas en dinero solo los ve Admin (nadie más, ni director ni supervisores).
+const SOLO_ADMIN = ['admin', 'admin_general'];
+const CAN_SEE = SOLO_ADMIN;
+const CAN_EDIT = SOLO_ADMIN;
 
 // ---------- helpers ----------
 async function cargarVendedoresMapa() {
@@ -371,6 +375,8 @@ router.get('/perdidas/detalle', requireRoles(CAN_SEE), async (req, res) => {
 // ====================== MI RIESGO (distribuidor, nunca expone el factor) ======================
 router.get('/mi-riesgo', async (req, res) => {
   try {
+    // Confidencial: el monto derivado de comisiones ya no se muestra a nadie fuera de Admin
+    if (!SOLO_ADMIN.includes(req.user?.role)) return res.json({ aplica: false });
     const key = normalizarNombre(req.user?.name);
     if (!key) return res.json({ aplica: false });
 

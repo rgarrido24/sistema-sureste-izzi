@@ -66,7 +66,7 @@ export default function AdminDashboard({ user }) {
       // Cobranza MX: no permitir salir del módulo de Cobranza (excepto Capacitaciones)
       return;
     }
-    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES && module !== MODULES.CAPACITACIONES_IZZI && module !== MODULES.IMAGENES_VENTA && module !== MODULES.RANKING && module !== MODULES.PUNTOS && module !== MODULES.COMISIONES && module !== MODULES.ARRANQUE) {
+    if (user?.role === 'supervisor' && module !== MODULES.SALES && module !== MODULES.ADMIN && module !== MODULES.CAPACITACIONES && module !== MODULES.CAPACITACIONES_IZZI && module !== MODULES.IMAGENES_VENTA && module !== MODULES.RANKING && module !== MODULES.PUNTOS && module !== MODULES.ARRANQUE) {
       return;
     }
     if (user?.role === 'coordinador_claves' && module !== MODULES.CLAVES) {
@@ -146,7 +146,7 @@ export default function AdminDashboard({ user }) {
       {currentModule === MODULES.PUNTOS && <PuntosModule />}
 
       {/* Factor de comisión — NUNCA para vendedor, solo admin/director/supervisor/regionales */}
-      {currentModule === MODULES.COMISIONES && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'regionales' || user?.role === 'mesa_control') && (
+      {currentModule === MODULES.COMISIONES && (user?.role === 'admin' || user?.role === 'admin_general') && (
         <ComisionesModule />
       )}
 
