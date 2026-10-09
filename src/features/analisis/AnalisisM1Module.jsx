@@ -6,6 +6,29 @@ const dinero = (n) => `$${Number(n || 0).toLocaleString('es-MX', { maximumFracti
 const num = (n) => Number(n || 0).toLocaleString('es-MX');
 const colorPct = (pct, meta) => (pct <= meta ? 'text-green-600' : pct <= meta * 2 ? 'text-amber-600' : 'text-red-600 font-bold');
 
+const COLORES = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2'];
+
+// Gráfica de líneas sencilla (SVG): una línea por serie, con la meta como línea punteada
+function Lineas({ series, fechas, meta }) {
+  const W = 640, H = 220, P = { l: 34, r: 10, t: 10, b: 24 };
+  const valores = series.flatMap((s) => s.valores.filter((v) => v !== null));
+  const max = Math.max(meta + 5, ...valores, 10);
+  const x = (i) => P.l + (fechas.length <= 1 ? (W - P.l - P.r) / 2 : (i / (fechas.length - 1)) * (W - P.l - P.r));
+  const y = (v) => P.t + (1 - v / max) * (H - P.t - P.b);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-56">
+      {[0, 25, 50, 75, 100].filter((t) => t <= max + 10).map((t) => (<g key={t}><line x1={P.l} x2={W - P.r} y1={y(t)} y2={y(t)} stroke="#e2e8f0" /><text x={P.l - 4} y={y(t) + 3} fontSize="10" textAnchor="end" fill="#64748b">{t}%</text></g>))}
+      <line x1={P.l} x2={W - P.r} y1={y(meta)} y2={y(meta)} stroke="#16a34a" strokeDasharray="5 4" /><text x={W - P.r} y={y(meta) - 3} fontSize="10" textAnchor="end" fill="#16a34a">meta {meta}%</text>
+      {fechas.map((fe, i) => (i === 0 || i === fechas.length - 1 || fechas.length <= 8) && <text key={fe} x={x(i)} y={H - 6} fontSize="10" textAnchor="middle" fill="#64748b">{fe.slice(5)}</text>)}
+      {series.map((s, si) => {
+        const pts = s.valores.map((v, i) => (v === null ? null : [x(i), y(v)]));
+        const d = pts.filter(Boolean).map((p, i) => `${i ? 'L' : 'M'}${p[0]},${p[1]}`).join(' ');
+        return (<g key={s.nombre}><path d={d} fill="none" stroke={COLORES[si % COLORES.length]} strokeWidth={si === 0 ? 3 : 1.8} />{pts.filter(Boolean).map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={si === 0 ? 3.5 : 2.5} fill={COLORES[si % COLORES.length]} />)}</g>);
+      })}
+    </svg>
+  );
+}
+
 const TABS = [
   { id: 'vendedores', titulo: 'Vendedores / Subs', col: 'Vendedor' },
   { id: 'plazas', titulo: 'Plazas (ciudad)', col: 'Plaza' },
@@ -36,6 +59,7 @@ function descargarCSV(nombre, filas) {
 export default function AnalisisM1Module() {
   const [f, setF] = useState({ region: '', subregion: '', plaza: '', meta: 13 });
   const [d, setD] = useState(null);
+  const [tend, setTend] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('vendedores');
@@ -48,6 +72,7 @@ export default function AnalisisM1Module() {
     setCargando(false);
   }, []);
   useEffect(() => { cargar(f); }, [f, cargar]);
+  useEffect(() => { api.getTendenciaM1(f).then(setTend).catch(() => setTend(null)); }, [f.region, f.subregion, f.plaza]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filas = useMemo(() => {
     if (!d) return [];
@@ -102,6 +127,27 @@ export default function AnalisisM1Module() {
             <div className={caja + ' text-center'}><div className={`text-2xl font-bold ${r.alcanzable ? 'text-slate-800' : 'text-red-600'}`}>{r.pctPiso}%</div><div className="text-xs text-slate-500">Piso: si cobras TODO el M1 ({num(r.perdida)} perdidas)</div></div>
             <div className={caja + ' text-center'}><div className="text-2xl font-bold text-slate-800">{dinero(r.saldoVencidoM1)}</div><div className="text-xs text-slate-500">Saldo vencido en M1</div></div>
             <div className={caja + ' text-center'}><div className="text-2xl font-bold text-slate-800">{num(r.total)}</div><div className="text-xs text-slate-500">Cuentas · {num(r.corriente)} corriente</div></div>
+          </div>
+
+          <div className={caja}>
+            <h3 className="font-bold text-slate-800 mb-1">Tendencia día con día</h3>
+            {!tend || tend.serie.length < 2 ? (
+              <p className="text-sm text-slate-500">Hoy se empezó a guardar una foto diaria de M1. Con 2 o más días ya aparece la gráfica (se guarda sola cada vez que se sube el M1 o se abre esta pantalla).</p>
+            ) : (
+              <>
+                {tend.cambio && (
+                  <p className={`text-sm font-semibold mb-1 ${tend.cambio.deltaPct <= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                    Desde el {tend.cambio.desde.slice(5)}: {tend.cambio.pctAntes}% → {tend.cambio.pctAhora}% ({tend.cambio.deltaPct > 0 ? '+' : ''}{tend.cambio.deltaPct} puntos) · M1 {num(tend.cambio.m1Antes)} → {num(tend.cambio.m1Ahora)} ({tend.cambio.deltaM1 > 0 ? '+' : ''}{tend.cambio.deltaM1})
+                  </p>
+                )}
+                <Lineas fechas={tend.serie.map((s) => s.fecha)} meta={r.meta} series={[{ nombre: 'Total filtrado', valores: tend.serie.map((s) => s.pct) }, ...tend.vendedores.map((v) => ({ nombre: v.nombre, valores: v.puntos.map((p) => p.pct) }))]} />
+                <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                  <span><b style={{ color: COLORES[0] }}>━</b> Total filtrado</span>
+                  {tend.vendedores.map((v, i) => <span key={v.nombre}><b style={{ color: COLORES[(i + 1) % COLORES.length] }}>━</b> {v.nombre}</span>)}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Al cargar una cosecha nueva (otro mes) la línea cambia de base: compara dentro de la misma cosecha.</p>
+              </>
+            )}
           </div>
 
           <div className={caja}>

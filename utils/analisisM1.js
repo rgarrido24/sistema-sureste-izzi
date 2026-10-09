@@ -199,3 +199,42 @@ function generarHallazgos({ resumen, tablas, cruces, urgencia }) {
   if (cruce) h.push({ tipo: 'cruce', texto: `El punto más caliente es ${cruce.nombre}: ${cruce.m1} en M1 y ${cruce.perdida} perdidas de ${cruce.total}.` });
   return h;
 }
+
+// ---------- Tendencia (fotos diarias) ----------
+// Conteos por región/subregión/hub/plaza/vendedor, suficientes para reconstruir cualquier filtro después.
+export function fotoDeItems(items, hoy = new Date()) {
+  const dia0 = new Date(hoy); dia0.setHours(0, 0, 0, 0);
+  const mapa = new Map();
+  for (const it of items || []) {
+    const r = normalizaRegistro(it, dia0);
+    const k = [r.region, r.subregion, r.hub, r.plaza, r.vendedor].join('|');
+    let g = mapa.get(k);
+    if (!g) { g = { region: r.region, subregion: r.subregion, hub: r.hub, plaza: r.plaza, vendedor: r.vendedor, total: 0, corriente: 0, m1: 0, perdida: 0 }; mapa.set(k, g); }
+    g.total++;
+    if (r.estatus === 'C') g.corriente++; else if (r.estatus === 'M') g.m1++; else g.perdida++;
+  }
+  return Array.from(mapa.values());
+}
+
+export function serieTendencia(fotos, { region = '', subregion = '', plaza = '', topVendedores = 5 } = {}) {
+  const ordenadas = [...(fotos || [])].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  const filtra = (filas) => (filas || []).filter((f) => (!region || f.region === region) && (!subregion || f.subregion === subregion) && (!plaza || f.plaza === plaza));
+  const suma = (filas) => filas.reduce((a, f) => ({ total: a.total + f.total, corriente: a.corriente + f.corriente, m1: a.m1 + f.m1, perdida: a.perdida + f.perdida }), { total: 0, corriente: 0, m1: 0, perdida: 0 });
+  const pct = (s) => (s.total ? redondea(((s.m1 + s.perdida) / s.total) * 100) : 0);
+
+  const serie = ordenadas.map((foto) => { const s = suma(filtra(foto.filas)); return { fecha: foto.fecha, ...s, pct: pct(s) }; });
+
+  const ultima = ordenadas[ordenadas.length - 1];
+  const porVend = new Map();
+  for (const f of filtra(ultima?.filas)) porVend.set(f.vendedor, (porVend.get(f.vendedor) || 0) + f.m1 + f.perdida);
+  const top = Array.from(porVend.entries()).sort((a, b) => b[1] - a[1]).slice(0, topVendedores).map(([v]) => v);
+  const vendedores = top.map((v) => ({
+    nombre: v,
+    puntos: ordenadas.map((foto) => { const s = suma(filtra(foto.filas).filter((f) => f.vendedor === v)); return { fecha: foto.fecha, pct: s.total ? pct(s) : null, m1: s.m1, total: s.total }; }),
+  }));
+
+  const ref = serie.length > 1 ? serie[Math.max(0, serie.length - 8)] : null; // contra hace ~7 días (o la foto más antigua)
+  const hoy = serie[serie.length - 1];
+  const cambio = ref && hoy && ref.fecha !== hoy.fecha ? { desde: ref.fecha, pctAntes: ref.pct, pctAhora: hoy.pct, m1Antes: ref.m1, m1Ahora: hoy.m1, deltaPct: redondea(hoy.pct - ref.pct), deltaM1: hoy.m1 - ref.m1 } : null;
+  return { serie, vendedores, cambio };
+}

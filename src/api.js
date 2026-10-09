@@ -1238,3 +1238,8 @@ export async function getAnalisisM1(params = {}) {
   const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString();
   return apiRequest(`/analisis-m1${q ? `?${q}` : ''}`);
 }
+
+export async function getTendenciaM1(params = {}) {
+  const q = new URLSearchParams(Object.entries(params).filter(([k, v]) => ['region', 'subregion', 'plaza'].includes(k) && v)).toString();
+  return apiRequest(`/analisis-m1/tendencia${q ? `?${q}` : ''}`);
+}

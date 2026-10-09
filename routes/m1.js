@@ -5,6 +5,7 @@ import { normalizeCuenta, prepareDataForUpsert } from '../utils/cuentaHelper.js'
 import { optimizeDocument } from '../utils/dataOptimizer.js';
 import { requireAuth } from '../middleware/auth.js';
 import { extractRegionFromRecord, normalizeRegion } from '../utils/regionAccess.js';
+import { guardarFotoM1 } from '../utils/fotoM1.js';
 import { filterByAccessScope, isScopedRole } from '../utils/accessScope.js';
 import { notifyAll } from '../utils/pushSender.js';
 import ActivityEvent from '../models/ActivityEvent.js';
@@ -258,6 +259,7 @@ router.post('/bulk', async (req, res) => {
         console.warn('⚠️ No se pudo registrar ActivityEvent upload (m1):', e?.message || e);
       }
 
+      guardarFotoM1().catch((e) => console.warn('No se pudo guardar la foto diaria de M1:', e?.message || e));
       return res.json({
         success: true,
         created,
@@ -372,6 +374,7 @@ router.post('/bulk', async (req, res) => {
       console.warn('⚠️ No se pudo registrar ActivityEvent upload (m1):', e?.message || e);
     }
 
+    guardarFotoM1().catch((e) => console.warn('No se pudo guardar la foto diaria de M1:', e?.message || e));
     return res.json({
       success: true,
       created,
