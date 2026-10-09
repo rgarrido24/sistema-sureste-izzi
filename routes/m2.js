@@ -17,10 +17,10 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   try {
     const role = req.user?.role;
-    if (role === 'regionales' && !normalizeRegion(req.user.region || '')) {
+    if (role === 'regionales' && !normalizeRegion(req.user.region || '') && !(Array.isArray(req.user.hubs) && req.user.hubs.length)) {
       return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
     }
-    if (role === 'supervisor' && (!Array.isArray(req.user.plazas) || req.user.plazas.length === 0) && !normalizeRegion(req.user.region || '')) {
+    if (role === 'supervisor' && (!Array.isArray(req.user.plazas) || req.user.plazas.length === 0) && !normalizeRegion(req.user.region || '') && !(Array.isArray(req.user.hubs) && req.user.hubs.length)) {
       return res.status(403).json({ error: 'Usuario supervisor sin plazas asignadas. Pide a Admin que las configure.' });
     }
     const { estado, fecha, vendedor } = req.query;

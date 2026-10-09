@@ -1,5 +1,11 @@
 import { extractRegionFromRecord, normalizeRegion } from './regionAccess.js';
 
+// Hub sin el prefijo "HUB " y en mayúsculas ("HUB CUERNAVACA" -> "CUERNAVACA")
+export function extractHubFromRecord(doc) {
+  const raw = doc?.HUB || doc?.Hub || doc?.hub || doc?.['HUB '] || '';
+  return String(raw || '').trim().toUpperCase().replace(/^HUB\s+/, '');
+}
+
 export function extractPlazaFromRecord(doc) {
   const raw = doc?.PLAZA || doc?.Plaza || doc?.plaza || doc?.['PLAZA '] || '';
   return String(raw || '').trim().toUpperCase();
@@ -25,9 +31,13 @@ export function getAccessScope(user) {
       ? user.plazas.map(p => String(p || '').trim().toUpperCase()).filter(Boolean)
       : [];
     // Supervisor de toda una región (ej. los supervisores de MX): sin plazas sueltas y con región asignada
+    // Hubs completos (ej. el supervisor de Morelos): ve todo lo que caiga en esos hubs, además de sus plazas sueltas
+    const hubs = Array.isArray(user?.hubs)
+      ? user.hubs.map(h => String(h || '').trim().toUpperCase().replace(/^HUB\s+/, '')).filter(Boolean)
+      : [];
     const region = normalizeRegion(user?.region || '');
-    if (plazas.length === 0 && region) return { type: 'region', value: region };
-    return { type: 'plaza', value: plazas };
+    if (plazas.length === 0 && hubs.length === 0 && region) return { type: 'region', value: region };
+    return { type: 'plaza', value: plazas, hubs };
   }
   return { type: 'none', value: null };
 }
@@ -46,9 +56,11 @@ export async function filterByAccessScope(docs, user, OperacionDiaModel) {
   if (scope.type === 'none') return docs;
 
   if (scope.type === 'plaza') {
-    if (!scope.value.length) return [];
+    const hubsScope = scope.hubs || [];
+    if (!scope.value.length && !hubsScope.length) return [];
 
     const plazaByCuenta = new Map();
+    const hubByCuenta = new Map();
     const missingCuentas = [];
     for (const doc of docs) {
       const cuenta = doc?.cuenta;
@@ -68,13 +80,18 @@ export async function filterByAccessScope(docs, user, OperacionDiaModel) {
         if (!cuenta || plazaByCuenta.has(cuenta)) continue;
         const plaza = extractPlazaFromRecord(od);
         if (plaza) plazaByCuenta.set(cuenta, plaza);
+        const hub = extractHubFromRecord(od);
+        if (hub) hubByCuenta.set(cuenta, hub);
       }
     }
 
     return docs.filter(doc => {
       const cuenta = doc?.cuenta;
       const plaza = (cuenta && plazaByCuenta.get(cuenta)) || extractPlazaFromRecord(doc);
-      return scope.value.includes(plaza);
+      if (scope.value.includes(plaza)) return true;
+      if (!hubsScope.length) return false;
+      const hub = (cuenta && hubByCuenta.get(cuenta)) || extractHubFromRecord(doc);
+      return hubsScope.includes(hub);
     });
   }
 

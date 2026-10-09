@@ -36,6 +36,11 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  // Supervisores de hubs completos (ej. los hubs de Morelos): ven todo lo de esos hubs
+  hubs: {
+    type: [String],
+    default: []
+  },
   lastLoginAt: {
     type: Date,
     default: null,

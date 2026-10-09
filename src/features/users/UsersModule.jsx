@@ -16,17 +16,20 @@ export default function UsersModule() {
     region: '',
     plazas: [],
     tipoVendedor: 'directa',
-    todoMx: false
+    todoMx: false,
+    hubs: []
   });
   const [creating, setCreating] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
   const [plazasDisponibles, setPlazasDisponibles] = useState([]);
+  const [hubsDisponibles, setHubsDisponibles] = useState([]);
 
   useEffect(() => {
     loadUsers();
     api.getPlazasDisponibles().then(setPlazasDisponibles).catch(() => {});
+    api.getHubsDisponibles().then(setHubsDisponibles).catch(() => {});
   }, []);
 
   const togglePlazaNuevo = (plaza) => {
@@ -63,7 +66,7 @@ export default function UsersModule() {
         alert('Los usuarios regionales deben tener una región asignada');
         return;
       }
-      if (newUser.role === 'supervisor' && !newUser.todoMx && newUser.plazas.length === 0) {
+      if (newUser.role === 'supervisor' && !newUser.todoMx && newUser.plazas.length === 0 && newUser.hubs.length === 0) {
         alert('Selecciona al menos una plaza para el supervisor');
         return;
       }
@@ -76,9 +79,10 @@ export default function UsersModule() {
         newUser.email,
         newUser.role === 'supervisor' && newUser.todoMx ? 'METROPOLITANA' : newUser.region,
         newUser.role === 'supervisor' && newUser.todoMx ? [] : newUser.plazas,
-        newUser.role === 'vendedor' ? newUser.tipoVendedor : ''
+        newUser.role === 'vendedor' ? newUser.tipoVendedor : '',
+        newUser.role === 'supervisor' && !newUser.todoMx ? newUser.hubs : []
       );
-      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [], tipoVendedor: 'directa', todoMx: false });
+      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [], tipoVendedor: 'directa', todoMx: false, hubs: [] });
       loadUsers();
     } catch (error) {
       alert('Error creando usuario: ' + error.message);
@@ -263,6 +267,25 @@ export default function UsersModule() {
           )}
           {newUser.role === 'supervisor' && !newUser.todoMx && (
             <div className="border border-slate-200 rounded-lg p-3">
+              <p className="text-sm font-bold text-slate-700 mb-1">
+                Hubs completos ({newUser.hubs.length} seleccionados) <span className="font-normal text-slate-500">— ve todo lo de esos hubs, también lo nuevo que Izzi agregue</span>
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-48 overflow-y-auto mb-3">
+                {hubsDisponibles.map(({ hub, subregion }) => (
+                  <label key={hub} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newUser.hubs.includes(hub)}
+                      onChange={() => setNewUser(prev => ({ ...prev, hubs: prev.hubs.includes(hub) ? prev.hubs.filter(x => x !== hub) : [...prev.hubs, hub] }))}
+                    />
+                    {hub} <span className="text-[10px] text-slate-400">{subregion}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {newUser.role === 'supervisor' && !newUser.todoMx && (
+            <div className="border border-slate-200 rounded-lg p-3">
               <p className="text-sm font-bold text-slate-700 mb-2">
                 Plazas que va a supervisar ({newUser.plazas.length} seleccionadas)
               </p>
@@ -306,7 +329,7 @@ export default function UsersModule() {
                 {user.email && <p className="text-xs text-slate-500">{user.email}</p>}
                 {user.role === 'supervisor' && (
                   <p className="text-xs text-slate-500">
-                    {(user.plazas || []).length === 0 && user.region ? `Ve toda la región ${user.region}` : `${(user.plazas || []).length} plaza(s)`}
+                    {(user.plazas || []).length === 0 && (user.hubs || []).length === 0 && user.region ? `Ve toda la región ${user.region}` : `${(user.hubs || []).length ? `${user.hubs.length} hub(s): ${user.hubs.join(', ')}` : ''}${(user.hubs || []).length && (user.plazas || []).length ? ' + ' : ''}${(user.plazas || []).length ? `${user.plazas.length} plaza(s)` : ''}`}
                   </p>
                 )}
               </div>

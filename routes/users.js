@@ -94,15 +94,15 @@ router.post('/login', async (req, res) => {
 // Crear usuario
 router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
   try {
-    const { username, password, name, role, email, region, plazas, tipoVendedor } = req.body;
+    const { username, password, name, role, email, region, plazas, hubs, tipoVendedor } = req.body;
     const cleanUsername = username.trim().toLowerCase();
     
     if (!password || password.length < 6) {
       return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
-    if (role === 'supervisor' && (!Array.isArray(plazas) || plazas.length === 0) && !String(region || '').trim()) {
-      return res.status(400).json({ success: false, error: 'Selecciona al menos una plaza (o toda la región) para el supervisor' });
+    if (role === 'supervisor' && (!Array.isArray(plazas) || plazas.length === 0) && (!Array.isArray(hubs) || hubs.length === 0) && !String(region || '').trim()) {
+      return res.status(400).json({ success: false, error: 'Selecciona al menos una plaza, un hub o toda la región para el supervisor' });
     }
     
     const existingUser = await User.findOne({ username: cleanUsername });
@@ -119,7 +119,8 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       role,
       email: email?.trim() || '',
       region: ((role === 'regionales' || role === 'supervisor') && region) ? region.trim() : '',
-      plazas: (role === 'supervisor' && Array.isArray(plazas)) ? plazas.map(p => String(p).trim()).filter(Boolean) : []
+      plazas: (role === 'supervisor' && Array.isArray(plazas)) ? plazas.map(p => String(p).trim()).filter(Boolean) : [],
+      hubs: (role === 'supervisor' && Array.isArray(hubs)) ? hubs.map(h => String(h).trim().toUpperCase()).filter(Boolean) : []
     });
     
     await user.save();
@@ -149,6 +150,22 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       return res.status(400).json({ success: false, error: 'El usuario ya existe' });
     }
     res.status(500).json({ success: false, error: 'Error del servidor: ' + error.message });
+  }
+});
+
+// Hubs disponibles (sin el prefijo HUB), con su subregión, para dar a un supervisor hubs completos
+router.get('/hubs-disponibles', requireAuth, requireRoles(['admin', 'admin_general', 'usuarios']), async (req, res) => {
+  try {
+    const docs = await M1Master.find({}, { HUB: 1, SUBREGION: 1 }).lean();
+    const mapa = new Map();
+    for (const d of docs) {
+      const hub = String(d.HUB || '').trim().toUpperCase().replace(/^HUB\s+/, '');
+      if (hub && !mapa.has(hub)) mapa.set(hub, String(d.SUBREGION || '').trim().toUpperCase());
+    }
+    res.json(Array.from(mapa, ([hub, subregion]) => ({ hub, subregion })).sort((a, b) => (a.subregion + a.hub).localeCompare(b.subregion + b.hub)));
+  } catch (error) {
+    console.error('Error obteniendo hubs disponibles:', error);
+    res.status(500).json({ success: false, error: 'Error del servidor' });
   }
 });
 

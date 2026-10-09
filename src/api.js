@@ -80,10 +80,14 @@ export async function loginUser(username, password) {
   });
 }
 
-export async function createUser(username, password, name, role, email = '', region = '', plazas = [], tipoVendedor = '') {
+export async function getHubsDisponibles() {
+  return apiRequest('/users/hubs-disponibles');
+}
+
+export async function createUser(username, password, name, role, email = '', region = '', plazas = [], tipoVendedor = '', hubs = []) {
   return apiRequest('/users/create', {
     method: 'POST',
-    body: JSON.stringify({ username, password, name, role, email, region, plazas, tipoVendedor }),
+    body: JSON.stringify({ username, password, name, role, email, region, plazas, hubs, tipoVendedor }),
   });
 }
 
