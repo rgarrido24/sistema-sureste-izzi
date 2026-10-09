@@ -31,6 +31,7 @@ export const MODULES = {
   PUNTOS: 'puntos',
   COMISIONES: 'comisiones',
   ESTATUS: 'estatus',
+  ANALISIS: 'analisis',
   ARRANQUE: 'arranque'
 };
 

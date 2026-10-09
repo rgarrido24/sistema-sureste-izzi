@@ -1229,3 +1229,8 @@ export async function crearEstatusIntegracion(nombre, tipo) { return apiRequest(
 export async function revocarEstatusIntegracion(id) { return apiRequest(`/estatus/admin/integraciones/${id}/revocar`, { method: 'POST' }); }
 export async function getEstatusPendientes() { return apiRequest('/estatus/admin/pendientes'); }
 export async function probarEstatusBot(telefono, mensaje) { return apiRequest('/estatus/admin/probar', { method: 'POST', body: JSON.stringify({ telefono, mensaje }) }); }
+
+export async function getAnalisisM1(params = {}) {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString();
+  return apiRequest(`/analisis-m1${q ? `?${q}` : ''}`);
+}

@@ -26,6 +26,7 @@ import PuntosModule from '../features/puntos/PuntosModule.jsx';
 import ComisionesModule from '../features/comisiones/ComisionesModule.jsx';
 import ArranqueModule from '../features/arranque/ArranqueModule.jsx';
 import EstatusModule from '../features/estatus/EstatusModule.jsx';
+import AnalisisM1Module from '../features/analisis/AnalisisM1Module.jsx';
 
 export default function AdminDashboard({ user }) {
   const { logout } = useAuth();
@@ -149,6 +150,9 @@ export default function AdminDashboard({ user }) {
       {currentModule === MODULES.COMISIONES && (user?.role === 'admin' || user?.role === 'admin_general') && (
         <ComisionesModule />
       )}
+
+      {/* Análisis de M1 para Dirección: SOLO admin */}
+      {currentModule === MODULES.ANALISIS && (user?.role === 'admin' || user?.role === 'admin_general') && <AnalisisM1Module />}
 
       {/* Estatus de órdenes Izzi (captura del portal + chatbot) */}
       {currentModule === MODULES.ESTATUS && (user?.role === 'admin' || user?.role === 'admin_general' || user?.role === 'director' || user?.role === 'mesa_control') && (

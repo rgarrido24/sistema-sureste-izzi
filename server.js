@@ -38,6 +38,7 @@ import uploadRoutes from './routes/upload.js';
 import assistantRoutes from './routes/assistant.js';
 import activityRoutes from './routes/activity.js';
 import { ingestaRouter, botRouter, adminRouter as estatusAdminRouter } from './routes/estatus.js';
+import analisisM1Routes from './routes/analisisM1.js';
 
 dotenv.config();
 
@@ -143,6 +144,7 @@ app.use('/api/puntos', requireAuth, bloquearDistribuidores, puntosRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/arranque', arranqueRoutes);
 app.use('/api/estatus/admin', estatusAdminRouter);
+app.use('/api/analisis-m1', analisisM1Routes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {
