@@ -15,7 +15,8 @@ export default function UsersModule() {
     email: '',
     region: '',
     plazas: [],
-    tipoVendedor: 'directa'
+    tipoVendedor: 'directa',
+    todoMx: false
   });
   const [creating, setCreating] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -62,7 +63,7 @@ export default function UsersModule() {
         alert('Los usuarios regionales deben tener una región asignada');
         return;
       }
-      if (newUser.role === 'supervisor' && newUser.plazas.length === 0) {
+      if (newUser.role === 'supervisor' && !newUser.todoMx && newUser.plazas.length === 0) {
         alert('Selecciona al menos una plaza para el supervisor');
         return;
       }
@@ -73,11 +74,11 @@ export default function UsersModule() {
         newUser.name,
         newUser.role,
         newUser.email,
-        newUser.region,
-        newUser.plazas,
+        newUser.role === 'supervisor' && newUser.todoMx ? 'METROPOLITANA' : newUser.region,
+        newUser.role === 'supervisor' && newUser.todoMx ? [] : newUser.plazas,
         newUser.role === 'vendedor' ? newUser.tipoVendedor : ''
       );
-      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [], tipoVendedor: 'directa' });
+      setNewUser({ username: '', password: '', name: '', role: 'vendedor', email: '', region: '', plazas: [], tipoVendedor: 'directa', todoMx: false });
       loadUsers();
     } catch (error) {
       alert('Error creando usuario: ' + error.message);
@@ -251,6 +252,16 @@ export default function UsersModule() {
             )}
           </div>
           {newUser.role === 'supervisor' && (
+            <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+              <input
+                type="checkbox"
+                checked={newUser.todoMx}
+                onChange={(e) => setNewUser({ ...newUser, todoMx: e.target.checked, plazas: e.target.checked ? [] : newUser.plazas })}
+              />
+              Supervisor de TODO MX (MX Norte, MX Centro y MX Sur)
+            </label>
+          )}
+          {newUser.role === 'supervisor' && !newUser.todoMx && (
             <div className="border border-slate-200 rounded-lg p-3">
               <p className="text-sm font-bold text-slate-700 mb-2">
                 Plazas que va a supervisar ({newUser.plazas.length} seleccionadas)
@@ -293,8 +304,22 @@ export default function UsersModule() {
                 <p className="font-bold">{user.name}</p>
                 <p className="text-sm text-slate-600">{user.username} • {user.role}</p>
                 {user.email && <p className="text-xs text-slate-500">{user.email}</p>}
+                {user.role === 'supervisor' && (
+                  <p className="text-xs text-slate-500">
+                    {(user.plazas || []).length === 0 && user.region ? `Ve toda la región ${user.region}` : `${(user.plazas || []).length} plaza(s)`}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
+                {user.role === 'supervisor' && (user.plazas || []).length > 0 && !isMesaControlRole && !isUsuariosRole && (
+                  <button
+                    onClick={() => { if (confirm('¿Dar acceso a TODO MX (MX Norte, Centro y Sur) a este supervisor? Se quitan sus plazas sueltas.')) handleUpdateUser(user.id, { region: 'METROPOLITANA', plazas: [] }); }}
+                    className="px-3 py-2 bg-slate-700 text-white rounded-lg text-sm hover:bg-slate-800"
+                    title="Que vea toda la región METROPOLITANA"
+                  >
+                    Ver todo MX
+                  </button>
+                )}
                 {/* Rol usuarios solo puede cambiar contraseña de vendedores */}
                 {/* Mesa_control NO puede cambiar contraseñas ni eliminar usuarios */}
                 {!isMesaControlRole && (!isUsuariosRole || user.role === 'vendedor') && (

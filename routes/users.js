@@ -101,8 +101,8 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
-    if (role === 'supervisor' && (!Array.isArray(plazas) || plazas.length === 0)) {
-      return res.status(400).json({ success: false, error: 'Selecciona al menos una plaza para el supervisor' });
+    if (role === 'supervisor' && (!Array.isArray(plazas) || plazas.length === 0) && !String(region || '').trim()) {
+      return res.status(400).json({ success: false, error: 'Selecciona al menos una plaza (o toda la región) para el supervisor' });
     }
     
     const existingUser = await User.findOne({ username: cleanUsername });
@@ -118,7 +118,7 @@ router.post('/create', requireAuth, requireRoles(['admin', 'admin_general', 'usu
       name: name.trim(),
       role,
       email: email?.trim() || '',
-      region: (role === 'regionales' && region) ? region.trim() : '',
+      region: ((role === 'regionales' || role === 'supervisor') && region) ? region.trim() : '',
       plazas: (role === 'supervisor' && Array.isArray(plazas)) ? plazas.map(p => String(p).trim()).filter(Boolean) : []
     });
     

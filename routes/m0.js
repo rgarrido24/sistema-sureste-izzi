@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
     if (role === 'regionales' && !normalizeRegion(req.user.region || '')) {
       return res.status(403).json({ error: 'Usuario regional sin región asignada. Pide a Admin que la configure.' });
     }
-    if (role === 'supervisor' && (!Array.isArray(req.user.plazas) || req.user.plazas.length === 0)) {
+    if (role === 'supervisor' && (!Array.isArray(req.user.plazas) || req.user.plazas.length === 0) && !normalizeRegion(req.user.region || '')) {
       return res.status(403).json({ error: 'Usuario supervisor sin plazas asignadas. Pide a Admin que las configure.' });
     }
     const { estado, fecha } = req.query;

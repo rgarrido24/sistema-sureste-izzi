@@ -8,7 +8,7 @@ export function extractPlazaFromRecord(doc) {
 /**
  * Determina el alcance de acceso de un usuario:
  * - regionales / cobranza_mx: una sola región (como ya funcionaba).
- * - supervisor: una o varias plazas específicas (nuevo).
+ * - supervisor: una o varias plazas específicas, o una región completa si no tiene plazas y sí región.
  * - cualquier otro rol: sin restricción (ve todo).
  */
 export function getAccessScope(user) {
@@ -24,6 +24,9 @@ export function getAccessScope(user) {
     const plazas = Array.isArray(user?.plazas)
       ? user.plazas.map(p => String(p || '').trim().toUpperCase()).filter(Boolean)
       : [];
+    // Supervisor de toda una región (ej. los supervisores de MX): sin plazas sueltas y con región asignada
+    const region = normalizeRegion(user?.region || '');
+    if (plazas.length === 0 && region) return { type: 'region', value: region };
     return { type: 'plaza', value: plazas };
   }
   return { type: 'none', value: null };
